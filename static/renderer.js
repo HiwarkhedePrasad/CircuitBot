@@ -844,6 +844,23 @@ function drawSchematic() {
         renderComponentAt(ctx, comp.ops, comp.x, comp.y, globalOpState);
     });
 
+    // Render wires (from auto-routing)
+    if (currentSchematic.wirePaths) {
+        ctx.strokeStyle = '#00A800';
+        ctx.lineWidth = 0.254;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        currentSchematic.wirePaths.forEach(wire => {
+            if (!wire.path || wire.path.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(wire.path[0].x, wire.path[0].y);
+            for (let i = 1; i < wire.path.length; i++) {
+                ctx.lineTo(wire.path[i].x, wire.path[i].y);
+            }
+            ctx.stroke();
+        });
+    }
+
     ctx.restore();
 }
 

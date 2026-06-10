@@ -87,7 +87,7 @@ class SchematicComponent {
 
     extractRef() {
         for (const op of this.ops) {
-            if (op[0] === 'property' && op[1] === '"Reference"') return op[2].replace(/"/g, '');
+            if (op[0] === 'property' && (op[1] === 'Reference' || op[1] === '"Reference"')) return op[2].replace(/"/g, '');
         }
         return this.name.split(':').pop().substring(0, 8);
     }
@@ -113,6 +113,16 @@ class Schematic {
         return comp;
     }
 
+    addRawComponent(id, refDes, ops, category, description) {
+        const existing = this.components.find(c => c.id === id);
+        if (existing) return existing;
+
+        const comp = new SchematicComponent(id, refDes, ops, category, description);
+        comp.refDesignator = refDes;
+        this.components.push(comp);
+        return comp;
+    }
+
     removeComponent(id) {
         this.components = this.components.filter(c => c.id !== id);
         this.autoLayout();
@@ -120,6 +130,9 @@ class Schematic {
 
     clear() {
         this.components = [];
+        this.wirePaths = [];
+        this.pinMatrix = {};
+        this.netlist = [];
     }
 
     getById(id) {
@@ -171,6 +184,131 @@ class Schematic {
 
             xOffset += colWidths[i] + COLUMN_SPACING;
         }
+    }
+
+    // --- A* pathfinding for orthogonal wiring ---
+    loadGridWalls() {
+        const walls = [];
+        this.components.forEach(comp => {
+            const ax = comp.x + comp.bbox.x - BBOX_PAD;
+            const ay = comp.y + comp.bbox.y - BBOX_PAD;
+            const aw = comp.bbox.w + BBOX_PAD * 2;
+            const ah = comp.bbox.h + BBOX_PAD * 2;
+            walls.push({ x: ax, y: ay, w: aw, h: ah });
+        });
+        return walls;
+    }
+
+    autoRoute(netlist) {
+        this.netlist = netlist;
+        this.wirePaths = [];
+        const walls = this.loadGridWalls();
+        for (const conn of netlist) {
+            const src = this.pinMatrix[conn.source];
+            const tgt = this.pinMatrix[conn.target];
+            if (!src || !tgt) continue;
+            const path = this.findOrthogonalPath(walls, src, tgt);
+            if (path) {
+                this.wirePaths.push({ source: conn.source, target: conn.target, path });
+            }
+        }
+        return this.wirePaths;
+    }
+
+    findOrthogonalPath(walls, src, tgt) {
+        const toG = v => Math.round(v / GRID_SIZE);
+        const gsx = toG(src.x), gsy = toG(src.y);
+        const gex = toG(tgt.x), gey = toG(tgt.y);
+
+        const key = (x, y) => `${x},${y}`;
+        const wallSet = new Set();
+        for (const w of walls) {
+            const x1 = toG(w.x), y1 = toG(w.y);
+            const x2 = toG(w.x + w.w), y2 = toG(w.y + w.h);
+            for (let x = x1; x <= x2; x++) {
+                for (let y = y1; y <= y2; y++) {
+                    wallSet.add(key(x, y));
+                }
+            }
+        }
+        wallSet.delete(key(gsx, gsy));
+        wallSet.delete(key(gex, gey));
+
+        const h = (x, y) => Math.abs(x - gex) + Math.abs(y - gey);
+        const open = new Map();
+        const closed = new Set();
+        const gScore = new Map();
+        const cameFrom = new Map();
+        const startK = key(gsx, gsy);
+        gScore.set(startK, 0);
+        open.set(startK, { x: gsx, y: gsy, dir: null, f: h(gsx, gsy) });
+
+        while (open.size > 0) {
+            let best = null, bestF = Infinity;
+            for (const [, v] of open) {
+                if (v.f < bestF) { best = v; bestF = v.f; }
+            }
+            const ck = key(best.x, best.y);
+            if (best.x === gex && best.y === gey) {
+                const path = [];
+                let cur = ck;
+                while (cur) {
+                    const [cx, cy] = cur.split(',').map(Number);
+                    path.unshift({ x: cx * GRID_SIZE, y: cy * GRID_SIZE });
+                    cur = cameFrom.get(cur) || null;
+                }
+                return path;
+            }
+            open.delete(ck);
+            closed.add(ck);
+
+            const dirs = [[1, 0, 0], [-1, 0, 1], [0, 1, 2], [0, -1, 3]];
+            for (const [dx, dy, nd] of dirs) {
+                const nx = best.x + dx, ny = best.y + dy;
+                const nk = key(nx, ny);
+                if (closed.has(nk) || wallSet.has(nk)) continue;
+                const turnCost = (best.dir !== null && best.dir !== nd) ? 3 : 0;
+                const tentG = (gScore.get(ck) ?? 0) + 1 + turnCost;
+                if (tentG < (gScore.get(nk) ?? Infinity)) {
+                    gScore.set(nk, tentG);
+                    cameFrom.set(nk, ck);
+                    open.set(nk, { x: nx, y: ny, dir: nd, f: tentG + h(nx, ny) });
+                }
+            }
+        }
+        return null;
+    }
+
+    // --- Resolve absolute pin coordinates for routing ---
+    resolveAbsolutePins() {
+        this.pinMatrix = {};
+        this.components.forEach(comp => {
+            comp.ops.forEach(op => {
+                if (op[0] !== 'pin') return;
+                const at = getAttr(op, 'at');
+                const lenNode = getAttr(op, 'length');
+                const numNode = getAttr(op, 'number');
+                if (!at || !lenNode || !numNode) return;
+
+                const px = parseFloat(at[1]);
+                const py = parseFloat(at[2]);
+                const angDeg = parseFloat(at[3] || 0);
+                const ang = angDeg * Math.PI / 180;
+                const len = parseFloat(lenNode[1]);
+
+                const ex = px + Math.cos(ang) * len;
+                const ey = py + Math.sin(ang) * len;
+
+                const nameNode = getAttr(op, 'name');
+                const pinName = nameNode ? nameNode[1].replace(/"/g, '') : '';
+                const pinNum = numNode[1].replace(/"/g, '');
+                const absX = snapToGrid(comp.x + ex);
+                const absY = snapToGrid(comp.y + ey);
+                const key = `${comp.refDesignator}:${pinNum}`;
+                this.pinMatrix[key] = { x: absX, y: absY, name: pinName, refDes: comp.refDesignator, pinNum };
+            });
+        });
+        return this.pinMatrix;
     }
 
     // --- Compute transform for rendering all components ---
