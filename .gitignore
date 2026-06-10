@@ -57,3 +57,6 @@ tmp/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Project context (generated)
+.content/
