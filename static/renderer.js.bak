@@ -1,0 +1,394 @@
+// --- S-Expression Parser ---
+function parseSExpr(str) {
+    const tokens = [];
+    let current = '';
+    let inString = false;
+    
+    for (let i = 0; i < str.length; i++) {
+        let char = str[i];
+        if (char === '"' && (i === 0 || str[i-1] !== '\\')) {
+            inString = !inString;
+            current += char;
+        } else if (/\s/.test(char) && !inString) {
+            if (current) { tokens.push(current); current = ''; }
+        } else if ((char === '(' || char === ')') && !inString) {
+            if (current) { tokens.push(current); current = ''; }
+            tokens.push(char);
+        } else {
+            current += char;
+        }
+    }
+    if (current) tokens.push(current);
+
+    const root = [];
+    const stack = [root];
+    
+    for (const token of tokens) {
+        if (token === '(') {
+            const newList = [];
+            stack[stack.length - 1].push(newList);
+            stack.push(newList);
+        } else if (token === ')') {
+            if (stack.length > 1) stack.pop();
+        } else {
+            let val = token;
+            if (val.startsWith('"') && val.endsWith('"')) {
+                val = val.slice(1, -1);
+            }
+            stack[stack.length - 1].push(val);
+        }
+    }
+    return root[0] || null;
+}
+
+// Helper to get nested value e.g., (at 10 20) -> [10, 20]
+function getAttr(node, name) {
+    if (!Array.isArray(node)) return null;
+    for (let i = 1; i < node.length; i++) {
+        if (Array.isArray(node[i]) && node[i][0] === name) return node[i];
+    }
+    return null;
+}
+
+async function resolveAndParse(sexprStr, category, accOps = []) {
+    const ast = parseSExpr(sexprStr);
+    if (!ast) return accOps;
+    
+    let extendsName = null;
+    
+    function extractNodes(node) {
+        if (!Array.isArray(node)) return;
+        const type = node[0];
+        
+        switch (type) {
+            case 'extends':
+                extendsName = node[1];
+                break;
+            case 'symbol':
+                for (let i = 1; i < node.length; i++) {
+                    extractNodes(node[i]);
+                }
+                break;
+            case 'rectangle':
+            case 'polyline':
+            case 'circle':
+            case 'arc':
+            case 'pin':
+            // we only collect properties from the root to avoid duplicating inherited hidden ones, but let's just collect all for simplicity
+            case 'property':
+            case 'text':
+                accOps.push(node);
+                break;
+        }
+    }
+    
+    if (ast[0] === 'kicad_symbol_lib') {
+        for (let i = 1; i < ast.length; i++) {
+            if (Array.isArray(ast[i]) && ast[i][0] === 'symbol') {
+                extractNodes(ast[i]);
+            }
+        }
+    } else if (ast[0] === 'symbol') {
+        extractNodes(ast);
+    }
+    
+    if (extendsName && window.appContext) {
+        try {
+            console.log("Extends detected:", extendsName);
+            const parentId = `${category}:${extendsName}`;
+            const parentSExpr = await window.appContext.fetchSExpr(parentId);
+            await resolveAndParse(parentSExpr, category, accOps);
+        } catch (e) {
+            console.error("Failed to fetch parent symbol:", extendsName, e);
+        }
+    }
+    
+    return accOps;
+}
+
+// --- Renderer ---
+const COLORS = {
+    background: '#1e1e1e',
+    symbolLine: '#ce5c00', // Red-ish KiCad default
+    pinLine: '#ce5c00',
+    pinName: '#4ec9b0',
+    pinNum: '#dcdcaa',
+    property: '#569cd6',
+    text: '#c9d1d9',
+    fillBg: '#fdf6e320'
+};
+
+function renderOps(ops) {
+    const canvas = document.getElementById('compCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    
+    function updateBounds(x, y) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    }
+    
+    // First pass to compute bounds
+    ops.forEach(op => {
+        const type = op[0];
+        if (type === 'rectangle') {
+            const start = getAttr(op, 'start');
+            const end = getAttr(op, 'end');
+            if (start) { updateBounds(parseFloat(start[1]), parseFloat(start[2])); }
+            if (end) { updateBounds(parseFloat(end[1]), parseFloat(end[2])); }
+        } else if (type === 'polyline') {
+            const pts = getAttr(op, 'pts');
+            if (pts) {
+                for (let i = 1; i < pts.length; i++) {
+                    if (pts[i][0] === 'xy') {
+                        updateBounds(parseFloat(pts[i][1]), parseFloat(pts[i][2]));
+                    }
+                }
+            }
+        } else if (type === 'circle') {
+            const center = getAttr(op, 'center');
+            const radiusNode = getAttr(op, 'radius');
+            if (center && radiusNode) {
+                const cx = parseFloat(center[1]), cy = parseFloat(center[2]);
+                const r = parseFloat(radiusNode[1]);
+                updateBounds(cx - r, cy - r);
+                updateBounds(cx + r, cy + r);
+            }
+        } else if (type === 'arc') {
+            const start = getAttr(op, 'start');
+            const end = getAttr(op, 'end');
+            if (start) updateBounds(parseFloat(start[1]), parseFloat(start[2]));
+            if (end) updateBounds(parseFloat(end[1]), parseFloat(end[2]));
+        } else if (type === 'pin') {
+            const at = getAttr(op, 'at');
+            const lengthNode = getAttr(op, 'length');
+            if (at && lengthNode) {
+                let x = parseFloat(at[1]), y = parseFloat(at[2]);
+                let len = parseFloat(lengthNode[1]);
+                let ang = parseFloat(at[3] || 0);
+                updateBounds(x, y);
+                // Approx pin end
+                updateBounds(x + Math.cos(ang * Math.PI/180)*len, y + Math.sin(ang * Math.PI/180)*len);
+            }
+        }
+    });
+    
+    // Handle no valid bounds
+    if (minX === Infinity) { minX = -10; maxX = 10; minY = -10; maxY = 10; }
+    
+    // Add margin
+    const margin = 5;
+    minX -= margin; maxX += margin; minY -= margin; maxY += margin;
+    
+    const w = maxX - minX;
+    const h = maxY - minY;
+    
+    const scale = Math.min(canvas.width / w, canvas.height / h) * 0.9;
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    
+    // KiCad transform: KiCad V6+ Y increases UP. So we need to flip Y axis.
+    ctx.translate(cx, cy);
+    ctx.scale(scale, -scale); // Flip Y
+    ctx.translate(-midX, -midY);
+    
+    ctx.lineWidth = 0.5 / scale * 10; // Keep lines looking reasonable
+    if (ctx.lineWidth < 0.254) ctx.lineWidth = 0.254;
+    
+    // Draw elements
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    // Sort ops so fills are drawn first, then lines, then pins, then text
+    const order = { 'rectangle': 1, 'circle': 1, 'arc': 1, 'polyline': 1, 'pin': 2, 'property': 3, 'text': 3 };
+    ops.sort((a, b) => (order[a[0]] || 0) - (order[b[0]] || 0));
+
+    // Common style applier
+    function applyStyles(op) {
+        const stroke = getAttr(op, 'stroke');
+        const fill = getAttr(op, 'fill');
+        
+        ctx.strokeStyle = COLORS.symbolLine;
+        ctx.fillStyle = 'transparent';
+        
+        if (fill && fill[1] === '(type background)') {
+            ctx.fillStyle = COLORS.fillBg;
+        } else if (fill && fill[1] === '(type solid)') {
+            ctx.fillStyle = COLORS.symbolLine;
+        }
+        
+        if (stroke) {
+            const width = getAttr(stroke, 'width');
+            if (width) ctx.lineWidth = parseFloat(width[1]);
+        }
+    }
+
+    ops.forEach(op => {
+        const type = op[0];
+        ctx.save();
+        
+        if (type === 'rectangle') {
+            const start = getAttr(op, 'start');
+            const end = getAttr(op, 'end');
+            if (start && end) {
+                const x1 = parseFloat(start[1]), y1 = parseFloat(start[2]);
+                const x2 = parseFloat(end[1]), y2 = parseFloat(end[2]);
+                applyStyles(op);
+                const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+                const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
+                
+                if (ctx.fillStyle !== 'transparent') ctx.fillRect(rx, ry, rw, rh);
+                ctx.strokeRect(rx, ry, rw, rh);
+            }
+        } else if (type === 'polyline') {
+            const pts = getAttr(op, 'pts');
+            if (pts) {
+                applyStyles(op);
+                ctx.beginPath();
+                let first = true;
+                for (let i = 1; i < pts.length; i++) {
+                    if (pts[i][0] === 'xy') {
+                        const x = parseFloat(pts[i][1]), y = parseFloat(pts[i][2]);
+                        if (first) { ctx.moveTo(x, y); first = false; }
+                        else { ctx.lineTo(x, y); }
+                    }
+                }
+                if (ctx.fillStyle !== 'transparent') ctx.fill();
+                ctx.stroke();
+            }
+        } else if (type === 'circle') {
+            const center = getAttr(op, 'center');
+            const radiusNode = getAttr(op, 'radius');
+            if (center && radiusNode) {
+                const cx = parseFloat(center[1]), cy = parseFloat(center[2]);
+                const r = parseFloat(radiusNode[1]);
+                applyStyles(op);
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                if (ctx.fillStyle !== 'transparent') ctx.fill();
+                ctx.stroke();
+            }
+        } else if (type === 'arc') {
+            // Complex: KiCad arc defined by start, mid, end or center, radius, start, end
+            // Simplifying for now
+            const start = getAttr(op, 'start');
+            const end = getAttr(op, 'end');
+            const mid = getAttr(op, 'mid');
+            if (start && end && mid) {
+                applyStyles(op);
+                ctx.beginPath();
+                ctx.moveTo(parseFloat(start[1]), parseFloat(start[2]));
+                // very rough approx with quadratic curve
+                ctx.quadraticCurveTo(parseFloat(mid[1]), parseFloat(mid[2]), parseFloat(end[1]), parseFloat(end[2]));
+                ctx.stroke();
+            }
+        } else if (type === 'pin') {
+            const at = getAttr(op, 'at');
+            const lengthNode = getAttr(op, 'length');
+            if (at && lengthNode) {
+                const x = parseFloat(at[1]), y = parseFloat(at[2]);
+                const len = parseFloat(lengthNode[1]);
+                const angDeg = parseFloat(at[3] || 0);
+                const ang = angDeg * Math.PI / 180;
+                
+                // Pin line
+                ctx.strokeStyle = COLORS.pinLine;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                const ex = x + Math.cos(ang) * len;
+                const ey = y + Math.sin(ang) * len;
+                ctx.lineTo(ex, ey);
+                ctx.stroke();
+                
+                // Draw pin circle if it's inverted etc
+                const pinShape = op[2];
+                if (pinShape === 'inverted') {
+                     ctx.beginPath();
+                     ctx.arc(x + Math.cos(ang)*(len*0.8), y + Math.sin(ang)*(len*0.8), 0.5, 0, 2*Math.PI);
+                     ctx.stroke();
+                }
+
+                // Text rendering (flip Y back so text isn't upside down)
+                ctx.save();
+                // move to pin connection point to symbol (end of pin line)
+                ctx.translate(ex, ey);
+                ctx.scale(1, -1);
+                
+                ctx.font = `${1.27 * 0.8}px monospace`; // Scale font
+                
+                const nameNode = getAttr(op, 'name');
+                if (nameNode && nameNode[1] !== '"~"') {
+                    ctx.fillStyle = COLORS.pinName;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    let textAng = (angDeg === 0 || angDeg === 180) ? 0 : -Math.PI/2;
+                    let txt = nameNode[1];
+                    
+                    let ox = (angDeg === 0) ? -1 : (angDeg === 180 ? 1 : 0);
+                    let oy = (angDeg === 90) ? -1 : (angDeg === 270 ? 1 : 0);
+                    
+                    ctx.fillText(txt, ox, oy);
+                }
+                
+                const numNode = getAttr(op, 'number');
+                if (numNode) {
+                    ctx.fillStyle = COLORS.pinNum;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    let txt = numNode[1];
+                    
+                    let ox = (angDeg === 0) ? 0.5 : (angDeg === 180 ? -0.5 : -1);
+                    let oy = (angDeg === 90) ? 0.5 : (angDeg === 270 ? -0.5 : -1);
+                    
+                    ctx.fillText(txt, ox, oy);
+                }
+                
+                ctx.restore();
+            }
+        } else if (type === 'property' || type === 'text') {
+            const at = getAttr(op, 'at');
+            if (at) {
+                const txt = type === 'property' ? op[2] : op[1];
+                // Hide empty or default hidden
+
+                const effects = getAttr(op, 'effects');
+                let hide = false;
+                if (effects) {
+                    for (let i = 1; i < effects.length; i++) {
+                        if (effects[i] === 'hide') hide = true;
+                    }
+                }
+                
+                if (!hide && txt !== '"~"') {
+                    ctx.save();
+                    ctx.translate(parseFloat(at[1]), parseFloat(at[2]));
+                    ctx.scale(1, -1);
+                    ctx.fillStyle = COLORS.property;
+                    if (type === 'text') ctx.fillStyle = COLORS.text;
+                    ctx.font = `1.27px monospace`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    const ang = parseFloat(at[3] || 0);
+                    if (ang !== 0) {
+                        ctx.rotate(-ang * Math.PI / 180);
+                    }
+                    ctx.fillText(txt, 0, 0);
+                    ctx.restore();
+                }
+            }
+        }
+        
+        ctx.restore();
+    });
+    
+    // Reset transform for next draw
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+}

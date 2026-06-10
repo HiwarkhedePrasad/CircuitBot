@@ -1,0 +1,333 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #1e1e1e;
+    color: #c9d1d9;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 380px;
+    background-color: #252526;
+    border-right: 1px solid #3c3c3c;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+}
+
+.sidebar h2 {
+    font-size: 1.15rem;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.sidebar h3 {
+    font-size: 0.85rem;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.search-box {
+    display: flex;
+    gap: 8px;
+}
+
+input[type="text"] {
+    flex: 1;
+    padding: 7px 10px;
+    background: #3c3c3c;
+    border: 1px solid #007acc;
+    color: #fff;
+    border-radius: 3px;
+    outline: none;
+    font-size: 0.9rem;
+}
+
+button {
+    padding: 7px 14px;
+    background: #007acc;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+button:hover {
+    background: #0098ff;
+}
+
+#searchResults {
+    list-style: none;
+    overflow-y: auto;
+    max-height: 200px;
+}
+
+#searchResults li {
+    padding: 8px 10px;
+    background: #2d2d2d;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}
+
+#searchResults li:hover {
+    background: #3a3d41;
+    border-left-color: #007acc;
+}
+
+#searchResults li.selected {
+    background: #1a3a5c;
+    border-left-color: #007acc;
+}
+
+.result-id {
+    font-weight: bold;
+    font-size: 0.85rem;
+    margin-bottom: 3px;
+    word-break: break-all;
+}
+
+.result-text {
+    font-size: 0.75rem;
+    color: #9cdcfe;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Schematic Controls */
+.schematic-controls {
+    background: #2a2d2e;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.btn-row:first-of-type { margin-top: 0; }
+
+.btn-add {
+    flex: 1;
+    background: #238636;
+}
+.btn-add:hover { background: #2ea043; }
+.btn-add:disabled { background: #3a3a3a; color: #666; cursor: not-allowed; }
+
+.btn-layout {
+    flex: 1;
+    background: #8957e5;
+}
+.btn-layout:hover { background: #a371f7; }
+.btn-layout:disabled { background: #3a3a3a; color: #666; cursor: not-allowed; }
+
+.btn-clear {
+    flex: 1;
+    background: #da3633;
+}
+.btn-clear:hover { background: #f85149; }
+.btn-clear:disabled { background: #3a3a3a; color: #666; cursor: not-allowed; }
+
+.btn-view {
+    flex: 1;
+    background: #1f6feb;
+}
+.btn-view:hover { background: #58a6ff; }
+.btn-view:disabled { background: #3a3a3a; color: #666; cursor: not-allowed; }
+
+/* Component List */
+.component-list-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.component-list-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#compCount {
+    color: #58a6ff;
+    font-weight: normal;
+}
+
+#componentList {
+    list-style: none;
+    overflow-y: auto;
+    flex: 1;
+    background: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+#componentList li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    background: #2d2d2d;
+    margin-bottom: 4px;
+    border-radius: 3px;
+    font-size: 0.8rem;
+    border-left: 3px solid transparent;
+}
+
+#componentList li .comp-label {
+    flex: 1;
+    min-width: 0;
+}
+
+#componentList li .comp-name {
+    font-weight: 600;
+    color: #e6edf3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#componentList li .comp-id {
+    font-size: 0.7rem;
+    color: #8b949e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#componentList li .comp-remove {
+    background: none;
+    border: none;
+    color: #f85149;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+#componentList li .comp-remove:hover { color: #ff6b6b; }
+
+#componentList li.col-0 { border-left-color: #3fb950; }
+#componentList li.col-1 { border-left-color: #d29922; }
+#componentList li.col-2 { border-left-color: #58a6ff; }
+#componentList li.col-3 { border-left-color: #f85149; }
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    background: #1e1e1e;
+}
+
+.canvas-container {
+    flex: 1;
+    background: #1a1a2e;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+}
+
+canvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    cursor: grab;
+}
+
+canvas:active {
+    cursor: grabbing;
+}
+
+.zoom-controls {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+}
+
+.zoom-controls button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: #2d2d2d;
+    border: 1px solid #555;
+    color: #c9d1d9;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.zoom-controls button:hover {
+    background: #3a3d41;
+    border-color: #007acc;
+}
+
+.mode-indicator {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(31, 111, 235, 0.85);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    z-index: 10;
+    pointer-events: none;
+}
+
+#componentInfo {
+    margin-top: 12px;
+    padding: 12px;
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    height: 120px;
+    overflow-y: auto;
+}
+
+.hidden {
+    display: none !important;
+}
