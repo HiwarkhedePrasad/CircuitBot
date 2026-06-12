@@ -11,6 +11,7 @@ load_dotenv(dotenv_path, override=True)
 
 app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = os.urandom(16).hex()
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # never cache static files
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 rag = KicadRAG()
@@ -79,6 +80,15 @@ def _generate_netlist_rules(pin_matrix):
 
 
 # ── HTTP Routes ──────────────────────────────────────────────────────────────
+
+@app.after_request
+def _no_cache(resp):
+    """Disable caching for static assets so JS/CSS edits always take effect."""
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
 
 @app.route('/')
 def index():

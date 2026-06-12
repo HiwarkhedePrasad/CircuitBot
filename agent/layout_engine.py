@@ -15,8 +15,8 @@ MATRIX_SIZE = 300
 MATRIX_OFFSET = 150  # offset to keep grid coords positive
 
 BBOX_PAD = 2.0
-COLUMN_SPACING = 25.0   # extra horizontal routing channel between columns
-ROW_CLEARANCE = 7.62    # extra vertical routing channel between rows (6 grid cells)
+COLUMN_SPACING = 6.35   # extra horizontal routing channel between columns (5 grid cells)
+ROW_CLEARANCE = 3.81    # extra vertical routing channel between rows (3 grid cells)
 
 # Column definitions — must match frontend COLUMN_DEFS
 COLUMN_KEYWORDS = [
@@ -128,8 +128,8 @@ class BackendLayoutEngine:
             'height': bbox['h'],
         })
 
-    def execute_placement(self):
-        """Column-based auto-layout matching frontend behavior."""
+    def execute_placement(self, pin_matrix: dict = None, netlist: list = None):
+        """Column-based auto-layout with connectivity-aware vertical ordering."""
         if not self.components:
             return
 
@@ -137,6 +137,17 @@ class BackendLayoutEngine:
         for comp in self.components:
             comp['column'] = _get_column_for_category(comp['category'])
             cols[comp['column']].append(comp)
+
+        # ── Connectivity-aware ordering within each column ──
+        # Compute a connectivity score: pair of components that share a net
+        # should be placed near each other vertically.
+        if pin_matrix and netlist:
+            conn_graph = self._build_connectivity_graph(pin_matrix, netlist)
+            for col_idx, col in enumerate(cols):
+                if len(col) < 2:
+                    continue
+                # Sort by the average Y of connected pins in adjacent columns
+                col.sort(key=lambda c: self._conn_y_rank(c, col_idx, conn_graph, pin_matrix))
 
         col_widths = []
         for col in cols:
@@ -162,6 +173,56 @@ class BackendLayoutEngine:
                 y_offset += comp['height'] + BBOX_PAD * 2 + ROW_CLEARANCE
 
             x_offset += col_widths[col_idx] + COLUMN_SPACING
+
+    def _build_connectivity_graph(self, pin_matrix: dict, netlist: list) -> dict:
+        """Build a map: (ref_a, ref_b) -> list of connection Y-coord pairs."""
+        conn = {}
+        comp_pos = {c['ref_des']: c for c in self.components}
+        for net in netlist:
+            src_ref = net['source'].split(':')[0]
+            tgt_ref = net['target'].split(':')[0]
+            if src_ref == tgt_ref:
+                continue
+            key = (src_ref, tgt_ref) if src_ref < tgt_ref else (tgt_ref, src_ref)
+            src_pin = pin_matrix.get(net['source'])
+            tgt_pin = pin_matrix.get(net['target'])
+            if src_pin and tgt_pin:
+                src_comp = comp_pos.get(src_ref)
+                tgt_comp = comp_pos.get(tgt_ref)
+                if src_comp and tgt_comp:
+                    # Estimate Y in world coords (before placement, use bbox center)
+                    sy = src_pin['y']  # relative to comp origin
+                    ty = tgt_pin['y']
+                    conn.setdefault(key, []).append((sy, ty))
+        return conn
+
+    def _conn_y_rank(self, comp: dict, col_idx: int, conn_graph: dict,
+                     pin_matrix: dict) -> float:
+        """Compute a rank value for component ordering within a column.
+        Lower values = place higher (more negative Y).
+        Looks at the average Y of connected pins on components in adjacent columns.
+        """
+        ref = comp['ref_des']
+        connected_ys = []
+        for (a, b), pairs in conn_graph.items():
+            if a == ref:
+                partner = b
+            elif b == ref:
+                partner = a
+            else:
+                continue
+            # Only consider connections to adjacent columns
+            partner_comp = self._get_comp(partner)
+            if not partner_comp:
+                continue
+            partner_col = partner_comp.get('column', 3)
+            if abs(partner_col - col_idx) > 1:
+                continue
+            for _, ty in pairs:
+                connected_ys.append(ty if a == ref else ty)
+        if not connected_ys:
+            return 0.0
+        return sum(connected_ys) / len(connected_ys)
 
     def build_obstacle_matrix(self, pin_matrix: dict = None):
         """Build a walkable grid with component footprints blocked.
@@ -306,6 +367,11 @@ class BackendLayoutEngine:
             path, _ = finder.find_path(start, end, grid)
 
             if path:
+                # Reject ghost wires: if path is >4x Manhattan distance, skip
+                manhattan = abs(sx - ex) + abs(sy - ey)
+                if len(path) > max(manhattan * 4, 50):
+                    continue
+
                 mm_path = [
                     {'x': (n.x - MATRIX_OFFSET) * GRID_SIZE,
                      'y': (n.y - MATRIX_OFFSET) * GRID_SIZE}
@@ -324,6 +390,89 @@ class BackendLayoutEngine:
                         self.matrix[n.y][n.x] = TRACE_WEIGHT
 
         return traces
+
+    def check_and_fix_overlaps(self, traces: list, max_passes: int = 2):
+        """Post-route validation: detect traces that run on top of each other
+        (2+ consecutive shared cells = parallel overlap, not a crossing) and
+        re-route the offenders with the other traces' cells hard-blocked.
+
+        Returns (traces, n_fixed, n_remaining_conflicts).
+        """
+        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
+
+        def to_cells(tr):
+            return [
+                (round(p['x'] / GRID_SIZE) + MATRIX_OFFSET,
+                 round(p['y'] / GRID_SIZE) + MATRIX_OFFSET)
+                for p in tr['path']
+            ]
+
+        def find_conflicts(all_cells):
+            usage = {}
+            for idx, cs in enumerate(all_cells):
+                for c in cs[1:-1]:
+                    usage.setdefault(c, set()).add(idx)
+            conflicts = []
+            for idx, cs in enumerate(all_cells):
+                run = 0
+                for c in cs[1:-1]:
+                    if len(usage.get(c, ())) > 1:
+                        run += 1
+                        if run >= 2:  # 2+ consecutive shared cells = parallel overlap
+                            conflicts.append(idx)
+                            break
+                    else:
+                        run = 0
+            return conflicts
+
+        n_fixed = 0
+        for _ in range(max_passes):
+            all_cells = [to_cells(t) for t in traces]
+            conflicts = find_conflicts(all_cells)
+            if not conflicts:
+                return traces, n_fixed, 0
+
+            # Re-route longest offenders first — they have the most detour room
+            conflicts.sort(key=lambda i: -len(all_cells[i]))
+            progress = False
+            for idx in conflicts:
+                cs = all_cells[idx]
+                if len(cs) < 2:
+                    continue
+                # Hard-block every middle cell occupied by any OTHER trace
+                m = [row[:] for row in self.matrix]
+                for j, ocs in enumerate(all_cells):
+                    if j == idx:
+                        continue
+                    for (x, y) in ocs[1:-1]:
+                        if 0 <= x < MATRIX_SIZE and 0 <= y < MATRIX_SIZE:
+                            m[y][x] = 0
+                grid = Grid(matrix=m)
+                (sx, sy), (ex, ey) = cs[0], cs[-1]
+                try:
+                    start = grid.node(sx, sy)
+                    end = grid.node(ex, ey)
+                    start.walkable = True
+                    end.walkable = True
+                    path, _ = finder.find_path(start, end, grid)
+                except Exception:
+                    path = None
+                if path:
+                    manhattan = abs(sx - ex) + abs(sy - ey)
+                    if len(path) <= max(manhattan * 4, 50):
+                        traces[idx]['path'] = [
+                            {'x': (n.x - MATRIX_OFFSET) * GRID_SIZE,
+                             'y': (n.y - MATRIX_OFFSET) * GRID_SIZE}
+                            for n in path
+                        ]
+                        all_cells[idx] = to_cells(traces[idx])
+                        n_fixed += 1
+                        progress = True
+            if not progress:
+                break  # nothing improvable; stop iterating
+
+        remaining = len(find_conflicts([to_cells(t) for t in traces]))
+        return traces, n_fixed, remaining
 
     def get_placements(self) -> list:
         """Return final absolute positions for all components."""
