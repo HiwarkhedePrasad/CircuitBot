@@ -461,10 +461,15 @@ def netlist_node(state: AgentState, config) -> dict:
     )
 
     # ── Phase 1: deterministic power/GND assignment (no LLM, zero hallucination) ──
+    # Primary signal: the pin's KiCad electrical type (power_in/power_out) —
+    # a structural property that generalizes across the whole library.
+    # Name lists are only secondary, used to pick GND vs a specific rail.
     assigned = set()
     power_groups = {}
+    structural_power = set()
     for key, pin in pins.items():
         pname = pin.get("name", "").strip().upper()
+        etype = pin.get("etype", "")
         if _is_gnd_net(pname):
             power_groups.setdefault("GND", []).append(key)
             assigned.add(key)
@@ -473,6 +478,15 @@ def netlist_node(state: AgentState, config) -> dict:
             if canon in ("VCC", "VDD"):
                 canon = "3V3"
             power_groups.setdefault(canon, []).append(key)
+            assigned.add(key)
+        elif etype in POWER_ETYPES and pname and pname != "~":
+            # Structurally a power pin with a non-standard name (e.g. VREG,
+            # VOUTA, V1): create a power net named after the pin itself so
+            # the component is deterministically pulled into a real net —
+            # this kills floating islands for the whole library.
+            canon = pname.lstrip('+')
+            power_groups.setdefault(canon, []).append(key)
+            structural_power.add(canon)
             assigned.add(key)
     nets = [{"net": n, "pins": p} for n, p in power_groups.items()]
     _emit(config, "agent:log", {
@@ -571,7 +585,9 @@ def netlist_node(state: AgentState, config) -> dict:
                 continue
             used_pins.add(p)
             clean.append(p)
-        if len(clean) >= 2 or (_is_gnd_net(name) or _is_power_net(name)) and len(clean) >= 1:
+        is_pwr = (_is_gnd_net(name) or _is_power_net(name)
+                  or name.upper().lstrip('+') in structural_power)
+        if len(clean) >= 2 or (is_pwr and len(clean) >= 1):
             valid_nets.append({"net": name, "pins": clean})
 
     # ── ERC check: power/GND nets must not contain signal-looking pins shorted to rails ──
@@ -593,7 +609,8 @@ def netlist_node(state: AgentState, config) -> dict:
 
     for net in valid_nets:
         name = net["net"]
-        if _is_gnd_net(name) or _is_power_net(name):
+        if (_is_gnd_net(name) or _is_power_net(name)
+                or name.upper().lstrip('+') in structural_power):
             n_power_nets += 1
             canonical = "GND" if _is_gnd_net(name) else name.upper().lstrip('+')
             for p in net["pins"]:
@@ -630,6 +647,9 @@ def netlist_node(state: AgentState, config) -> dict:
                     power_pins.append({"pin": key, "net": "GND"})
                     used_pins.add(key)
                 elif _is_power_net(pname):
+                    power_pins.append({"pin": key, "net": pname.lstrip('+')})
+                    used_pins.add(key)
+                elif pin.get("etype") in POWER_ETYPES and pname and pname != "~":
                     power_pins.append({"pin": key, "net": pname.lstrip('+')})
                     used_pins.add(key)
 
@@ -907,6 +927,16 @@ def _parse_sexpr_to_ops(sexpr_str: str, lib_name: str, _depth: int = 0) -> list:
     return acc
 
 
+# Valid KiCad pin electrical types — op[1] of a pin node is one of these.
+# This is a STRUCTURAL property of the symbol, independent of pin naming.
+KICAD_PIN_ETYPES = {
+    "input", "output", "bidirectional", "tri_state", "passive", "free",
+    "unspecified", "power_in", "power_out", "open_collector", "open_emitter",
+    "no_connect",
+}
+POWER_ETYPES = ("power_in", "power_out")
+
+
 def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
     GRID_SIZE = 1.27
     pin_matrix = {}
@@ -914,6 +944,9 @@ def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
     for op in ops:
         if op[0] != "pin":
             continue
+
+        # Electrical type: (pin power_in line (at ...) ...) -> op[1]
+        etype = op[1] if len(op) > 1 and isinstance(op[1], str) and op[1] in KICAD_PIN_ETYPES else ""
 
         at = _get_attr(op, "at")
         len_node = _get_attr(op, "length")
@@ -963,6 +996,7 @@ def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
             "name": pin_name.strip(),
             "ref_des": ref_des,
             "pin_num": pin_num,
+            "etype": etype,
         }
 
     return pin_matrix

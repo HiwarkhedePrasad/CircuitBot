@@ -101,12 +101,48 @@ def calculate_ops_bbox(ops: list) -> dict:
 
     if min_x == float('inf'):
         return {'x': -5, 'y': -5, 'w': 10, 'h': 10}
-    return {
+    bbox = {
         'x': min_x - BBOX_PAD,
         'y': min_y - BBOX_PAD,
         'w': max_x - min_x + BBOX_PAD * 2,
         'h': max_y - min_y + BBOX_PAD * 2,
     }
+    return _enforce_pin_density_minimum(bbox, ops)
+
+
+LABEL_PITCH = 1.8  # mm per label row — matches the renderer's line spacing
+
+
+def _enforce_pin_density_minimum(bbox: dict, ops: list) -> dict:
+    """A geometry bbox can be 'correct' yet too small to fit one label row
+    per pin on dense ICs. Enforce a minimum node size derived from per-side
+    pin counts so layout always reserves enough room — generic for any pin
+    count on any part, no per-component tuning."""
+    side = {0: 0, 90: 0, 180: 0, 270: 0}
+    for op in ops:
+        if op[0] != 'pin':
+            continue
+        at = _get_attr(op, 'at')
+        if not at:
+            continue
+        try:
+            ang = float(at[3]) % 360 if len(at) > 3 else 0.0
+        except (ValueError, IndexError):
+            ang = 0.0
+        bucket = min((0, 90, 180, 270),
+                     key=lambda a: min(abs(ang - a), 360 - abs(ang - a)))
+        side[bucket] += 1
+    # Horizontal pins (0/180) stack vertically on the left/right sides;
+    # vertical pins (90/270) stack horizontally on the top/bottom sides.
+    min_h = max(side[0], side[180], 1) * LABEL_PITCH
+    min_w = max(side[90], side[270], 1) * LABEL_PITCH
+    if bbox['h'] < min_h:
+        bbox['y'] -= (min_h - bbox['h']) / 2
+        bbox['h'] = min_h
+    if bbox['w'] < min_w:
+        bbox['x'] -= (min_w - bbox['w']) / 2
+        bbox['w'] = min_w
+    return bbox
 
 
 class BackendLayoutEngine:

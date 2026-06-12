@@ -113,7 +113,28 @@ function calculateGeometryBBox(ops) {
     });
     if (minX === Infinity) return { x: -2.54, y: -2.54, w: 5.08, h: 5.08 };
     const PAD = 1.27;
-    return { x: minX - PAD, y: minY - PAD, w: maxX - minX + PAD * 2, h: maxY - minY + PAD * 2 };
+    const bbox = { x: minX - PAD, y: minY - PAD, w: maxX - minX + PAD * 2, h: maxY - minY + PAD * 2 };
+
+    // Pin-density minimum: reserve one label row per pin on each side so
+    // dense ICs always get enough room — generic, any pin count, no tuning.
+    const LABEL_PITCH = 1.8;
+    const side = { 0: 0, 90: 0, 180: 0, 270: 0 };
+    ops.forEach(op => {
+        if (op[0] !== 'pin') return;
+        const at = getAttr(op, 'at');
+        if (!at) return;
+        let ang = parseFloat(at[3] || 0) % 360;
+        if (ang < 0) ang += 360;
+        const bucket = [0, 90, 180, 270].reduce((b, a) =>
+            Math.min(Math.abs(ang - a), 360 - Math.abs(ang - a)) <
+            Math.min(Math.abs(ang - b), 360 - Math.abs(ang - b)) ? a : b, 0);
+        side[bucket]++;
+    });
+    const minH = Math.max(side[0], side[180], 1) * LABEL_PITCH;
+    const minW = Math.max(side[90], side[270], 1) * LABEL_PITCH;
+    if (bbox.h < minH) { bbox.y -= (minH - bbox.h) / 2; bbox.h = minH; }
+    if (bbox.w < minW) { bbox.x -= (minW - bbox.w) / 2; bbox.w = minW; }
+    return bbox;
 }
 
 // --- SchematicComponent ---

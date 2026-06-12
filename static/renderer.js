@@ -305,6 +305,108 @@ function setupCanvasSize() {
     canvas.height = rect.height * dpr;
 }
 
+// Generic label collision solver: measures every visible label's real
+// rendered size (ctx.measureText) and resolves AABB overlaps by pushing
+// labels apart along the axis perpendicular to their pin stub (or vertically
+// for properties). No fixed thresholds — works for any pin density.
+function resolveLabelCollisions(ops, ctx) {
+    const labels = [];
+
+    function fontSizeOf(op) {
+        let size = 1.27;
+        const effects = getAttr(op, 'effects');
+        if (effects) {
+            const font = getAttr(effects, 'font');
+            if (font) {
+                const s = getAttr(font, 'size');
+                if (s) size = parseFloat(s[2]);
+            }
+        }
+        return size;
+    }
+
+    ops.forEach(op => {
+        const type = op[0];
+        if (type === 'property' || type === 'text') {
+            const at = getAttr(op, 'at');
+            const hide = getAttr(op, 'hide');
+            if (!at || (hide && hide[1] === 'yes')) return;
+            const txt = type === 'property' ? op[2] : op[1];
+            if (!txt || txt === '"~"') return;
+            const size = fontSizeOf(op);
+            ctx.font = `${size}px "Segoe UI", Arial, sans-serif`;
+            const w = ctx.measureText(txt).width;
+            labels.push({
+                op, x: parseFloat(at[1]), y: parseFloat(at[2]),
+                w, h: size * 1.4, dx: 0, dy: 0, axis: 'y',
+                anchorX: null, anchorY: null, maxLead: Infinity,
+            });
+        } else if (type === 'pin') {
+            const at = getAttr(op, 'at');
+            const lenNode = getAttr(op, 'length');
+            const numNode = getAttr(op, 'number');
+            if (!at || !lenNode || !numNode || numNode[1] === '"~"') return;
+            const x = parseFloat(at[1]), y = parseFloat(at[2]);
+            const len = parseFloat(lenNode[1]);
+            const angDeg = parseFloat(at[3] || 0);
+            const size = fontSizeOf(getAttr(op, 'name') || op);
+            ctx.font = `${size}px "Segoe UI", Arial, sans-serif`;
+            const w = ctx.measureText(numNode[1]).width;
+            let numx, numy, axis;
+            if (angDeg === 0) { numx = x + len / 2; numy = y + 0.3 + size * 0.7; axis = 'y'; }
+            else if (angDeg === 180) { numx = x - len / 2; numy = y + 0.3 + size * 0.7; axis = 'y'; }
+            else if (angDeg === 90) { numx = x - 0.3 - w / 2; numy = y + len / 2; axis = 'x'; }
+            else if (angDeg === 270) { numx = x - 0.3 - w / 2; numy = y - len / 2; axis = 'x'; }
+            else return;
+            labels.push({
+                op, x: numx, y: numy, w, h: size * 1.4, dx: 0, dy: 0, axis,
+                anchorX: x + Math.cos(angDeg * Math.PI / 180) * len / 2,
+                anchorY: y + Math.sin(angDeg * Math.PI / 180) * len / 2,
+                maxLead: Math.max(len, 1.27),
+            });
+        }
+    });
+
+    // Iterative AABB separation, capped at 10 passes
+    const PUSH = 0.45;
+    for (let pass = 0; pass < 10; pass++) {
+        let moved = false;
+        for (let i = 0; i < labels.length; i++) {
+            for (let j = i + 1; j < labels.length; j++) {
+                const A = labels[i], B = labels[j];
+                const ax = A.x + A.dx, ay = A.y + A.dy;
+                const bx = B.x + B.dx, by = B.y + B.dy;
+                const ovX = (A.w + B.w) / 2 - Math.abs(ax - bx);
+                const ovY = (A.h + B.h) / 2 - Math.abs(ay - by);
+                if (ovX <= 0.01 || ovY <= 0.01) continue;
+                if (A.axis === 'y' || B.axis === 'y') {
+                    const dir = ay >= by ? 1 : -1;
+                    if (A.axis === 'y') A.dy += PUSH * dir; else A.dx += PUSH * dir;
+                    if (B.axis === 'y') B.dy -= PUSH * dir; else B.dx -= PUSH * dir;
+                } else {
+                    const dir = ax >= bx ? 1 : -1;
+                    A.dx += PUSH * dir;
+                    B.dx -= PUSH * dir;
+                }
+                moved = true;
+            }
+        }
+        if (!moved) break;
+    }
+
+    const offsets = new Map();
+    const leaders = [];
+    labels.forEach(l => {
+        if (l.dx || l.dy) offsets.set(l.op, { dx: l.dx, dy: l.dy });
+        // EDA convention: a label pushed further than ~one stub length from
+        // its pin gets a leader line connecting it back to the pin.
+        if (l.anchorX !== null && Math.hypot(l.dx, l.dy) > l.maxLead) {
+            leaders.push({ x1: l.anchorX, y1: l.anchorY, x2: l.x + l.dx, y2: l.y + l.dy });
+        }
+    });
+    return { offsets, leaders };
+}
+
 function drawSymbol() {
     const ops = currentOps;
     if (!currentTransform || ops.length === 0) return;
@@ -361,92 +463,12 @@ function drawSymbol() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // --- Overlap detection for properties ---
-    // Group property/text ops by position to detect overlaps
-    const propGroups = new Map();
-    ops.forEach(op => {
-        const type = op[0];
-        if (type !== 'property' && type !== 'text') return;
-        const at = getAttr(op, 'at');
-        const hide = getAttr(op, 'hide');
-        if (!at || (hide && hide[1] === 'yes')) return;
-        const txt = type === 'property' ? op[2] : op[1];
-        if (txt === '"~"') return;
-        const key = `${parseFloat(at[1])},${parseFloat(at[2])}`;
-        if (!propGroups.has(key)) propGroups.set(key, []);
-        propGroups.get(key).push(op);
-    });
-
-    // Track property position offsets for overlaps
-    const propOffsetX = new Map();
-    const propOffsetY = new Map();
-
-    propGroups.forEach((group, key) => {
-        if (group.length > 1) {
-            const lineSpacing = 1.8;
-            const totalHeight = (group.length - 1) * lineSpacing;
-            group.forEach((op, i) => {
-                propOffsetY.set(op, -totalHeight / 2 + i * lineSpacing);
-                propOffsetX.set(op, 0);
-            });
-        }
-    });
+    // --- Generic label collision avoidance (measured AABB boxes) ---
+    const { offsets: labelOffsets, leaders: labelLeaders } = resolveLabelCollisions(ops, ctx);
 
     // --- Pin name deduplication ---
     // For pins with same name at close positions, only render once
     const renderedPinNames = [];
-
-    // --- Overlap detection for pin numbers ---
-    const pinNumPositions = [];
-    ops.forEach(op => {
-        if (op[0] !== 'pin') return;
-        const at = getAttr(op, 'at');
-        const lenNode = getAttr(op, 'length');
-        const numNode = getAttr(op, 'number');
-        if (!at || !lenNode || !numNode) return;
-        if (numNode[1] === '"~"') return;
-
-        const x = parseFloat(at[1]), y = parseFloat(at[2]);
-        const len = parseFloat(lenNode[1]);
-        const angDeg = parseFloat(at[3] || 0);
-        const ang = angDeg * Math.PI / 180;
-
-        let numx = x, numy = y;
-        if (angDeg === 0) { numx = x + len / 2; numy = y + 0.3; }
-        else if (angDeg === 180) { numx = x - len / 2; numy = y + 0.3; }
-        else if (angDeg === 90) { numx = x - 0.3; numy = y + len / 2; }
-        else if (angDeg === 270) { numx = x - 0.3; numy = y - len / 2; }
-
-        pinNumPositions.push({ op, numx, numy });
-    });
-
-    const pinNumOffsets = new Map();
-    const numThreshold = 2.5;
-    const numLineSpacing = 1.5;
-
-    pinNumPositions.sort((a, b) => a.numx - b.numx || a.numy - b.numy);
-
-    const pinNumGroups = [];
-    pinNumPositions.forEach(p => {
-        let added = false;
-        for (const g of pinNumGroups) {
-            const last = g[g.length - 1];
-            if (Math.abs(p.numx - last.numx) < numThreshold && Math.abs(p.numy - last.numy) < numThreshold) {
-                g.push(p);
-                added = true;
-                break;
-            }
-        }
-        if (!added) pinNumGroups.push([p]);
-    });
-
-    pinNumGroups.forEach(group => {
-        if (group.length <= 1) return;
-        const totalHeight = (group.length - 1) * numLineSpacing;
-        group.forEach((p, i) => {
-            pinNumOffsets.set(p.op, -totalHeight / 2 + i * numLineSpacing);
-        });
-    });
 
     ops.forEach(op => {
         const type = op[0];
@@ -584,8 +606,9 @@ function drawSymbol() {
                     else if (angDeg === 90) { numx = x - 0.3; numy = y + len/2; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; }
                     else if (angDeg === 270) { numx = x - 0.3; numy = y - len/2; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; }
 
-                    const numOffset = pinNumOffsets.get(op) || 0;
-                    numy += numOffset;
+                    const no = labelOffsets.get(op) || { dx: 0, dy: 0 };
+                    numx += no.dx;
+                    numy += no.dy;
 
                     ctx.save();
                     ctx.translate(numx, numy);
@@ -607,9 +630,10 @@ function drawSymbol() {
                     const x = parseFloat(at[1]), y = parseFloat(at[2]);
                     const ang = parseFloat(at[3] || 0);
                     
-                    // Apply overlap offset
-                    const ox = propOffsetX.get(op) || 0;
-                    const oy = propOffsetY.get(op) || 0;
+                    // Apply collision-resolved offset
+                    const lo = labelOffsets.get(op) || { dx: 0, dy: 0 };
+                    const ox = lo.dx;
+                    const oy = lo.dy;
                     
                     ctx.translate(x + ox, y + oy);
                     ctx.scale(1, -1);
@@ -632,6 +656,22 @@ function drawSymbol() {
         ctx.restore();
     });
     
+    // Leader lines: labels pushed far from their pin get a thin dashed
+    // connector back to the pin (standard EDA convention for dense parts)
+    if (labelLeaders.length) {
+        ctx.save();
+        ctx.strokeStyle = COLORS.pinNum;
+        ctx.lineWidth = 0.1;
+        ctx.setLineDash([0.4, 0.4]);
+        labelLeaders.forEach(l => {
+            ctx.beginPath();
+            ctx.moveTo(l.x1, l.y1);
+            ctx.lineTo(l.x2, l.y2);
+            ctx.stroke();
+        });
+        ctx.restore();
+    }
+
     ctx.restore();
 }
 
