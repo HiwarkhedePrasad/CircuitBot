@@ -44,6 +44,60 @@ def _call_llm(system: str, user: str) -> str:
         return ""
 
 
+# ── net classification helpers ───────────────────────────────────────────────
+
+GND_NET_NAMES = {"GND", "GROUND", "VSS", "AGND", "DGND", "PGND", "GNDA", "GNDD", "EP", "EPAD", "0V"}
+POWER_NET_NAMES = {"VCC", "VDD", "VBAT", "VIN", "VBUS", "V+", "V-", "VSYS", "VOUT", "VEE", "PWR"}
+
+
+def _is_gnd_net(name: str) -> bool:
+    return name.upper().lstrip('+') in GND_NET_NAMES
+
+
+def _is_power_net(name: str) -> bool:
+    n = name.upper().lstrip('+')
+    if n in POWER_NET_NAMES:
+        return True
+    # Voltage-style names: 3V3, 5V, 12V, 1V8, V5 ...
+    if re.match(r'^\d+V\d*$', n) or re.match(r'^V\d+$', n):
+        return True
+    return False
+
+
+def _is_passive(id_str: str, category: str) -> bool:
+    """Passives (R, C, L, crystals, LEDs) may legitimately appear multiple times."""
+    cat = (category or '').upper()
+    return id_str.startswith('Device:') or cat in ('DEVICE',)
+
+
+def _ref_prefix_for(id_str: str, category: str) -> str:
+    """Determine the correct reference designator prefix for a component."""
+    name = id_str.partition(':')[2].upper()
+    cat = (category or '').upper()
+    if id_str.startswith('Device:'):
+        if name == 'R' or name.startswith('R_'):
+            return 'R'
+        if name == 'C' or name.startswith(('C_', 'CP')):
+            return 'C'
+        if name == 'L' or name.startswith('L_'):
+            return 'L'
+        if name.startswith(('CRYSTAL', 'RESONATOR')):
+            return 'Y'
+        if name.startswith(('LED', 'D_')) or name == 'D':
+            return 'D'
+        if name.startswith('Q_'):
+            return 'Q'
+    if 'CONNECTOR' in cat:
+        return 'J'
+    if 'SWITCH' in cat:
+        return 'SW'
+    if 'DIODE' in cat or 'LED' in cat:
+        return 'D'
+    if 'CRYSTAL' in cat or 'OSCILLATOR' in cat:
+        return 'Y'
+    return 'U'
+
+
 def analyze_node(state: AgentState, config) -> dict:
     _emit(config, "agent:thinking", {"message": "Analyzing your design request..."})
     text = _call_llm(ANALYZE_SYSTEM, ANALYZE_USER.format(prompt=state["prompt"]))
@@ -159,6 +213,48 @@ def select_node(state: AgentState, config) -> dict:
                         break
         selected = filtered
 
+    # Deduplicate: complex ICs must be unique; passives (R, C, L, Y) may repeat.
+    # Also normalize reference designator prefixes (no more "C3" microcontrollers).
+    seen_ids = set()
+    seen_refs = set()
+    deduped = []
+    ref_counter = {}
+
+    def _next_ref(prefix):
+        n = ref_counter.get(prefix, 0) + 1
+        while f"{prefix}{n}" in seen_refs:
+            n += 1
+        ref_counter[prefix] = n
+        return f"{prefix}{n}"
+
+    for s in selected:
+        id_str = s["id_str"]
+        category = s.get("category", "")
+        passive = _is_passive(id_str, category)
+
+        if not passive and id_str in seen_ids:
+            _emit(config, "agent:log", {"message": f"  Skipped duplicate IC: {id_str}"})
+            continue
+
+        # Enforce correct ref prefix for the component type
+        correct_prefix = _ref_prefix_for(id_str, category)
+        current_prefix = ''.join(c for c in s.get("ref_des", "") if c.isalpha()) or 'U'
+        if current_prefix != correct_prefix or s.get("ref_des", "") in seen_refs:
+            old_ref = s.get("ref_des", "?")
+            s["ref_des"] = _next_ref(correct_prefix)
+            if old_ref != s["ref_des"]:
+                _emit(config, "agent:log", {"message": f"  Renamed {old_ref} -> {s['ref_des']}"})
+        else:
+            num_part = ''.join(c for c in s["ref_des"] if c.isdigit())
+            if num_part:
+                ref_counter[correct_prefix] = max(ref_counter.get(correct_prefix, 0), int(num_part))
+
+        seen_ids.add(id_str)
+        seen_refs.add(s["ref_des"])
+        deduped.append(s)
+
+    selected = deduped
+
     _emit(config, "agent:log", {
         "message": f"Selected {len(selected)} components: " +
                    ", ".join(f'{s["ref_des"]}={s["id_str"].split(":")[-1][:20]}' for s in selected)
@@ -209,12 +305,16 @@ def dispatch_node(state: AgentState, config) -> dict:
         })
 
         pins = _extract_pins_from_ops(ops, ref_des)
+        
+        # Log pin details for debugging
+        pin_names = [f"{p['pin_num']}:{p['name']}" for p in pins.values()]
+        _emit(config, "agent:log", {
+            "message": f"  Added {ref_des} ({len(pins)} pins): {', '.join(pin_names[:5])}" + 
+                      (f"... +{len(pins)-5} more" if len(pins) > 5 else "")
+        })
+        
         pin_matrix.update(pins)
         component_ops[ref_des] = ops
-
-        _emit(config, "agent:log", {
-            "message": f"  Added {ref_des} ({len(pins)} pins)"
-        })
 
     _emit(config, "agent:log", {"message": "All components loaded. Planning layout and routing..."})
 
@@ -228,7 +328,7 @@ def netlist_node(state: AgentState, config) -> dict:
     pins = state.get("pin_matrix", {})
     if not comps or not pins:
         _emit(config, "agent:log", {"message": "No components or pins to route."})
-        return {"netlist": []}
+        return {"netlist": [], "nets": [], "power_pins": []}
 
     comps_desc = "\n".join(
         f'  {c["ref_des"]}: {c["id_str"]} ({c["category"]})'
@@ -246,16 +346,101 @@ def netlist_node(state: AgentState, config) -> dict:
     ))
     text = _clean_json(text)
     try:
-        netlist = json.loads(text) if text else []
+        nets = json.loads(text) if text else []
     except json.JSONDecodeError:
-        print(f"Failed to parse netlist JSON: {text[:200]}")
-        netlist = []
+        print(f"Failed to parse nets JSON: {text[:200]}")
+        nets = []
 
-    if not netlist:
-        netlist = _generate_netlist_fallback(pins)
+    if not nets or not isinstance(nets, list):
+        nets = _generate_nets_fallback(pins)
 
-    _emit(config, "agent:log", {"message": f"Generated {len(netlist)} connections"})
-    return {"netlist": netlist}
+    # ── Validate nets: pins must exist, each pin in at most one net ──
+    used_pins = set()
+    valid_nets = []
+    for net in nets:
+        if not isinstance(net, dict):
+            continue
+        name = str(net.get("net", "")).strip()
+        net_pins = net.get("pins", [])
+        if not name or not isinstance(net_pins, list):
+            continue
+        clean = []
+        for p in net_pins:
+            if p not in pins:
+                _emit(config, "agent:log", {"message": f"  Dropped invalid pin: {p} (net {name})"})
+                continue
+            if p in used_pins:
+                _emit(config, "agent:log", {"message": f"  Dropped duplicate pin: {p} (net {name})"})
+                continue
+            used_pins.add(p)
+            clean.append(p)
+        if len(clean) >= 2 or (_is_gnd_net(name) or _is_power_net(name)) and len(clean) >= 1:
+            valid_nets.append({"net": name, "pins": clean})
+
+    # ── ERC check: power/GND nets must not contain signal-looking pins shorted to rails ──
+    # (basic sanity — a GND net containing a pin named "3V3" etc. is a short)
+    for net in valid_nets:
+        if _is_gnd_net(net["net"]):
+            for p in net["pins"]:
+                pname = pins[p].get("name", "").upper()
+                if _is_power_net(pname):
+                    net["pins"].remove(p)
+                    used_pins.discard(p)
+                    _emit(config, "agent:log", {"message": f"  ERC: removed power pin {p} ({pname}) from GND net"})
+
+    # ── Split: power/GND nets become labels (no wires), signal nets get routed ──
+    power_pins = []   # [{pin, net}] -> rendered as power symbols / global labels
+    netlist = []      # pairwise signal connections for the A* router
+    n_power_nets = 0
+    n_signal_nets = 0
+
+    for net in valid_nets:
+        name = net["net"]
+        if _is_gnd_net(name) or _is_power_net(name):
+            n_power_nets += 1
+            canonical = "GND" if _is_gnd_net(name) else name.upper().lstrip('+')
+            for p in net["pins"]:
+                power_pins.append({"pin": p, "net": canonical})
+        else:
+            n_signal_nets += 1
+            # Chain consecutive pins: A-B, B-C (not a full mesh)
+            ps = net["pins"]
+            for i in range(len(ps) - 1):
+                netlist.append({"source": ps[i], "target": ps[i + 1], "net": name})
+
+    # ── Orphan detection: every component should touch at least one net ──
+    connected_refs = set()
+    for conn in netlist:
+        connected_refs.add(conn["source"].split(":")[0])
+        connected_refs.add(conn["target"].split(":")[0])
+    for pp in power_pins:
+        connected_refs.add(pp["pin"].split(":")[0])
+
+    all_refs = {c["ref_des"] for c in state.get("selected_components", [])}
+    orphans = sorted(all_refs - connected_refs)
+    if orphans:
+        _emit(config, "agent:log", {
+            "message": f"  WARNING: {len(orphans)} unconnected component(s): {', '.join(orphans)}. "
+                       f"Attaching their power/ground pins to nets."
+        })
+        # Rescue: pull any GND/power-named pin of an orphan into the proper net
+        for ref in orphans:
+            for key, pin in pins.items():
+                if key.split(":")[0] != ref or key in used_pins:
+                    continue
+                pname = pin.get("name", "").upper()
+                if _is_gnd_net(pname):
+                    power_pins.append({"pin": key, "net": "GND"})
+                    used_pins.add(key)
+                elif _is_power_net(pname):
+                    power_pins.append({"pin": key, "net": pname.lstrip('+')})
+                    used_pins.add(key)
+
+    _emit(config, "agent:log", {
+        "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "
+                   f"{n_signal_nets} signal ({len(netlist)} wire connections)"
+    })
+    return {"netlist": netlist, "nets": valid_nets, "power_pins": power_pins}
 
 
 def layout_route_node(state: AgentState, config) -> dict:
@@ -265,6 +450,7 @@ def layout_route_node(state: AgentState, config) -> dict:
     comps = state.get("selected_components", [])
     pin_matrix = state.get("pin_matrix", {})
     netlist = state.get("netlist", [])
+    power_pins = state.get("power_pins", [])
 
     if not comps or not comp_ops:
         _emit(config, "agent:done", {"message": "No components to place."})
@@ -287,39 +473,91 @@ def layout_route_node(state: AgentState, config) -> dict:
     traces = engine.route_traces(netlist, pin_matrix)
     placements = engine.get_placements()
 
+    # ── Compute power symbol/label positions (absolute coords + direction) ──
+    power_labels = []
+    for pp in power_pins:
+        pin = pin_matrix.get(pp["pin"])
+        if not pin:
+            continue
+        ref = pp["pin"].split(":")[0]
+        comp = engine._get_comp(ref)
+        if not comp:
+            continue
+        ax = pin["x"] + comp["x"]
+        ay = pin["y"] + comp["y"]
+        # Outward direction (away from component center)
+        ccx = comp["x"] + comp["bbox"]["x"] + comp["bbox"]["w"] / 2
+        ccy = comp["y"] + comp["bbox"]["y"] + comp["bbox"]["h"] / 2
+        dx = ax - ccx
+        dy = ay - ccy
+        if abs(dx) >= abs(dy):
+            direction = "right" if dx >= 0 else "left"
+        else:
+            direction = "up" if dy >= 0 else "down"
+        power_labels.append({
+            "pin": pp["pin"],
+            "net": pp["net"],
+            "x": ax,
+            "y": ay,
+            "dir": direction,
+        })
+
     _emit(config, "agent:layout_ready", {
         "placements": placements,
         "traces": traces,
+        "power_labels": power_labels,
+        "netlist": netlist,
+        "power_pins": power_pins,
     })
 
     _emit(config, "agent:done", {
-        "message": f"Design complete: {len(engine.components)} components, {len(traces)} wires routed"
+        "message": f"Design complete: {len(engine.components)} components, "
+                   f"{len(traces)} signal wires, {len(power_labels)} power symbols"
     })
 
     return {
         "component_placements": placements,
         "wire_paths": traces,
+        "power_labels": power_labels,
     }
 
 
-def _generate_netlist_fallback(pin_matrix: dict) -> list:
+def _generate_nets_fallback(pin_matrix: dict) -> list:
+    """Rule-based fallback: group pins into named nets by pin name."""
     by_name = {}
     for key, pin in pin_matrix.items():
-        name = pin.get("name", "")
-        if not name:
+        name = pin.get("name", "").strip().upper()
+        if not name or name in ("~", "NC"):
             continue
         by_name.setdefault(name, []).append(key)
-    netlist = []
-    used = set()
+
+    nets = []
+
+    # GND net: collect every ground-named pin
+    gnd_pins = []
+    for name in list(by_name.keys()):
+        if _is_gnd_net(name):
+            gnd_pins.extend(by_name.pop(name))
+    if gnd_pins:
+        nets.append({"net": "GND", "pins": gnd_pins})
+
+    # Power nets grouped by canonical voltage name
+    power_groups = {}
+    for name in list(by_name.keys()):
+        if _is_power_net(name):
+            canon = name.lstrip('+')
+            if canon in ("VCC", "VDD"):
+                canon = "3V3"
+            power_groups.setdefault(canon, []).extend(by_name.pop(name))
+    for canon, pins_list in power_groups.items():
+        nets.append({"net": canon, "pins": pins_list})
+
+    # Signal nets: only when exactly 2 pins share a name (avoid GPIO meshes)
     for name, keys in by_name.items():
-        if len(keys) < 2:
-            continue
-        for i in range(1, len(keys)):
-            pair = (keys[0], keys[i])
-            if pair not in used:
-                netlist.append({"source": keys[0], "target": keys[i]})
-                used.add(pair)
-    return netlist
+        if len(keys) == 2:
+            nets.append({"net": name, "pins": keys})
+
+    return nets
 
 
 def _parse_sexpr_to_ops(sexpr_str: str, category: str) -> list:
@@ -410,25 +648,46 @@ def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
         if not at or not len_node or not num_node:
             continue
 
-        px = float(at[1])
-        py = float(at[2])
-        ang_deg = float(at[3]) if len(at) > 3 else 0
-        length = float(len_node[1])
+        try:
+            px = float(at[1])
+            py = float(at[2])
+            ang_deg = float(at[3]) if len(at) > 3 else 0
+            length = float(len_node[1])
+        except (ValueError, IndexError):
+            continue
 
-        cos_a = 1.0 if ang_deg == 0 else (-1.0 if ang_deg == 180 else 0.0)
-        sin_a = 1.0 if ang_deg == 90 else (-1.0 if ang_deg == 270 else 0.0)
+        # Handle all rotation angles properly
+        ang_rad = ang_deg * 3.14159 / 180.0
+        cos_a = round(1.0 if ang_deg == 0 else (-1.0 if ang_deg == 180 else 0.0), 2)
+        sin_a = round(1.0 if ang_deg == 90 else (-1.0 if ang_deg == 270 else 0.0), 2)
+        
+        # If not cardinal direction, use actual trig
+        if abs(cos_a) < 0.1 and abs(sin_a) < 0.1:
+            import math
+            cos_a = math.cos(ang_rad)
+            sin_a = math.sin(ang_rad)
+        
         ex = px + cos_a * length
         ey = py + sin_a * length
 
         name_node = _get_attr(op, "name")
         pin_name = name_node[1] if name_node else ""
-        pin_num = num_node[1].replace('"', '')
+        pin_num = num_node[1].replace('"', '').strip()
+        
+        # Skip invalid pin numbers
+        if not pin_num:
+            continue
 
         key = f"{ref_des}:{pin_num}"
+        
+        # Avoid duplicate pin numbers (can happen with inherited symbols)
+        if key in pin_matrix:
+            continue
+        
         pin_matrix[key] = {
             "x": round(ex / GRID_SIZE) * GRID_SIZE,
             "y": round(ey / GRID_SIZE) * GRID_SIZE,
-            "name": pin_name,
+            "name": pin_name.strip(),
             "ref_des": ref_des,
             "pin_num": pin_num,
         }

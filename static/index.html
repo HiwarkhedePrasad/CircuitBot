@@ -41,6 +41,9 @@
                     <input type="text" id="agentPrompt" placeholder="Describe a circuit (e.g. temperature sensor)" autocomplete="off">
                     <button id="agentBtn" class="btn-agent">Build</button>
                 </div>
+                <div class="btn-row">
+                    <button id="exportSchBtn" class="btn-export" disabled>Export .kicad_sch</button>
+                </div>
                 <div class="agent-log" id="agentLog">
                     <div class="agent-log-empty">Enter a prompt and press Build.</div>
                 </div>
@@ -65,8 +68,9 @@
         </div>
     </div>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="/static/schematic.js?v=5"></script>
-    <script src="/static/renderer.js?v=5"></script>
-    <script src="/static/app.js?v=5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
+    <script src="/static/schematic.js?v=8"></script>
+    <script src="/static/renderer.js?v=8"></script>
+    <script src="/static/app.js?v=8"></script>
 </body>
 </html>
