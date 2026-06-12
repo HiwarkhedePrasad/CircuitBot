@@ -861,6 +861,59 @@ function drawSchematic() {
         });
     }
 
+    // Render power/GND symbols (net labels instead of routed power wires)
+    if (currentSchematic.powerLabels) {
+        const STUB = 2.54;
+        currentSchematic.powerLabels.forEach(lbl => {
+            const dir = lbl.dir || 'right';
+            const dx = dir === 'right' ? 1 : dir === 'left' ? -1 : 0;
+            const dy = dir === 'up' ? 1 : dir === 'down' ? -1 : 0;
+            const ex = lbl.x + dx * STUB;
+            const ey = lbl.y + dy * STUB;
+            const isGnd = lbl.net === 'GND';
+
+            ctx.strokeStyle = isGnd ? '#4488ff' : '#cc4444';
+            ctx.lineWidth = 0.254;
+
+            // Stub from pin to symbol
+            ctx.beginPath();
+            ctx.moveTo(lbl.x, lbl.y);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+
+            if (isGnd) {
+                // GND: three shrinking bars perpendicular to the stub
+                const px = -dy, py = dx; // perpendicular
+                for (let i = 0; i < 3; i++) {
+                    const w = 1.27 - i * 0.42;
+                    const ox = ex + dx * i * 0.64;
+                    const oy = ey + dy * i * 0.64;
+                    ctx.beginPath();
+                    ctx.moveTo(ox - px * w, oy - py * w);
+                    ctx.lineTo(ox + px * w, oy + py * w);
+                    ctx.stroke();
+                }
+            } else {
+                // Power: bar + net name
+                const px = -dy, py = dx;
+                ctx.beginPath();
+                ctx.moveTo(ex - px * 1.27, ey - py * 1.27);
+                ctx.lineTo(ex + px * 1.27, ey + py * 1.27);
+                ctx.stroke();
+
+                ctx.save();
+                ctx.translate(ex + dx * 0.8, ey + dy * 0.8);
+                ctx.scale(1, -1); // un-flip Y for text
+                ctx.fillStyle = '#cc4444';
+                ctx.font = '1.6px monospace';
+                ctx.textAlign = dir === 'left' ? 'right' : 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(lbl.net, 0, 0);
+                ctx.restore();
+            }
+        });
+    }
+
     ctx.restore();
 }
 

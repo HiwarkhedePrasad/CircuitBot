@@ -2,7 +2,7 @@ import os
 import json
 from pathlib import Path
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_socketio import SocketIO, emit
 from kicad_rag.client import KicadRAG
 
@@ -14,6 +14,9 @@ app.config['SECRET_KEY'] = os.urandom(16).hex()
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 rag = KicadRAG()
+
+# Last completed agent design — used by /api/export_sch
+LAST_DESIGN = {}
 
 
 def _generate_netlist_llm(pin_matrix, prompt):
@@ -128,6 +131,40 @@ def api_generate_netlist():
     return jsonify(netlist)
 
 
+@app.route('/api/save_layout', methods=['POST'])
+def api_save_layout():
+    """Receive the frontend (ELK) computed geometry for the last design."""
+    data = request.get_json(silent=True) or {}
+    if not LAST_DESIGN.get('selected_components'):
+        return jsonify({'ok': False, 'error': 'No design to update'}), 404
+    if 'placements' in data:
+        LAST_DESIGN['component_placements'] = data['placements']
+    if 'wire_paths' in data:
+        LAST_DESIGN['wire_paths'] = data['wire_paths']
+    if 'power_labels' in data:
+        LAST_DESIGN['power_labels'] = data['power_labels']
+    return jsonify({'ok': True})
+
+
+@app.route('/api/export_sch')
+def api_export_sch():
+    """Export the last agent-generated design as a KiCad schematic file."""
+    if not LAST_DESIGN.get('selected_components'):
+        return "No design generated yet. Run the AI agent first.", 404
+    try:
+        from agent.kicad_export import generate_kicad_sch
+        text = generate_kicad_sch(LAST_DESIGN)
+        return Response(
+            text,
+            mimetype='application/octet-stream',
+            headers={'Content-Disposition': 'attachment; filename=circuitbot.kicad_sch'},
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"Export failed: {e}", 500
+
+
 # ── WebSocket Events ─────────────────────────────────────────────────────────
 
 @socketio.on('connect')
@@ -161,7 +198,17 @@ def _run_agent(prompt: str, sid: str):
             socketio.emit(event, data, room=sid)
 
         config = {"configurable": {"emit": ws_emit}}
-        agent_graph.invoke({"prompt": prompt}, config)
+        result = agent_graph.invoke({"prompt": prompt}, config)
+
+        # Persist the final design state for .kicad_sch export
+        LAST_DESIGN.clear()
+        LAST_DESIGN.update({
+            'selected_components': result.get('selected_components', []),
+            'component_ops': result.get('component_ops', {}),
+            'component_placements': result.get('component_placements', []),
+            'wire_paths': result.get('wire_paths', []),
+            'power_labels': result.get('power_labels', []),
+        })
     except Exception as e:
         socketio.emit('agent:error', {'message': str(e)}, room=sid)
         print(f"Agent error: {e}")

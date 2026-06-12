@@ -15,8 +15,8 @@ MATRIX_SIZE = 300
 MATRIX_OFFSET = 150  # offset to keep grid coords positive
 
 BBOX_PAD = 2.0
-COLUMN_SPACING = 15.0
-ROW_CLEARANCE = 3.0
+COLUMN_SPACING = 25.0   # extra horizontal routing channel between columns
+ROW_CLEARANCE = 7.62    # extra vertical routing channel between rows (6 grid cells)
 
 # Column definitions — must match frontend COLUMN_DEFS
 COLUMN_KEYWORDS = [
@@ -165,64 +165,72 @@ class BackendLayoutEngine:
 
     def build_obstacle_matrix(self, pin_matrix: dict = None):
         """Build a walkable grid with component footprints blocked.
-        
-        Blocks individual drawing shapes (rect, circle) but carves out
-        corridors for pin connection points so wires can exit.
+
+        Blocks the FULL inflated bounding box of every component (covers
+        polyline-drawn bodies too), then carves narrow escape corridors
+        outward from each pin so wires can exit but cannot cut through
+        the component body.
         """
         matrix = [[1 for _ in range(MATRIX_SIZE)] for _ in range(MATRIX_SIZE)]
 
-        # Pre-compute pin grid positions to carve corridors
-        carve_set = set()
+        # 1) Block full inflated bbox of every component
+        for comp in self.components:
+            bx = comp['x'] + comp['bbox']['x']
+            by = comp['y'] + comp['bbox']['y']
+            gsx = math.floor(bx / GRID_SIZE) + MATRIX_OFFSET - 1
+            gsy = math.floor(by / GRID_SIZE) + MATRIX_OFFSET - 1
+            gex = math.ceil((bx + comp['bbox']['w']) / GRID_SIZE) + MATRIX_OFFSET + 1
+            gey = math.ceil((by + comp['bbox']['h']) / GRID_SIZE) + MATRIX_OFFSET + 1
+            for gx in range(gsx, gex + 1):
+                for gy in range(gsy, gey + 1):
+                    if 0 <= gx < MATRIX_SIZE and 0 <= gy < MATRIX_SIZE:
+                        matrix[gy][gx] = 0
+
+        # 2) Carve a 1-cell escape corridor outward from each pin endpoint
         if pin_matrix:
             for key, pin in pin_matrix.items():
                 ref = key.split(':')[0]
-                off = self._get_comp_offset(ref)
-                px = math.floor((pin['x'] + off[0]) / GRID_SIZE) + MATRIX_OFFSET
-                py = math.floor((pin['y'] + off[1]) / GRID_SIZE) + MATRIX_OFFSET
-                for dx in range(-3, 4):
-                    for dy in range(-3, 4):
-                        carve_set.add((px + dx, py + dy))
+                comp = self._get_comp(ref)
+                if not comp:
+                    continue
+                px = pin['x'] + comp['x']
+                py = pin['y'] + comp['y']
+                gpx = round(px / GRID_SIZE) + MATRIX_OFFSET
+                gpy = round(py / GRID_SIZE) + MATRIX_OFFSET
+                if not (0 <= gpx < MATRIX_SIZE and 0 <= gpy < MATRIX_SIZE):
+                    continue
 
-        for comp in self.components:
-            abs_comp_x = comp['x']
-            abs_comp_y = comp['y']
+                # Outward direction: away from component bbox center (dominant axis)
+                ccx = comp['x'] + comp['bbox']['x'] + comp['bbox']['w'] / 2
+                ccy = comp['y'] + comp['bbox']['y'] + comp['bbox']['h'] / 2
+                dx = px - ccx
+                dy = py - ccy
+                if abs(dx) >= abs(dy):
+                    step = (1 if dx >= 0 else -1, 0)
+                else:
+                    step = (0, 1 if dy >= 0 else -1)
 
-            for op in comp['ops']:
-                typ = op[0]
-                if typ == 'rectangle':
-                    s = self._get_attr(op, 'start')
-                    e = self._get_attr(op, 'end')
-                    if s and e:
-                        x1 = float(s[1])
-                        y1 = float(s[2])
-                        x2 = float(e[1])
-                        y2 = float(e[2])
-                        gsx = math.floor((abs_comp_x + min(x1, x2)) / GRID_SIZE) + MATRIX_OFFSET
-                        gsy = math.floor((abs_comp_y + min(y1, y2)) / GRID_SIZE) + MATRIX_OFFSET
-                        gex = math.ceil((abs_comp_x + max(x1, x2)) / GRID_SIZE) + MATRIX_OFFSET
-                        gey = math.ceil((abs_comp_y + max(y1, y2)) / GRID_SIZE) + MATRIX_OFFSET
-                        for gx in range(gsx - 2, gex + 3):
-                            for gy in range(gsy - 2, gey + 3):
-                                if 0 <= gx < MATRIX_SIZE and 0 <= gy < MATRIX_SIZE:
-                                    if (gx, gy) not in carve_set:
-                                        matrix[gy][gx] = 0
-                elif typ == 'circle':
-                    c = self._get_attr(op, 'center')
-                    r = self._get_attr(op, 'radius')
-                    if c and r:
-                        cx = abs_comp_x + float(c[1])
-                        cy = abs_comp_y + float(c[2])
-                        rv = float(r[1])
-                        cx_g = round(cx / GRID_SIZE) + MATRIX_OFFSET
-                        cy_g = round(cy / GRID_SIZE) + MATRIX_OFFSET
-                        r_g = math.ceil(rv / GRID_SIZE) + 3  # 2-cell clearance padding
-                        for gx in range(max(0, cx_g - r_g), min(MATRIX_SIZE, cx_g + r_g + 1)):
-                            for gy in range(max(0, cy_g - r_g), min(MATRIX_SIZE, cy_g + r_g + 1)):
-                                if (gx - cx_g) ** 2 + (gy - cy_g) ** 2 <= r_g ** 2:
-                                    if (gx, gy) not in carve_set:
-                                        matrix[gy][gx] = 0
+                # Carve from pin cell outward until clear of the blocked region (+2 cells)
+                cx_g, cy_g = gpx, gpy
+                cleared = 0
+                for _ in range(60):
+                    if 0 <= cx_g < MATRIX_SIZE and 0 <= cy_g < MATRIX_SIZE:
+                        if matrix[cy_g][cx_g] == 1:
+                            cleared += 1
+                        matrix[cy_g][cx_g] = 1
+                    if cleared >= 3:
+                        break
+                    cx_g += step[0]
+                    cy_g += step[1]
 
+        self.matrix = matrix
         self.grid = Grid(matrix=matrix)
+
+    def _get_comp(self, ref_des: str):
+        for c in self.components:
+            if c['ref_des'] == ref_des:
+                return c
+        return None
 
     def _get_comp_offset(self, ref_des: str):
         for c in self.components:
@@ -244,12 +252,31 @@ class BackendLayoutEngine:
         return None
 
     def route_traces(self, netlist: list, pin_matrix: dict) -> list:
-        """A* orthogonal routing for each net in the netlist."""
+        """A* orthogonal routing for each net in the netlist.
+
+        After each successful route, the used cells get a high traversal
+        weight so later nets avoid running on top of existing wires
+        (perpendicular crossings stay cheap, parallel overlap is penalized).
+        """
+        TRACE_WEIGHT = 12  # cost for re-using a cell already occupied by a wire
+
         comp_positions = {c['ref_des']: (c['x'], c['y']) for c in self.components}
         traces = []
         finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
 
-        for conn in netlist:
+        # Route shorter nets first — they have fewer detour options
+        def _net_len(conn):
+            s = pin_matrix.get(conn['source'])
+            t = pin_matrix.get(conn['target'])
+            if not s or not t:
+                return float('inf')
+            so = comp_positions.get(conn['source'].split(':')[0], (0, 0))
+            to = comp_positions.get(conn['target'].split(':')[0], (0, 0))
+            return abs((s['x'] + so[0]) - (t['x'] + to[0])) + abs((s['y'] + so[1]) - (t['y'] + to[1]))
+
+        ordered = sorted(netlist, key=_net_len)
+
+        for conn in ordered:
             src = pin_matrix.get(conn['source'])
             tgt = pin_matrix.get(conn['target'])
             if not src or not tgt:
@@ -260,23 +287,23 @@ class BackendLayoutEngine:
             src_off = comp_positions.get(src_ref, (0, 0))
             tgt_off = comp_positions.get(tgt_ref, (0, 0))
 
-            sx = math.floor((src['x'] + src_off[0]) / GRID_SIZE) + MATRIX_OFFSET
-            sy = math.floor((src['y'] + src_off[1]) / GRID_SIZE) + MATRIX_OFFSET
-            ex = math.floor((tgt['x'] + tgt_off[0]) / GRID_SIZE) + MATRIX_OFFSET
-            ey = math.floor((tgt['y'] + tgt_off[1]) / GRID_SIZE) + MATRIX_OFFSET
+            sx = round((src['x'] + src_off[0]) / GRID_SIZE) + MATRIX_OFFSET
+            sy = round((src['y'] + src_off[1]) / GRID_SIZE) + MATRIX_OFFSET
+            ex = round((tgt['x'] + tgt_off[0]) / GRID_SIZE) + MATRIX_OFFSET
+            ey = round((tgt['y'] + tgt_off[1]) / GRID_SIZE) + MATRIX_OFFSET
 
             if not (0 <= sx < MATRIX_SIZE and 0 <= sy < MATRIX_SIZE and
                     0 <= ex < MATRIX_SIZE and 0 <= ey < MATRIX_SIZE):
                 continue
 
-            self.grid.cleanup()
-
-            start = self.grid.node(sx, sy)
-            end = self.grid.node(ex, ey)
+            # Rebuild grid from the weighted matrix for every net
+            grid = Grid(matrix=self.matrix)
+            start = grid.node(sx, sy)
+            end = grid.node(ex, ey)
             # Safety: ensure pin cells are walkable even if carve-out missed them
             start.walkable = True
             end.walkable = True
-            path, _ = finder.find_path(start, end, self.grid)
+            path, _ = finder.find_path(start, end, grid)
 
             if path:
                 mm_path = [
@@ -289,6 +316,12 @@ class BackendLayoutEngine:
                     'target': conn['target'],
                     'path': mm_path,
                 })
+
+                # Penalize used cells (keep pin endpoints cheap so other
+                # nets can still reach the same pin region)
+                for n in path[2:-2]:
+                    if self.matrix[n.y][n.x] != 0:
+                        self.matrix[n.y][n.x] = TRACE_WEIGHT
 
         return traces
 

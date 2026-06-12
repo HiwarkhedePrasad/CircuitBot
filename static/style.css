@@ -350,6 +350,13 @@ canvas:active {
     margin-top: 8px;
 }
 
+.btn-export {
+    flex: 1;
+    background: #8957e5;
+}
+.btn-export:hover { background: #a371f7; }
+.btn-export:disabled { background: #3a3a3a; color: #666; cursor: not-allowed; }
+
 /* Agent Section */
 .agent-section {
     background: #2a2d2e;

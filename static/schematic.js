@@ -70,6 +70,52 @@ function calculateOpsBBox(ops) {
     return { x: minX - BBOX_PAD, y: minY - BBOX_PAD, w: maxX - minX + BBOX_PAD * 2, h: maxY - minY + BBOX_PAD * 2 };
 }
 
+// Tight bounding box of ONLY the symbol geometry + pins (no property/text
+// labels). This is what the layout engine should use for node size — text
+// labels must never inflate the collision box or you get massive whitespace.
+function calculateGeometryBBox(ops) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const update = (x, y) => {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    };
+    ops.forEach(op => {
+        const type = op[0];
+        if (type === 'rectangle') {
+            const s = getAttr(op, 'start'), e = getAttr(op, 'end');
+            if (s) update(parseFloat(s[1]), parseFloat(s[2]));
+            if (e) update(parseFloat(e[1]), parseFloat(e[2]));
+        } else if (type === 'polyline') {
+            const pts = getAttr(op, 'pts');
+            if (pts) for (let i = 1; i < pts.length; i++) if (pts[i][0] === 'xy') update(parseFloat(pts[i][1]), parseFloat(pts[i][2]));
+        } else if (type === 'circle') {
+            const c = getAttr(op, 'center'), r = getAttr(op, 'radius');
+            if (c && r) {
+                const cx = parseFloat(c[1]), cy = parseFloat(c[2]), rv = parseFloat(r[1]);
+                update(cx - rv, cy - rv); update(cx + rv, cy + rv);
+            }
+        } else if (type === 'arc') {
+            ['start', 'mid', 'end'].forEach(k => {
+                const a = getAttr(op, k);
+                if (a) update(parseFloat(a[1]), parseFloat(a[2]));
+            });
+        } else if (type === 'pin') {
+            const at = getAttr(op, 'at'), len = getAttr(op, 'length');
+            if (at && len) {
+                const x = parseFloat(at[1]), y = parseFloat(at[2]);
+                const l = parseFloat(len[1]), a = parseFloat(at[3] || 0) * Math.PI / 180;
+                update(x, y); update(x + Math.cos(a) * l, y + Math.sin(a) * l);
+            }
+        }
+        // NOTE: property/text intentionally excluded.
+    });
+    if (minX === Infinity) return { x: -2.54, y: -2.54, w: 5.08, h: 5.08 };
+    const PAD = 1.27;
+    return { x: minX - PAD, y: minY - PAD, w: maxX - minX + PAD * 2, h: maxY - minY + PAD * 2 };
+}
+
 // --- SchematicComponent ---
 class SchematicComponent {
     constructor(id, name, ops, category, description) {
@@ -82,6 +128,7 @@ class SchematicComponent {
         this.y = 0;
         this.column = getColumnForCategory(category);
         this.bbox = calculateOpsBBox(ops);
+        this.geomBBox = calculateGeometryBBox(ops);
         this.refDesignator = this.extractRef();
     }
 
@@ -114,7 +161,9 @@ class Schematic {
     }
 
     addRawComponent(id, refDes, ops, category, description) {
-        const existing = this.components.find(c => c.id === id);
+        // Identity is the ref designator — the same library part (e.g. Device:C)
+        // may legitimately be placed multiple times as C1, C2, C3...
+        const existing = this.components.find(c => c.refDesignator === refDes);
         if (existing) return existing;
 
         const comp = new SchematicComponent(id, refDes, ops, category, description);

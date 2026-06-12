@@ -42,6 +42,9 @@ class AgentState(TypedDict, total=False):
     component_ops: dict
     pin_matrix: dict
     netlist: List[NetlistConnection]
+    nets: List[dict]
+    power_pins: List[dict]
+    power_labels: List[dict]
     component_bboxes: dict
     component_placements: List[ComponentPlacement]
     wire_paths: List[WirePath]
