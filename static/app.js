@@ -1,4 +1,6 @@
 let socket = null;
+const CIRCUITBOT_LAYOUT_VERSION = 'v8-elk-fixed-side';
+console.log('%c[CircuitBot] Layout engine ' + CIRCUITBOT_LAYOUT_VERSION + ' loaded', 'color:#a371f7;font-weight:bold');
 
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
@@ -127,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Preferred: ELK (Eclipse Layout Kernel) — proven auto-layout +
         // orthogonal edge routing. LLM decides connectivity only.
         if (typeof ELK !== 'undefined') {
-            addLogEntry('Running ELK auto-layout & orthogonal routing...', 'log');
+            addLogEntry('Running ELK auto-layout (' + CIRCUITBOT_LAYOUT_VERSION + ')...', 'log');
             runElkLayout(netlist, powerPins)
                 .then(() => {
                     enterSchematicMode();
@@ -244,18 +246,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 'elk.algorithm': 'layered',
                 'elk.direction': 'RIGHT',
                 'elk.edgeRouting': 'ORTHOGONAL',
-                // group connected sub-circuits; keep disconnected parts tidy
-                'elk.layered.components.compaction': 'true',
+                // Group connected sub-circuits tightly; keep islands separate.
                 'elk.separateConnectedComponents': 'true',
-                'elk.spacing.componentComponent': '15',
-                'elk.spacing.nodeNode': '12',
-                'elk.layered.spacing.nodeNodeBetweenLayers': '20',
-                'elk.spacing.edgeNode': '8',
+                'elk.spacing.componentComponent': '20',
+                'elk.spacing.nodeNode': '10',
+                'elk.layered.spacing.nodeNodeBetweenLayers': '18',
+                'elk.spacing.edgeNode': '6',
                 'elk.spacing.edgeEdge': '4',
-                'elk.layered.spacing.edgeNodeBetweenLayers': '8',
-                'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+                'elk.layered.spacing.edgeNodeBetweenLayers': '6',
+                // Place nodes to MINIMIZE total edge length -> pulls connected
+                // parts together and stops oscillator-on-the-wrong-side U-turns.
                 'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-                'elk.layered.crossingMinimization.semiInteractive': 'true',
+                'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+                'elk.layered.cycleBreaking.strategy': 'DEPTH_FIRST',
+                // Compact the result so there is no dead whitespace.
+                'elk.layered.compaction.postCompaction.strategy': 'LEFT_RIGHT_CONNECTION_LOCKING',
+                'elk.layered.mergeEdges': 'true',
             },
             children,
             edges,

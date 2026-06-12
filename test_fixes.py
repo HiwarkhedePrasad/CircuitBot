@@ -4,7 +4,7 @@ Run this before starting the server to ensure fixes are working.
 """
 
 import json
-from agent.graph import _generate_netlist_fallback
+from agent.graph import _generate_nets_fallback
 
 # Test 1: Duplicate component detection
 print("=" * 60)
@@ -75,33 +75,31 @@ pin_matrix_test = {
     "R1:2": {"name": "2"},
 }
 
-netlist = _generate_netlist_fallback(pin_matrix_test)
-print(f"Generated {len(netlist)} connections:")
-for conn in netlist:
-    src_pin = pin_matrix_test[conn["source"]]
-    tgt_pin = pin_matrix_test[conn["target"]]
-    print(f"  {conn['source']} ({src_pin['name']}) -> {conn['target']} ({tgt_pin['name']})")
+nets = _generate_nets_fallback(pin_matrix_test)
+print(f"Generated {len(nets)} nets:")
+for net in nets:
+    print(f"  {net['net']}: {', '.join(net['pins'])}")
 
-# Should connect GND pins together
-gnd_connected = any(
-    (conn["source"] == "U1:1" and conn["target"] == "U2:1") or
-    (conn["source"] == "U2:1" and conn["target"] == "U1:1")
-    for conn in netlist
-)
+net_map = {n["net"]: set(n["pins"]) for n in nets}
 
+# Should have GND net with both ground pins
+gnd_pins = net_map.get("GND", set())
+gnd_connected = "U1:1" in gnd_pins and "U2:1" in gnd_pins
 if gnd_connected:
-    print("[PASS] GND pins are connected")
+    print("[PASS] GND pins grouped in GND net")
 else:
-    print("[FAIL] GND pins should be connected")
+    print("[FAIL] GND pins should be in GND net")
 
-# Should NOT connect R1:1 to R1:2 (only 2 pins with different names)
-r_connected = any(
-    ("R1:1" in [conn["source"], conn["target"]] and "R1:2" in [conn["source"], conn["target"]])
-    for conn in netlist
-)
+# Should NOT connect R1:1 to R1:2 (they don't share a name and don't match aliases)
+r_in_same_net = False
+for net in nets:
+    pins = net["pins"]
+    if "R1:1" in pins and "R1:2" in pins:
+        r_in_same_net = True
+        break
 
-if not r_connected:
-    print("[PASS] Resistor pins are NOT connected (different names)")
+if not r_in_same_net:
+    print("[PASS] Resistor pins are NOT connected (different names, no alias match)")
 else:
     print("[FAIL] Resistor pins should NOT be connected")
 

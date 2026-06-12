@@ -4,7 +4,10 @@ import os
 import traceback
 from langgraph.graph import StateGraph
 from agent.state import AgentState
-from agent.prompts import ANALYZE_SYSTEM, ANALYZE_USER, SELECT_SYSTEM, SELECT_USER, NETLIST_SYSTEM, NETLIST_USER
+from agent.prompts import (
+    ANALYZE_SYSTEM, ANALYZE_USER, SELECT_SYSTEM, SELECT_USER,
+    NETLIST_SYSTEM, NETLIST_USER, NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER,
+)
 from agent.tools import search_components, fetch_sexpr, llm_call
 from agent.layout_engine import BackendLayoutEngine
 
@@ -64,6 +67,32 @@ def _is_power_net(name: str) -> bool:
     return False
 
 
+# Part-number-like tokens: 2+ letters followed by a digit, optional suffix
+# (matches ESP32-C3, DS18B20, AT89S52, MCP73831; rejects 3V3, 100nF, USB-C)
+_PART_TOKEN_RE = re.compile(r'\b[A-Za-z]{2,}[0-9][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*\b')
+_NON_PART_WORDS = {"USB2", "USB3", "RS232", "RS485", "CAT5", "CAT6", "WIFI6", "IEEE802"}
+
+
+def _extract_part_numbers(prompt: str) -> list:
+    """Deterministically pull explicit part numbers out of the user prompt.
+
+    Safety net for the analyze LLM: even if it genericizes 'ESP32-C3' into
+    'Microcontroller', these tokens still get searched verbatim.
+    """
+    out, seen = [], set()
+    for m in _PART_TOKEN_RE.finditer(prompt):
+        tok = m.group(0)
+        up = tok.upper()
+        if len(up) < 5 or up in _NON_PART_WORDS or up in seen:
+            continue
+        # Reject component values / units (10uF, 100nF, 16MHz, 10kOhm)
+        if re.fullmatch(r'[A-Z]{0,2}\d+(V\d*|UF|NF|PF|UH|MH|K|M|MA|A|W|OHM|KOHM|MHZ|KHZ|HZ|BIT|MM)', up):
+            continue
+        seen.add(up)
+        out.append(tok)
+    return out
+
+
 def _is_passive(id_str: str, category: str) -> bool:
     """Passives (R, C, L, crystals, LEDs) may legitimately appear multiple times."""
     cat = (category or '').upper()
@@ -71,7 +100,13 @@ def _is_passive(id_str: str, category: str) -> bool:
 
 
 def _ref_prefix_for(id_str: str, category: str) -> str:
-    """Determine the correct reference designator prefix for a component."""
+    """Determine the correct reference designator prefix for a component.
+
+    Decides from the KiCad library name in id_str (ground truth) first;
+    the LLM-supplied category is only a fallback hint. This prevents
+    scrambled designators (e.g. an inductor renamed to U#).
+    """
+    lib = id_str.partition(':')[0].upper()
     name = id_str.partition(':')[2].upper()
     cat = (category or '').upper()
     if id_str.startswith('Device:'):
@@ -87,14 +122,28 @@ def _ref_prefix_for(id_str: str, category: str) -> str:
             return 'D'
         if name.startswith('Q_'):
             return 'Q'
-    if 'CONNECTOR' in cat:
+        if name.startswith('BATTERY'):
+            return 'BT'
+        if name.startswith(('FUSE', 'POLYFUSE')):
+            return 'F'
+    # Library-name checks (ground truth) take precedence over LLM category
+    hints = f"{lib} {cat}"
+    if 'INDUCTOR' in hints:
+        return 'L'
+    if 'CONNECTOR' in hints:
         return 'J'
-    if 'SWITCH' in cat:
+    if 'SWITCH' in hints:
         return 'SW'
-    if 'DIODE' in cat or 'LED' in cat:
+    if 'TRANSISTOR' in hints:
+        return 'Q'
+    if 'DIODE' in hints or 'LED' in hints:
         return 'D'
-    if 'CRYSTAL' in cat or 'OSCILLATOR' in cat:
+    if 'CRYSTAL' in hints or 'OSCILLATOR' in hints:
         return 'Y'
+    if 'BATTERY' in hints:
+        return 'BT'
+    if 'RELAY' in hints:
+        return 'K'
     return 'U'
 
 
@@ -123,12 +172,40 @@ def research_node(state: AgentState, config) -> dict:
         return {"research_results": []}
 
     all_results = []
+
+    # ── Priority group: part numbers the user typed verbatim ──
+    # These MUST surface in the search results regardless of what the
+    # analyze LLM produced, so select_node can pick the exact part.
+    user_parts = _extract_part_numbers(state.get("prompt", ""))
+    if user_parts:
+        _emit(config, "agent:thinking", {"message": f"Searching user-specified parts: {', '.join(user_parts)}..."})
+        results, seen = [], set()
+        for part in user_parts:
+            try:
+                for r in search_components(part, k=3):
+                    if r["id_str"] not in seen:
+                        seen.add(r["id_str"])
+                        results.append(r)
+            except Exception as e:
+                print(f"Search failed for user part '{part}': {e}")
+        if results:
+            all_results.append({
+                "subsystem": f"User-specified parts ({', '.join(user_parts)})",
+                "function": "Parts explicitly requested by the user — MUST be selected when matching",
+                "results": results[:8],
+            })
+            _emit(config, "agent:log", {
+                "message": f"  User-specified parts: found {len(results)} candidates"
+            })
+
     for sub in analysis:
         name = sub.get("subsystem", sub if isinstance(sub, str) else "unknown")
         examples = sub.get("example_components", [])
         if isinstance(examples, str):
             examples = [examples]
-        queries = [name] + (examples[:2] if isinstance(examples, list) else [])
+        # Example part numbers FIRST so exact-part hits rank ahead of
+        # generic subsystem-name matches in the deduped top-k.
+        queries = (examples[:2] if isinstance(examples, list) else []) + [name]
         _emit(config, "agent:thinking", {"message": f"Searching components for {name}..."})
 
         results = []
@@ -275,7 +352,9 @@ def dispatch_node(state: AgentState, config) -> dict:
         ops = []
         try:
             sexpr = fetch_sexpr(id_str)
-            ops = _parse_sexpr_to_ops(sexpr, comp["category"])
+            # Pass the library name from id_str (e.g. "Power_Management"),
+            # not the LLM-assigned category — extends resolution needs it.
+            ops = _parse_sexpr_to_ops(sexpr, id_str.split(":")[0])
         except Exception as e:
             _emit(config, "agent:log", {"message": f"  Failed to load {ref_des}: trying search fallback..."})
             try:
@@ -321,6 +400,52 @@ def dispatch_node(state: AgentState, config) -> dict:
     return {"pin_matrix": pin_matrix, "component_ops": component_ops}
 
 
+MAX_BATCH_PINS = 36  # max signal pins per LLM netlist call
+
+
+def _merge_net(nets: list, name: str, new_pins: list):
+    """Add pins to an existing net (matched case-insensitively by name) or create it."""
+    for n in nets:
+        if n["net"].upper() == name.upper():
+            n["pins"].extend(p for p in new_pins if p not in n["pins"])
+            return
+    nets.append({"net": name, "pins": list(new_pins)})
+
+
+def _make_signal_batches(pin_keys: list, max_pins: int = MAX_BATCH_PINS) -> list:
+    """Split components into batches of refs, each capped at ~max_pins signal pins.
+
+    The hub component (most pins, usually the MCU) is included in EVERY batch so
+    each batch can wire its peripherals directly to real MCU pins instead of
+    hallucinating them.
+    """
+    by_ref = {}
+    for k in pin_keys:
+        by_ref.setdefault(k.split(":")[0], []).append(k)
+    refs = sorted(by_ref, key=lambda r: -len(by_ref[r]))
+    if not refs:
+        return []
+
+    hub = refs[0] if len(refs) > 1 and len(by_ref[refs[0]]) >= 6 else None
+    others = [r for r in refs if r != hub]
+
+    batches, cur, cnt = [], [], 0
+    for r in others:
+        n = len(by_ref[r])
+        if cur and cnt + n > max_pins:
+            batches.append(cur)
+            cur, cnt = [], 0
+        cur.append(r)
+        cnt += n
+    if cur:
+        batches.append(cur)
+    if not batches:
+        batches = [[]]
+    if hub:
+        batches = [[hub] + b for b in batches]
+    return batches
+
+
 def netlist_node(state: AgentState, config) -> dict:
     _emit(config, "agent:thinking", {"message": "Planning pin connections..."})
 
@@ -334,25 +459,97 @@ def netlist_node(state: AgentState, config) -> dict:
         f'  {c["ref_des"]}: {c["id_str"]} ({c["category"]})'
         for c in comps
     )
-    pins_desc = "\n".join(
-        f'  {k}: pin_name="{v["name"]}"'
-        for k, v in sorted(pins.items())
-    )
 
-    text = _call_llm(NETLIST_SYSTEM, NETLIST_USER.format(
-        prompt=state["prompt"],
-        components_desc=comps_desc,
-        pins_desc=pins_desc,
-    ))
-    text = _clean_json(text)
-    try:
-        nets = json.loads(text) if text else []
-    except json.JSONDecodeError:
-        print(f"Failed to parse nets JSON: {text[:200]}")
-        nets = []
+    # ── Phase 1: deterministic power/GND assignment (no LLM, zero hallucination) ──
+    assigned = set()
+    power_groups = {}
+    for key, pin in pins.items():
+        pname = pin.get("name", "").strip().upper()
+        if _is_gnd_net(pname):
+            power_groups.setdefault("GND", []).append(key)
+            assigned.add(key)
+        elif _is_power_net(pname):
+            canon = pname.lstrip('+')
+            if canon in ("VCC", "VDD"):
+                canon = "3V3"
+            power_groups.setdefault(canon, []).append(key)
+            assigned.add(key)
+    nets = [{"net": n, "pins": p} for n, p in power_groups.items()]
+    _emit(config, "agent:log", {
+        "message": f"  Power/GND pre-assigned deterministically: {len(assigned)} pins -> "
+                   f"{', '.join(power_groups) or 'none'}"
+    })
 
-    if not nets or not isinstance(nets, list):
-        nets = _generate_nets_fallback(pins)
+    # ── Phase 2: batched LLM signal-net generation with per-batch validation ──
+    signal_keys = [k for k in pins if k not in assigned]
+    batches = _make_signal_batches(signal_keys, max_pins=MAX_BATCH_PINS)
+    if len(batches) > 1:
+        _emit(config, "agent:log", {
+            "message": f"  Wiring {len(signal_keys)} signal pins in {len(batches)} batches"
+        })
+
+    for bi, batch_refs in enumerate(batches, 1):
+        batch_keys = sorted(
+            k for k in signal_keys
+            if k.split(":")[0] in batch_refs and k not in assigned
+        )
+        if not batch_keys:
+            continue
+
+        _emit(config, "agent:thinking", {
+            "message": f"Planning pin connections (batch {bi}/{len(batches)})..."
+        })
+        pins_desc = "\n".join(f'  {k}: pin_name="{pins[k]["name"]}"' for k in batch_keys)
+        existing = ", ".join(n["net"] for n in nets) or "(none yet)"
+
+        text = _call_llm(NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER.format(
+            prompt=state["prompt"],
+            components_desc=comps_desc,
+            existing_nets=existing,
+            pins_desc=pins_desc,
+        ))
+        text = _clean_json(text)
+        try:
+            batch_nets = json.loads(text) if text else []
+        except json.JSONDecodeError:
+            print(f"Batch {bi}: failed to parse nets JSON: {text[:200]}")
+            batch_nets = []
+        if not isinstance(batch_nets, list):
+            continue
+
+        n_dropped = 0
+        batch_key_set = set(batch_keys)
+        for net in batch_nets:
+            if not isinstance(net, dict):
+                continue
+            name = str(net.get("net", "")).strip()
+            raw = net.get("pins", [])
+            if not name or not isinstance(raw, list):
+                continue
+            clean = []
+            for p in raw:
+                # Hard validation per batch: pin must exist, belong to this
+                # batch, and not already be assigned -> hallucinations die here
+                if p not in batch_key_set or p in assigned:
+                    n_dropped += 1
+                    continue
+                assigned.add(p)
+                clean.append(p)
+            if clean:
+                _merge_net(nets, name, clean)
+        if n_dropped:
+            _emit(config, "agent:log", {
+                "message": f"  Batch {bi}: dropped {n_dropped} hallucinated/duplicate pin refs"
+            })
+
+    # ── Phase 3: rule-based fallback for pins the LLM left unassigned ──
+    leftover = {k: pins[k] for k in pins if k not in assigned}
+    if leftover:
+        for net in _generate_nets_fallback(leftover):
+            _merge_net(nets, net["net"], net["pins"])
+        _emit(config, "agent:log", {
+            "message": f"  Name-match fallback assigned {len(leftover)} leftover pins"
+        })
 
     # ── Validate nets: pins must exist, each pin in at most one net ──
     used_pins = set()
@@ -468,9 +665,18 @@ def layout_route_node(state: AgentState, config) -> dict:
         _emit(config, "agent:done", {"message": "No components could be placed."})
         return {}
 
-    engine.execute_placement()
+    engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
     engine.build_obstacle_matrix(pin_matrix=pin_matrix)
     traces = engine.route_traces(netlist, pin_matrix)
+
+    # ── Post-route validation: detect & fix parallel wire overlaps ──
+    traces, n_fixed, n_conflicts = engine.check_and_fix_overlaps(traces)
+    if n_fixed or n_conflicts:
+        _emit(config, "agent:log", {
+            "message": f"  Overlap check: {n_fixed} wire(s) re-routed"
+                       + (f", {n_conflicts} unresolved overlap(s) remain" if n_conflicts else "")
+        })
+
     placements = engine.get_placements()
 
     # ── Compute power symbol/label positions (absolute coords + direction) ──
@@ -522,12 +728,55 @@ def layout_route_node(state: AgentState, config) -> dict:
     }
 
 
+# Pin name alias groups — maps messy KiCad names to canonical electrical functions
+PIN_ALIASES = {
+    # I2C
+    "SDA": {"SDA", "SDI", "SDIO", "I2C0_SDA", "I2C1_SDA", "I2C_DATA", "I2CDAT"},
+    "SCL": {"SCL", "SCK", "I2C0_SCL", "I2C1_SCL", "I2C_CLK", "I2CCLK"},
+    # UART
+    "TX": {"TXD", "TX", "TXD0", "TXD1", "UART_TX", "UART0_TX", "UART1_TX", "TXD_0", "TXD_1", "TX0", "TX1"},
+    "RX": {"RXD", "RX", "RXD0", "RXD1", "UART_RX", "UART0_RX", "UART1_RX", "RXD_0", "RXD_1", "RX0", "RX1"},
+    # SPI
+    "MOSI": {"MOSI", "SPI_MOSI", "SPI0_MOSI", "SPI1_MOSI", "SI", "SDO"},
+    "MISO": {"MISO", "SPI_MISO", "SPI0_MISO", "SPI1_MISO", "SO", "SDI"},
+    "SCK": {"SCK", "SPI_SCK", "SPI0_SCK", "SPI1_SCK", "SPI_CLK", "SPICLK"},
+    "CS": {"CS", "SS", "NSS", "SPI_CS", "SPI0_CS", "SPI1_CS", "CHIP_SELECT", "CE"},
+    # Crystal / Oscillator
+    "XTAL1": {"XTAL1", "XTAL_IN", "OSC_IN", "OSCI", "OSC0_IN", "OSC1_IN", "XIN"},
+    "XTAL2": {"XTAL2", "XTAL_OUT", "OSC_OUT", "OSCO", "OSC0_OUT", "OSC1_OUT", "XOUT"},
+    # Reset / Enable
+    "RESET": {"RST", "RESET", "NRST", "N_RST", "nRST", "NRESET", "N_RESET", "RST_N", "RSTB"},
+    "EN": {"EN", "ENABLE", "CHIP_EN", "CEN", "CE_N", "SHDN", "SHDN_N", "ON_OFF"},
+    # Interrupts
+    "INT": {"INT", "IRQ", "NINT", "N_IRQ", "nINT", "INT_N", "IRQ_N"},
+    # Status / Indicator
+    "STAT": {"STAT", "STATE", "STATUS", "CHG_STAT", "CHG_STATE", "FAULT", "PG", "POWER_GOOD"},
+}
+
+# Complementary signal pairs — TX on one device connects to RX on another
+COMPLEMENTARY_PAIRS = [
+    ("TX", "RX"),
+    ("RX", "TX"),
+    ("MOSI", "MISO"),  # actually these are separate nets, but handled by alias groups
+    ("MISO", "MOSI"),
+]
+
+
+def _canonical_signal_name(name: str):
+    """Map a raw pin name to its canonical signal name if it matches an alias group."""
+    upper = name.upper().strip()
+    for canon, aliases in PIN_ALIASES.items():
+        if upper in aliases:
+            return canon
+    return None
+
+
 def _generate_nets_fallback(pin_matrix: dict) -> list:
-    """Rule-based fallback: group pins into named nets by pin name."""
+    """Rule-based fallback: group pins into named nets by pin name with aliasing."""
     by_name = {}
     for key, pin in pin_matrix.items():
         name = pin.get("name", "").strip().upper()
-        if not name or name in ("~", "NC"):
+        if not name or name in ("~", "NC", ""):
             continue
         by_name.setdefault(name, []).append(key)
 
@@ -552,16 +801,38 @@ def _generate_nets_fallback(pin_matrix: dict) -> list:
     for canon, pins_list in power_groups.items():
         nets.append({"net": canon, "pins": pins_list})
 
-    # Signal nets: only when exactly 2 pins share a name (avoid GPIO meshes)
+    # ── Signal nets: group by canonical alias first ──
+    signal_groups = {}  # canonical_name -> list of pin keys
+    unmatched = []       # pin keys that didn't match any alias group
+
     for name, keys in by_name.items():
-        if len(keys) == 2:
+        canon = _canonical_signal_name(name)
+        if canon:
+            signal_groups.setdefault(canon, []).extend(keys)
+        else:
+            unmatched.append((name, keys))
+
+    for canon, pins in signal_groups.items():
+        if len(pins) >= 1:
+            nets.append({"net": canon.upper(), "pins": pins})
+
+    # Match remaining unmatched by exact name (at least 2 pins sharing the same name)
+    for name, keys in unmatched:
+        if len(keys) >= 2:
             nets.append({"net": name, "pins": keys})
+
+    # Remaining single unmatched pins: attach as standalone signal nets
+    # so they appear as labels (better than dropping them entirely)
+    leftover = {name: keys for name, keys in unmatched if len(keys) == 1}
+    for name, keys in leftover.items():
+        nets.append({"net": name, "pins": keys})
 
     return nets
 
 
-def _parse_sexpr_to_ops(sexpr_str: str, category: str) -> list:
+def _parse_sexpr_to_ops(sexpr_str: str, lib_name: str, _depth: int = 0) -> list:
     acc = []
+    extends = None
 
     def parse(s):
         tokens, i = [], 0
@@ -601,35 +872,37 @@ def _parse_sexpr_to_ops(sexpr_str: str, category: str) -> list:
         return acc
 
     def walk(node):
-        if not isinstance(node, list):
+        nonlocal extends
+        if not isinstance(node, list) or not node:
             return
         typ = node[0]
         if typ in ("rectangle", "polyline", "circle", "arc", "pin", "property", "text"):
             acc.append(node)
-        if typ == "symbol":
-            for child in node[1:]:
-                walk(child)
-        if typ == "kicad_symbol_lib":
+        # Derived symbols declare a parent via (extends "ParentName") —
+        # it is a direct child of the symbol node, NOT one of the drawing ops,
+        # so it must be captured here during the walk.
+        if typ == "extends" and len(node) > 1 and extends is None:
+            extends = node[1]
+        if typ in ("symbol", "kicad_symbol_lib"):
             for child in node[1:]:
                 walk(child)
 
     walk(ast)
 
-    extends = None
-    for op in acc:
-        if op[0] == "extends":
-            extends = op[1]
-            break
-
-    if extends:
+    # Resolve inheritance: derived symbols (e.g. LTC4417HUF -> LTC4417CUF)
+    # carry only properties; all pins/graphics live in the parent symbol.
+    # The parent always lives in the same library, so resolve against
+    # lib_name (the library prefix of id_str), never an LLM category label.
+    if extends and _depth < 5:
         try:
-            parent_id = f"{category}:{extends}"
-            parent_sexpr = fetch_sexpr(parent_id)
-            parent_ops = _parse_sexpr_to_ops(parent_sexpr, category)
+            parent_sexpr = fetch_sexpr(f"{lib_name}:{extends}")
+            parent_ops = _parse_sexpr_to_ops(parent_sexpr, lib_name, _depth + 1)
+            # Parent ops first, child ops after — child properties
+            # (Reference/Value/Footprint) override the parent's downstream.
             parent_ops.extend(acc)
             return parent_ops
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Failed to resolve extends '{extends}' in lib '{lib_name}': {e}")
 
     return acc
 
