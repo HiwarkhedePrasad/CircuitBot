@@ -61,8 +61,8 @@ def _is_power_net(name: str) -> bool:
     n = name.upper().lstrip('+')
     if n in POWER_NET_NAMES:
         return True
-    # Voltage-style names: 3V3, 5V, 12V, 1V8, V5 ...
-    if re.match(r'^\d+V\d*$', n) or re.match(r'^V\d+$', n):
+    # Voltage-style names: 3V3, 5V, 12V, 1V8, V5, 3.3V, 5.0V, 3_3V ...
+    if re.match(r'^\d+V\d*$', n) or re.match(r'^V\d+$', n) or re.match(r'^\d+[._]\d+V$', n):
         return True
     return False
 
@@ -225,7 +225,7 @@ def research_node(state: AgentState, config) -> dict:
         all_results.append({
             "subsystem": name,
             "function": sub.get("function", ""),
-            "results": deduped[:4],
+            "results": deduped[:3], # Only 3 candidates to save tokens
         })
         _emit(config, "agent:log", {
             "message": f"  {name}: found {len(deduped)} candidates"
@@ -243,6 +243,20 @@ def select_node(state: AgentState, config) -> dict:
         return {"selected_components": []}
 
     results_json = json.dumps(research, indent=2)
+    # Truncate descriptions aggressively to avoid TPM limits
+    if len(results_json) > 6000:
+        truncated = []
+        for sub in research:
+            tsub = sub.copy()
+            tsub["results"] = []
+            for r in sub.get("results", []):
+                tr = r.copy()
+                if len(tr.get("text", "")) > 100:
+                    tr["text"] = tr["text"][:97] + "..."
+                tsub["results"].append(tr)
+            truncated.append(tsub)
+        results_json = json.dumps(truncated, indent=2)
+
     text = _call_llm(SELECT_SYSTEM, SELECT_USER.format(
         prompt=state["prompt"], results_json=results_json
     ))
@@ -332,6 +346,33 @@ def select_node(state: AgentState, config) -> dict:
 
     selected = deduped
 
+    # ── Post-selection fix: replace Interface_USB ICs with actual connectors ──
+    # When the user asks for "USB-C power input", the LLM often picks FUSB302 (a
+    # USB PD controller IC) because it appears first in search results. Swap it
+    # for a real connector from the Connector library.
+    for s in selected:
+        id_str = s["id_str"]
+        cat = (s.get("category", "") or "").upper()
+        desc = (s.get("description", "") or "").upper()
+        # Check if this is an interface IC that should be a connector
+        if cat.startswith("INTERFACE_USB") or "FUSB" in id_str.upper():
+            # Search for a matching connector
+            query = "USB-C connector" if "USB-C" in desc or "TYPE-C" in desc else "USB connector"
+            try:
+                for r in search_components(query, k=6):
+                    r_cat = (r.get("category", "") or "").upper()
+                    if r_cat.startswith("CONNECTOR") and "USB" in r_cat:
+                        old = s["id_str"]
+                        s["id_str"] = r["id_str"]
+                        s["category"] = r.get("category", s["category"])
+                        s["description"] = r.get("text", s.get("description", ""))
+                        _emit(config, "agent:log", {
+                            "message": f"  Swapped {old} -> {s['id_str']} (real connector)"
+                        })
+                        break
+            except Exception as e:
+                print(f"Connector swap failed: {e}")
+
     _emit(config, "agent:log", {
         "message": f"Selected {len(selected)} components: " +
                    ", ".join(f'{s["ref_des"]}={s["id_str"].split(":")[-1][:20]}' for s in selected)
@@ -412,6 +453,15 @@ def _merge_net(nets: list, name: str, new_pins: list):
     nets.append({"net": name, "pins": list(new_pins)})
 
 
+def _find_net_by_name(nets: list, name: str):
+    """Find a net by case-insensitive name."""
+    up = name.upper()
+    for n in nets:
+        if n["net"].upper() == up:
+            return n
+    return None
+
+
 def _make_signal_batches(pin_keys: list, max_pins: int = MAX_BATCH_PINS) -> list:
     """Split components into batches of refs, each capped at ~max_pins signal pins.
 
@@ -459,6 +509,25 @@ def netlist_node(state: AgentState, config) -> dict:
         f'  {c["ref_des"]}: {c["id_str"]} ({c["category"]})'
         for c in comps
     )
+
+    # ── Phase 0: Pin Classification Dump ────────────────────────────────────
+    print("\n" + "="*20 + " PIN CLASSIFICATION " + "="*20)
+    for ref in sorted({k.split(':')[0] for k in pins}):
+        print(f"\nComponent: {ref}")
+        ref_pins = {k: v for k, v in pins.items() if k.startswith(f"{ref}:")}
+        for k, p in sorted(ref_pins.items(), key=lambda x: x[0]):
+            pname = p.get("name", "").upper()
+            etype = p.get("etype", "").lower()
+            
+            # Classification
+            cat = "SIGNAL"
+            if _is_gnd_net(pname): cat = "GROUND"
+            elif _is_power_net(pname): cat = "POWER"
+            elif etype in POWER_ETYPES: cat = "POWER (structural)"
+            elif any(x in pname for x in ("XTAL", "OSC", "XIN", "XOUT")): cat = "XTAL"
+            
+            print(f"  {k.split(':')[-1]:<4} {pname:<15} {etype:<15} -> {cat}")
+    print("\n" + "="*56 + "\n")
 
     # ── Phase 1: deterministic power/GND assignment (no LLM, zero hallucination) ──
     # Primary signal: the pin's KiCad electrical type (power_in/power_out) —
@@ -513,7 +582,7 @@ def netlist_node(state: AgentState, config) -> dict:
         _emit(config, "agent:thinking", {
             "message": f"Planning pin connections (batch {bi}/{len(batches)})..."
         })
-        pins_desc = "\n".join(f'  {k}: pin_name="{pins[k]["name"]}"' for k in batch_keys)
+        pins_desc = "\n".join(f'  Key="{k}"  name="{pins[k]["name"]}"' for k in batch_keys)
         existing = ", ".join(n["net"] for n in nets) or "(none yet)"
 
         text = _call_llm(NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER.format(
@@ -532,6 +601,7 @@ def netlist_node(state: AgentState, config) -> dict:
             continue
 
         n_dropped = 0
+        n_resolved = 0
         batch_key_set = set(batch_keys)
         for net in batch_nets:
             if not isinstance(net, dict):
@@ -542,18 +612,23 @@ def netlist_node(state: AgentState, config) -> dict:
                 continue
             clean = []
             for p in raw:
-                # Hard validation per batch: pin must exist, belong to this
-                # batch, and not already be assigned -> hallucinations die here
-                if p not in batch_key_set or p in assigned:
-                    n_dropped += 1
-                    continue
-                assigned.add(p)
-                clean.append(p)
+                if p in batch_key_set and p not in assigned:
+                    assigned.add(p)
+                    clean.append(p)
+                else:
+                    # Try to rescue hallucinated pin ref via name/number matching
+                    resolved = _resolve_hallucinated_pin(p, pins, assigned)
+                    if resolved and resolved in batch_key_set and resolved not in assigned:
+                        assigned.add(resolved)
+                        clean.append(resolved)
+                        n_resolved += 1
+                    else:
+                        n_dropped += 1
             if clean:
                 _merge_net(nets, name, clean)
-        if n_dropped:
+        if n_dropped or n_resolved:
             _emit(config, "agent:log", {
-                "message": f"  Batch {bi}: dropped {n_dropped} hallucinated/duplicate pin refs"
+                "message": f"  Batch {bi}: resolved {n_resolved}, dropped {n_dropped} hallucinated pin refs"
             })
 
     # ── Phase 3: rule-based fallback for pins the LLM left unassigned ──
@@ -585,21 +660,91 @@ def netlist_node(state: AgentState, config) -> dict:
                 continue
             used_pins.add(p)
             clean.append(p)
-        is_pwr = (_is_gnd_net(name) or _is_power_net(name)
-                  or name.upper().lstrip('+') in structural_power)
-        if len(clean) >= 2 or (is_pwr and len(clean) >= 1):
-            valid_nets.append({"net": name, "pins": clean})
+        if clean:
+            is_pwr = (_is_gnd_net(name) or _is_power_net(name)
+                      or name.upper().lstrip('+') in structural_power)
+            if len(clean) >= 2 or (is_pwr and len(clean) >= 1) or (len(clean) == 1 and not is_pwr):
+                valid_nets.append({"net": name, "pins": clean})
 
     # ── ERC check: power/GND nets must not contain signal-looking pins shorted to rails ──
     # (basic sanity — a GND net containing a pin named "3V3" etc. is a short)
     for net in valid_nets:
-        if _is_gnd_net(net["net"]):
+        name = net["net"]
+        is_pwr = _is_gnd_net(name) or _is_power_net(name) or name.upper().lstrip('+') in structural_power
+        if is_pwr:
+            to_remove = []
             for p in net["pins"]:
                 pname = pins[p].get("name", "").upper()
-                if _is_power_net(pname):
-                    net["pins"].remove(p)
-                    used_pins.discard(p)
-                    _emit(config, "agent:log", {"message": f"  ERC: removed power pin {p} ({pname}) from GND net"})
+                # 1) Power name mismatch (e.g. 3V3 pin in GND net)
+                if _is_gnd_net(name) and _is_power_net(pname):
+                    to_remove.append(p)
+                # 2) Signal pin in power net (e.g. SDA in 3V3 net)
+                elif any(s in pname for s in ("SDA", "SCL", "TX", "RX", "MOSI", "MISO", "SCK", "CS", "DQ", "DP", "DM", "USB")):
+                    # Passive/Power types might legitimately have these names in some contexts
+                    # but in a general schematic, a DQ pin in a power net is almost certainly an LLM error.
+                    if pins[p].get("etype") not in POWER_ETYPES:
+                        to_remove.append(p)
+            
+            for p in to_remove:
+                net["pins"].remove(p)
+                used_pins.discard(p)
+                _emit(config, "agent:log", {"message": f"  ERC: removed signal pin {p} ({pins[p].get('name')}) from power net {name}"})
+
+    # ── Netlist Diagnostic Dump & Quality Check ──────────────────────────────
+    print("\n" + "="*20 + " GENERATED NETS " + "="*20)
+    for net in valid_nets:
+        net_name = net["net"]
+        pin_keys = net["pins"]
+        print(f"\nNET: {net_name}")
+        
+        # Quality heuristics
+        warnings = []
+        name_up = net_name.upper()
+        rx_pins = []
+        tx_pins = []
+        has_xtal = "XTAL" in name_up or "OSC" in name_up
+
+        for pk in pin_keys:
+            p = pins.get(pk, {})
+            pname = p.get("name", "").upper()
+            etype = p.get("etype", "").lower()
+            print(f"  {pk:<10} {p.get('ref_des')}:{pname:<15} ({etype})")
+            
+            if "RX" in pname: rx_pins.append(pk)
+            if "TX" in pname: tx_pins.append(pk)
+
+            # XTAL ↔ Signal check
+            is_xtal_pin = any(x in pname for x in ("XTAL", "OSC", "XIN", "XOUT", "X1", "X2"))
+            if has_xtal and not is_xtal_pin and etype not in ("passive", "power_in"):
+                warnings.append(f"  [!] Suspicious: Non-XTAL pin {pk} ({pname}) in XTAL net")
+            if is_xtal_pin and not has_xtal and "GND" not in name_up:
+                warnings.append(f"  [!] Suspicious: XTAL pin {pk} in non-XTAL net {net_name}")
+            
+            # POWER ↔ Signal check
+            is_power_net = _is_power_net(net_name) or name_up in structural_power
+            if is_power_net and any(s in pname for s in ("SDA", "SCL", "TX", "RX", "MOSI", "MISO", "SCK", "CS")):
+                warnings.append(f"  [!] Suspicious: Signal pin {pk} ({pname}) in power net {net_name}")
+            
+            # RESET ↔ Signal check
+            if ("RESET" in name_up or "RST" in name_up) and any(s in pname for s in ("SDA", "SCL", "TX", "RX")):
+                warnings.append(f"  [!] Suspicious: Signal pin {pk} ({pname}) in reset net")
+
+        # Connection logic checks
+        if len(rx_pins) > 1 and "RX" in name_up:
+            warnings.append(f"  [!] Suspicious: Multiple RX pins {rx_pins} connected together (RX-RX short?)")
+        if len(tx_pins) > 1 and "TX" in name_up:
+            warnings.append(f"  [!] Suspicious: Multiple TX pins {tx_pins} connected together (TX-TX short?)")
+        
+        # GPIO super-net check
+        if name_up == "GPIO" and len(pin_keys) > 4:
+             warnings.append(f"  [!] Suspicious: Large 'GPIO' net ({len(pin_keys)} pins). Likely hallucination.")
+        
+        if warnings:
+            for w in warnings:
+                print(w)
+            _emit(config, "agent:log", {"message": f"  Net Quality Report: {len(warnings)} issues in net {net_name}"})
+
+    print("\n" + "="*56 + "\n")
 
     # ── Split: power/GND nets become labels (no wires), signal nets get routed ──
     power_pins = []   # [{pin, net}] -> rendered as power symbols / global labels
@@ -617,7 +762,6 @@ def netlist_node(state: AgentState, config) -> dict:
                 power_pins.append({"pin": p, "net": canonical})
         else:
             n_signal_nets += 1
-            # Chain consecutive pins: A-B, B-C (not a full mesh)
             ps = net["pins"]
             for i in range(len(ps) - 1):
                 netlist.append({"source": ps[i], "target": ps[i + 1], "net": name})
@@ -751,11 +895,15 @@ def layout_route_node(state: AgentState, config) -> dict:
 # Pin name alias groups — maps messy KiCad names to canonical electrical functions
 PIN_ALIASES = {
     # I2C
-    "SDA": {"SDA", "SDI", "SDIO", "I2C0_SDA", "I2C1_SDA", "I2C_DATA", "I2CDAT"},
-    "SCL": {"SCL", "SCK", "I2C0_SCL", "I2C1_SCL", "I2C_CLK", "I2CCLK"},
+    "SDA": {"SDA", "SDI", "SDIO", "I2C0_SDA", "I2C1_SDA", "I2C_DATA", "I2CDAT",
+            "GPIO21", "IO21", "PIN21", "I2C_SDA", "SDA0", "SDA1"},
+    "SCL": {"SCL", "SCK", "I2C0_SCL", "I2C1_SCL", "I2C_CLK", "I2CCLK",
+            "GPIO22", "IO22", "PIN22", "I2C_SCL", "SCL0", "SCL1"},
     # UART
-    "TX": {"TXD", "TX", "TXD0", "TXD1", "UART_TX", "UART0_TX", "UART1_TX", "TXD_0", "TXD_1", "TX0", "TX1"},
-    "RX": {"RXD", "RX", "RXD0", "RXD1", "UART_RX", "UART0_RX", "UART1_RX", "RXD_0", "RXD_1", "RX0", "RX1"},
+    "TX": {"TXD", "TX", "TXD0", "TXD1", "UART_TX", "UART0_TX", "UART1_TX", "TXD_0", "TXD_1", "TX0", "TX1",
+           "GPIO1", "GPIO6", "GPIO7", "TXD2"},
+    "RX": {"RXD", "RX", "RXD0", "RXD1", "UART_RX", "UART0_RX", "UART1_RX", "RXD_0", "RXD_1", "RX0", "RX1",
+           "GPIO2", "GPIO3", "GPIO8", "RXD2"},
     # SPI
     "MOSI": {"MOSI", "SPI_MOSI", "SPI0_MOSI", "SPI1_MOSI", "SI", "SDO"},
     "MISO": {"MISO", "SPI_MISO", "SPI0_MISO", "SPI1_MISO", "SO", "SDI"},
@@ -788,6 +936,68 @@ def _canonical_signal_name(name: str):
     for canon, aliases in PIN_ALIASES.items():
         if upper in aliases:
             return canon
+    return None
+
+
+def _resolve_hallucinated_pin(bad_key: str, pin_matrix: dict, assigned: set) -> str | None:
+    """Rescue a hallucinated pin key by matching its pin name/number against real pins.
+
+    The LLM often outputs keys like 'U1:21' (guessing pin number 21 = GPIO21)
+    when the real key is 'U1:3' (pin 3 has name='GPIO21'). This function looks
+    up the ref's actual pins and finds the best match by pin number, pin name,
+    or alias group.
+    """
+    ref = bad_key.split(':')[0]
+    hint = bad_key.split(':')[1] if ':' in bad_key else ''
+
+    # Get all unassigned pins for this ref
+    candidates = []
+    for key, pin in pin_matrix.items():
+        if key.split(':')[0] == ref and key not in assigned:
+            candidates.append((key, pin))
+
+    if not hint:
+        return None
+
+    hint_upper = hint.upper()
+
+    # Strategy 1: hint matches pin_num literally
+    for key, pin in candidates:
+        if pin.get('pin_num', '') == hint:
+            return key
+
+    # Strategy 2: hint matches pin name (e.g. hint="GPIO21" → name="GPIO21")
+    for key, pin in candidates:
+        pname = pin.get('name', '').upper()
+        if pname == hint_upper:
+            return key
+
+    # Strategy 3: hint is a number, look for pin name ending with that number
+    # (e.g. hint="21" → name="GPIO21" or "IO21" or "PIN21")
+    if hint.isdigit():
+        for key, pin in candidates:
+            pname = pin.get('name', '').upper()
+            if pname.endswith(hint) and not pname.startswith(('1', '2', '3', '4', '5', '6', '7', '8', '9')):
+                return key
+            if pname == f"IO{hint}" or pname == f"PIN{hint}" or pname == f"GPIO{hint}":
+                return key
+
+    # Strategy 4: hint name aliases to a canonical signal, and a pin matches
+    hint_canon = _canonical_signal_name(hint)
+    if hint_canon:
+        for key, pin in candidates:
+            pname = pin.get('name', '').upper()
+            if _canonical_signal_name(pname) == hint_canon:
+                return key
+
+    # Strategy 5: hint is a common signal name, try to find an IO pin (last resort)
+    if hint_upper in PIN_ALIASES:
+        for key, pin in candidates:
+            etype = pin.get('etype', '')
+            pname = pin.get('name', '').upper()
+            if etype in ('bidirectional', 'input', 'output') and pname.startswith('IO'):
+                return key
+
     return None
 
 
@@ -835,6 +1045,20 @@ def _generate_nets_fallback(pin_matrix: dict) -> list:
     for canon, pins in signal_groups.items():
         if len(pins) >= 1:
             nets.append({"net": canon.upper(), "pins": pins})
+
+    # Second pass: merge unmatched pins into existing canonical alias groups
+    still_unmatched = []
+    for name, keys in unmatched:
+        canon = _canonical_signal_name(name)
+        if canon and canon.upper() in {n["net"] for n in nets}:
+            # Merge into existing canonical net
+            for n in nets:
+                if n["net"] == canon.upper():
+                    n["pins"].extend(keys)
+                    break
+        else:
+            still_unmatched.append((name, keys))
+    unmatched = still_unmatched
 
     # Match remaining unmatched by exact name (at least 2 pins sharing the same name)
     for name, keys in unmatched:

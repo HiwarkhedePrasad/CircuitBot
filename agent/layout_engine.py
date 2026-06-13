@@ -11,8 +11,8 @@ from pathfinding.finder.a_star import AStarFinder
 from pathfinding.core.diagonal_movement import DiagonalMovement
 
 GRID_SIZE = 1.27  # 50 mil KiCad standard
-MATRIX_SIZE = 300
-MATRIX_OFFSET = 150  # offset to keep grid coords positive
+MATRIX_SIZE = 600
+MATRIX_OFFSET = 300  # offset to keep grid coords positive
 
 BBOX_PAD = 2.0
 COLUMN_SPACING = 6.35   # extra horizontal routing channel between columns (5 grid cells)
@@ -110,6 +110,68 @@ def calculate_ops_bbox(ops: list) -> dict:
     return _enforce_pin_density_minimum(bbox, ops)
 
 
+def calculate_geom_bbox(ops: list) -> dict:
+    """Calculate bounding box of ONLY the physical geometry and pins.
+    EXCLUDES property and text labels to prevent massive invisible walls.
+    """
+    min_x, min_y = float('inf'), float('inf')
+    max_x, max_y = float('-inf'), float('-inf')
+
+    def upd(x, y):
+        nonlocal min_x, min_y, max_x, max_y
+        if x < min_x: min_x = x
+        if x > max_x: max_x = x
+        if y < min_y: min_y = y
+        if y > max_y: max_y = y
+
+    for op in ops:
+        typ = op[0]
+        if typ == 'rectangle':
+            s = _get_attr(op, 'start')
+            e = _get_attr(op, 'end')
+            if s: upd(float(s[1]), float(s[2]))
+            if e: upd(float(e[1]), float(e[2]))
+        elif typ == 'polyline':
+            pts = _get_attr(op, 'pts')
+            if pts:
+                for i in range(1, len(pts)):
+                    if pts[i][0] == 'xy':
+                        upd(float(pts[i][1]), float(pts[i][2]))
+        elif typ == 'circle':
+            c = _get_attr(op, 'center')
+            r = _get_attr(op, 'radius')
+            if c and r:
+                cx, cy = float(c[1]), float(c[2])
+                rv = float(r[1])
+                upd(cx - rv, cy - rv)
+                upd(cx + rv, cy + rv)
+        elif typ == 'arc':
+            for key in ('start', 'mid', 'end'):
+                a = _get_attr(op, key)
+                if a: upd(float(a[1]), float(a[2]))
+        elif typ == 'pin':
+            at = _get_attr(op, 'at')
+            len_node = _get_attr(op, 'length')
+            if at and len_node:
+                x, y = float(at[1]), float(at[2])
+                l = float(len_node[1])
+                ang = float(at[3] or 0) * 3.14159 / 180.0
+                upd(x, y)
+                upd(x + math.cos(ang) * l, y + math.sin(ang) * l)
+
+    if min_x == float('inf'):
+        return {'x': -2.54, 'y': -2.54, 'w': 5.08, 'h': 5.08}
+    
+    # Minimal padding for the core body
+    PAD = 1.27
+    return {
+        'x': min_x - PAD,
+        'y': min_y - PAD,
+        'w': max_x - min_x + PAD * 2,
+        'h': max_y - min_y + PAD * 2,
+    }
+
+
 LABEL_PITCH = 1.8  # mm per label row — matches the renderer's line spacing
 
 
@@ -150,14 +212,17 @@ class BackendLayoutEngine:
 
     def __init__(self):
         self.components = []  # list of dicts with ref_des, ops, category, bbox, x, y
+        self._pin_mm_coords = {}  # ref_des -> list of (gx, gy) tuples for pin carve-out
 
     def add_component(self, ref_des: str, ops: list, category: str):
         bbox = calculate_ops_bbox(ops)
+        geom_bbox = calculate_geom_bbox(ops)
         self.components.append({
             'ref_des': ref_des,
             'ops': ops,
             'category': category,
             'bbox': bbox,
+            'geom_bbox': geom_bbox,
             'x': 0.0,
             'y': 0.0,
             'width': bbox['w'],
@@ -165,125 +230,139 @@ class BackendLayoutEngine:
         })
 
     def execute_placement(self, pin_matrix: dict = None, netlist: list = None):
-        """Column-based auto-layout with connectivity-aware vertical ordering."""
+        """Graph-based placement using force-directed layout (spring model).
+
+        Builds a connectivity graph from the netlist, runs spring layout,
+        scales to canvas coordinates, and resolves overlaps.
+        """
         if not self.components:
             return
 
-        cols = [[], [], [], []]
+        import networkx as nx
+
+        # Build undirected graph from netlist
+        G = nx.Graph()
         for comp in self.components:
-            comp['column'] = _get_column_for_category(comp['category'])
-            cols[comp['column']].append(comp)
+            G.add_node(comp['ref_des'])
 
-        # ── Connectivity-aware ordering within each column ──
-        # Compute a connectivity score: pair of components that share a net
-        # should be placed near each other vertically.
-        if pin_matrix and netlist:
-            conn_graph = self._build_connectivity_graph(pin_matrix, netlist)
-            for col_idx, col in enumerate(cols):
-                if len(col) < 2:
-                    continue
-                # Sort by the average Y of connected pins in adjacent columns
-                col.sort(key=lambda c: self._conn_y_rank(c, col_idx, conn_graph, pin_matrix))
+        if netlist:
+            for conn in netlist:
+                src = conn['source'].split(':')[0]
+                tgt = conn['target'].split(':')[0]
+                if src != tgt:
+                    if G.has_edge(src, tgt):
+                        G[src][tgt]['weight'] += 1
+                    else:
+                        G.add_edge(src, tgt, weight=1.0)
 
-        col_widths = []
-        for col in cols:
-            if not col:
-                col_widths.append(0)
-            else:
-                col_widths.append(max(c['width'] + BBOX_PAD * 2 for c in col))
+        print(f"\n" + "="*20 + " COMPONENT CONNECTIVITY GRAPH " + "="*20)
+        nodes = list(G.nodes())
+        for i, node in enumerate(nodes):
+            connections = []
+            for neighbor in G.neighbors(node):
+                weight = G[node][neighbor].get('weight', 1)
+                connections.append(f"{neighbor}(x{int(weight)})")
+            print(f"  {node:<10} ───►  {', '.join(connections) or '(no signals)'}")
+        print("="*64 + "\n")
 
-        active = sum(1 for c in cols if c)
-        total_width = sum(col_widths) + (active - 1) * COLUMN_SPACING
-        x_offset = -total_width / 2
+        # Force-directed layout
+        # k: Optimal distance between nodes. Increase if too crowded.
+        pos = nx.spring_layout(G, k=3.5, iterations=200, weight='weight', seed=42)
 
-        for col_idx, col in enumerate(cols):
-            if not col:
-                continue
+        # Scale coordinates. Spring layout is roughly in [-1, 1].
+        # Map to canvas area: Increase scale for more routing channels.
+        scale = math.sqrt(len(self.components)) * 80.0
 
-            col_total = sum(c['height'] + BBOX_PAD * 2 for c in col) - BBOX_PAD * 2 + ROW_CLEARANCE * (len(col) - 1)
-            y_offset = -col_total / 2
+        for comp in self.components:
+            ref = comp['ref_des']
+            p = pos.get(ref, [0.0, 0.0])
+            # Center the layout on 0,0
+            comp['x'] = p[0] * scale
+            comp['y'] = p[1] * scale
 
-            for comp in col:
-                comp['x'] = _snap(x_offset + (col_widths[col_idx] - comp['width']) / 2)
-                comp['y'] = _snap(y_offset - comp['bbox']['y'])
-                y_offset += comp['height'] + BBOX_PAD * 2 + ROW_CLEARANCE
+        # Push apart overlaps
+        self._resolve_overlaps()
 
-            x_offset += col_widths[col_idx] + COLUMN_SPACING
-
-    def _build_connectivity_graph(self, pin_matrix: dict, netlist: list) -> dict:
-        """Build a map: (ref_a, ref_b) -> list of connection Y-coord pairs."""
-        conn = {}
-        comp_pos = {c['ref_des']: c for c in self.components}
-        for net in netlist:
-            src_ref = net['source'].split(':')[0]
-            tgt_ref = net['target'].split(':')[0]
-            if src_ref == tgt_ref:
-                continue
-            key = (src_ref, tgt_ref) if src_ref < tgt_ref else (tgt_ref, src_ref)
-            src_pin = pin_matrix.get(net['source'])
-            tgt_pin = pin_matrix.get(net['target'])
-            if src_pin and tgt_pin:
-                src_comp = comp_pos.get(src_ref)
-                tgt_comp = comp_pos.get(tgt_ref)
-                if src_comp and tgt_comp:
-                    # Estimate Y in world coords (before placement, use bbox center)
-                    sy = src_pin['y']  # relative to comp origin
-                    ty = tgt_pin['y']
-                    conn.setdefault(key, []).append((sy, ty))
-        return conn
-
-    def _conn_y_rank(self, comp: dict, col_idx: int, conn_graph: dict,
-                     pin_matrix: dict) -> float:
-        """Compute a rank value for component ordering within a column.
-        Lower values = place higher (more negative Y).
-        Looks at the average Y of connected pins on components in adjacent columns.
+    def _resolve_overlaps(self, margin=10.16, max_iterations=60):
+        """Iteratively push overlapping component bounding boxes apart.
+        Uses geom_bbox (tight body) but adds a large margin for labels and routing.
         """
-        ref = comp['ref_des']
-        connected_ys = []
-        for (a, b), pairs in conn_graph.items():
-            if a == ref:
-                partner = b
-            elif b == ref:
-                partner = a
-            else:
-                continue
-            # Only consider connections to adjacent columns
-            partner_comp = self._get_comp(partner)
-            if not partner_comp:
-                continue
-            partner_col = partner_comp.get('column', 3)
-            if abs(partner_col - col_idx) > 1:
-                continue
-            for _, ty in pairs:
-                connected_ys.append(ty if a == ref else ty)
-        if not connected_ys:
-            return 0.0
-        return sum(connected_ys) / len(connected_ys)
+        for _ in range(max_iterations):
+            moved = False
+            for i in range(len(self.components)):
+                for j in range(i + 1, len(self.components)):
+                    c1 = self.components[i]
+                    c2 = self.components[j]
+
+                    # Use geom_bbox for stable resolution without label inflation
+                    b1 = {
+                        'x': c1['x'] + c1['geom_bbox']['x'],
+                        'y': c1['y'] + c1['geom_bbox']['y'],
+                        'w': c1['geom_bbox']['w'],
+                        'h': c1['geom_bbox']['h']
+                    }
+                    b2 = {
+                        'x': c2['x'] + c2['geom_bbox']['x'],
+                        'y': c2['y'] + c2['geom_bbox']['y'],
+                        'w': c2['geom_bbox']['w'],
+                        'h': c2['geom_bbox']['h']
+                    }
+
+                    # Inflate with larger margin for labels and routing channels
+                    b1['x'] -= margin/2; b1['y'] -= margin/2; b1['w'] += margin; b1['h'] += margin
+                    b2['x'] -= margin/2; b2['y'] -= margin/2; b2['w'] += margin; b2['h'] += margin
+
+                    # Check for overlap
+                    overlap_x = min(b1['x'] + b1['w'], b2['x'] + b2['w']) - max(b1['x'], b2['x'])
+                    overlap_y = min(b1['y'] + b1['h'], b2['y'] + b2['h']) - max(b1['y'], b2['y'])
+
+                    if overlap_x > 0 and overlap_y > 0:
+                        # Push apart along the axis of least overlap
+                        dx = (b1['x'] + b1['w']/2) - (b2['x'] + b2['w']/2)
+                        dy = (b1['y'] + b1['h']/2) - (b2['y'] + b2['h']/2)
+                        
+                        if overlap_x < overlap_y:
+                            push = overlap_x / 2 + 0.5
+                            c1['x'] += push if dx >= 0 else -push
+                            c2['x'] -= push if dx >= 0 else -push
+                        else:
+                            push = overlap_y / 2 + 0.5
+                            c1['y'] += push if dy >= 0 else -push
+                            c2['y'] -= push if dy >= 0 else -push
+                        moved = True
+            if not moved:
+                break
+
+        # Snap all to grid after resolution
+        for comp in self.components:
+            comp['x'] = _snap(comp['x'])
+            comp['y'] = _snap(comp['y'])
+
 
     def build_obstacle_matrix(self, pin_matrix: dict = None):
         """Build a walkable grid with component footprints blocked.
 
-        Blocks the FULL inflated bounding box of every component (covers
-        polyline-drawn bodies too), then carves narrow escape corridors
-        outward from each pin so wires can exit but cannot cut through
-        the component body.
+        Blocks the FULL inflated geom_bbox of every component (tight physical body),
+        then carves narrow escape corridors outward from each pin.
         """
         matrix = [[1 for _ in range(MATRIX_SIZE)] for _ in range(MATRIX_SIZE)]
 
-        # 1) Block full inflated bbox of every component
+        # 1) Block tight physical body (geom_bbox)
         for comp in self.components:
-            bx = comp['x'] + comp['bbox']['x']
-            by = comp['y'] + comp['bbox']['y']
-            gsx = math.floor(bx / GRID_SIZE) + MATRIX_OFFSET - 1
-            gsy = math.floor(by / GRID_SIZE) + MATRIX_OFFSET - 1
-            gex = math.ceil((bx + comp['bbox']['w']) / GRID_SIZE) + MATRIX_OFFSET + 1
-            gey = math.ceil((by + comp['bbox']['h']) / GRID_SIZE) + MATRIX_OFFSET + 1
+            bx = comp['x'] + comp['geom_bbox']['x']
+            by = comp['y'] + comp['geom_bbox']['y']
+            # Add 1-cell padding (1.27mm) around the physical body
+            gsx = math.floor((bx - 1.27) / GRID_SIZE) + MATRIX_OFFSET
+            gsy = math.floor((by - 1.27) / GRID_SIZE) + MATRIX_OFFSET
+            gex = math.ceil((bx + comp['geom_bbox']['w'] + 1.27) / GRID_SIZE) + MATRIX_OFFSET
+            gey = math.ceil((by + comp['geom_bbox']['h'] + 1.27) / GRID_SIZE) + MATRIX_OFFSET
             for gx in range(gsx, gex + 1):
                 for gy in range(gsy, gey + 1):
                     if 0 <= gx < MATRIX_SIZE and 0 <= gy < MATRIX_SIZE:
                         matrix[gy][gx] = 0
 
         # 2) Carve a 1-cell escape corridor outward from each pin endpoint
+        carve_set = set()
         if pin_matrix:
             for key, pin in pin_matrix.items():
                 ref = key.split(':')[0]
@@ -297,9 +376,9 @@ class BackendLayoutEngine:
                 if not (0 <= gpx < MATRIX_SIZE and 0 <= gpy < MATRIX_SIZE):
                     continue
 
-                # Outward direction: away from component bbox center (dominant axis)
-                ccx = comp['x'] + comp['bbox']['x'] + comp['bbox']['w'] / 2
-                ccy = comp['y'] + comp['bbox']['y'] + comp['bbox']['h'] / 2
+                # Outward direction: away from component geom_bbox center
+                ccx = comp['x'] + comp['geom_bbox']['x'] + comp['geom_bbox']['w'] / 2
+                ccy = comp['y'] + comp['geom_bbox']['y'] + comp['geom_bbox']['h'] / 2
                 dx = px - ccx
                 dy = py - ccy
                 if abs(dx) >= abs(dy):
@@ -315,6 +394,7 @@ class BackendLayoutEngine:
                         if matrix[cy_g][cx_g] == 1:
                             cleared += 1
                         matrix[cy_g][cx_g] = 1
+                        carve_set.add((cx_g, cy_g))
                     if cleared >= 3:
                         break
                     cx_g += step[0]
@@ -322,6 +402,7 @@ class BackendLayoutEngine:
 
         self.matrix = matrix
         self.grid = Grid(matrix=matrix)
+        self._pin_carve_set = carve_set  # for overlap re-routing
 
     def _get_comp(self, ref_des: str):
         for c in self.components:
@@ -427,7 +508,7 @@ class BackendLayoutEngine:
 
         return traces
 
-    def check_and_fix_overlaps(self, traces: list, max_passes: int = 2):
+    def check_and_fix_overlaps(self, traces: list, max_passes: int = 4):
         """Post-route validation: detect traces that run on top of each other
         (2+ consecutive shared cells = parallel overlap, not a crossing) and
         re-route the offenders with the other traces' cells hard-blocked.
@@ -461,6 +542,13 @@ class BackendLayoutEngine:
                         run = 0
             return conflicts
 
+        def carve_grid(m):
+            """Apply pin carve-out to a fresh matrix copy."""
+            for (gx, gy) in self._pin_carve_set:
+                if 0 <= gx < MATRIX_SIZE and 0 <= gy < MATRIX_SIZE:
+                    m[gy][gx] = 1
+            return Grid(matrix=m)
+
         n_fixed = 0
         for _ in range(max_passes):
             all_cells = [to_cells(t) for t in traces]
@@ -483,7 +571,7 @@ class BackendLayoutEngine:
                     for (x, y) in ocs[1:-1]:
                         if 0 <= x < MATRIX_SIZE and 0 <= y < MATRIX_SIZE:
                             m[y][x] = 0
-                grid = Grid(matrix=m)
+                grid = carve_grid(m)
                 (sx, sy), (ex, ey) = cs[0], cs[-1]
                 try:
                     start = grid.node(sx, sy)

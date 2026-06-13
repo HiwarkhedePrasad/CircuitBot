@@ -1,23 +1,14 @@
-ANALYZE_SYSTEM = """You are an expert electronics design engineer. Given a user's request for a circuit or device, break it down into the functional subsystems needed.
+ANALYZE_SYSTEM = """You are an expert electronics design engineer. Given a user's request for a circuit or device, break it down into the MINIMUM functional subsystems needed.
+
+CRITICAL: Only include subsystems that are EXPLICITLY mentioned or strictly required.
+Do NOT add extra subsystems like voltage regulators, crystals, decoupling capacitors,
+or pull-up resistors unless the user specifically asked for them.
+A typical design needs 3-5 subsystems at most.
 
 For each subsystem, provide:
 - subsystem name (short, descriptive)
 - what it does
 - example component types that would work
-
-CRITICAL — EXACT PART NUMBERS:
-If the user requests a specific part number (e.g., "ESP32-C3", "DS18B20", "MCP73831"),
-you MUST copy that EXACT part number string verbatim as the FIRST entry of
-"example_components" for the matching subsystem. NEVER replace a user-specified
-part with a generic term ("Microcontroller") or a different part family (e.g.,
-never substitute AT89S52 when the user asked for ESP32-C3). Generic terms are
-only allowed when the user did NOT name a specific part.
-
-IMPORTANT: Besides the main functional blocks, ALWAYS include essential supporting passive subsystems:
-- "Decoupling capacitors" (100nF ceramic capacitors for IC power pins)
-- "Bulk capacitor" (10uF capacitor for power rail stability)
-- A "Crystal oscillator" subsystem IF any MCU/IC needs an external crystal
-- Pull-up / current-set resistors IF a charger IC or open-drain bus (I2C) is used
 
 Output as a JSON array of objects with keys: "subsystem", "function", "example_components".
 
@@ -34,26 +25,14 @@ Given a user's design request and a list of available KiCad components found in 
 
 CRITICAL RULES:
 1. You MUST ONLY use "id_str" values that appear EXACTLY in the provided search results. Do NOT invent or modify any id_str.
-2. NEVER select the same complex IC (MCU, sensor, radio, regulator) more than once. Each IC id_str must be unique.
-3. PASSIVE components (resistors "Device:R", capacitors "Device:C", crystals) MAY be selected multiple times — once per instance needed (e.g., C1, C2, C3 for decoupling) — each with a UNIQUE ref_des.
-4. EXACT PART MATCH: If the user's request names a specific part number (e.g.,
-   "ESP32-C3", "DS18B20"), and a search result's id_str contains that part number,
-   you MUST select that result for the corresponding subsystem. NEVER substitute a
-   different part family (e.g., never pick an AT89-series MCU when the user asked
-   for an ESP32-C3). Results under a "User-specified parts" subsystem take absolute
-   priority over generic matches.
+2. Select the MINIMUM number of components needed. Do NOT add extra parts like voltage
+   regulators, crystals, supercapacitor ICs, or specialty converters unless the user
+   specifically asked for them.
+3. Prefer simple common parts (resistors, capacitors, LEDs, basic sensors) over
+   complex specialty ICs.
+4. Each component should serve ONE distinct function from the analyzed subsystems.
 
-Reference designator rules (MUST follow):
-- U# for ICs, MCUs, regulators, op-amps, radio modules
-- R# for resistors
-- C# for capacitors
-- L# for inductors
-- Y# for crystals/oscillators
-- D# for diodes/LEDs
-- J# for connectors
-- SW# for switches
-
-Selection Rules:
+Rules:
 - Pick the most appropriate part based on the description match
 - Prefer parts with clear pin definitions
 - Output ONLY a JSON array of objects with keys: "id_str", "ref_des", "category", "description"
@@ -178,34 +157,24 @@ earlier batches created some signal nets, and you now wire the pins in THIS batc
 
 CRITICAL RULES:
 1. You MUST ONLY use pin keys that appear EXACTLY in the "Pins available in THIS batch" list.
-   NEVER invent or modify pin keys, and NEVER reuse pins from earlier batches.
-2. Pin keys have format "REF:pin_number" (e.g., "U1:1", "R1:2").
-3. Every pin may appear in AT MOST ONE net.
-4. To connect a batch pin to a net created in an earlier batch, output a net object
-   using the EXACT existing net name — the pins will be merged into that net.
-5. Power and ground pins are pre-assigned automatically and are NOT in your list.
-   Focus ONLY on SIGNAL connections: I2C/SPI/UART buses, GPIO, reset, enable,
-   interrupts, crystal lines, sensor data lines, LED/status lines.
-6. Only group pins that genuinely belong on the same electrical net for the user's
-   design intent. A pin with no sensible connection in this batch may be output alone
-   in a net named after its function (it becomes a label).
+2. Every peripheral (Sensor, Interface IC, etc.) MUST be connected to the central MCU (hub) 
+   if it has compatible signal pins (I2C, SPI, UART, GPIO).
+3. Do NOT leave pins unconnected if there is a logical destination on the hub (MCU).
+4. Pin keys have format "REF:pin_number" (e.g., "U1:1", "R1:2").
+5. To connect a batch pin to a net created in an earlier batch, output a net object
+   using the EXACT existing net name.
 
 PIN MATCHING GUIDELINES:
-- KiCad pin names vary wildly. Use electrical function to match, not exact string equality.
-- "SDA" and "GPIO21" (or "IO21") may be the same I2C data line — connect them
-- "SCL" and "GPIO22" (or "IO22") may be the same I2C clock line — connect them
-- "TXD", "TX", "UART_TX" connect to "RXD", "RX", "UART_RX" of the OTHER device
-- "XTAL1"/"OSC_IN"/"OSCI" and "XTAL2"/"OSC_OUT"/"OSCO" connect to the crystal pins
-- "RST", "RESET", "nRST", "NRST" are reset signals; supervisor output drives MCU reset
-- "EN", "CHIP_EN", "CE", "CS" are enable/chip-select; "INT", "IRQ", "nINT" are interrupts
-- Pull-up resistors: one pin joins the signal net (e.g., SDA), the pin name net for power
-  side is pre-handled — if the other pin is in this batch, put it in the power-side net
-  by name (e.g., "3V3_PULLUP" only if no existing power net name is given)
-- A 1-Wire sensor data pin (e.g., DS18B20 "DQ") connects to an MCU GPIO plus its pull-up
+- KiCad pin names vary wildly. Use electrical function to match.
+- "SDA", "SCL", "TX", "RX", "DQ", "SCK", "MOSI", "MISO" MUST connect to corresponding 
+  functional pins on the hub component.
+- If the hub is an MCU (e.g. ESP32), any pin named "GPIO", "IO", "Px.y" is a valid 
+  destination for general signals, interrupts, or enable lines.
 
 Output ONLY a JSON array of net objects:
 [{"net": "I2C_SDA", "pins": ["U1:3", "U2:5"]}, ...]
 No markdown, no explanation, just the JSON array."""
+
 
 NETLIST_BATCH_USER = """User's design intent: {prompt}
 

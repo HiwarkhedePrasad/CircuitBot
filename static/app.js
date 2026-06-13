@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoLayoutBtn = document.getElementById('autoLayoutBtn');
     const clearBtn = document.getElementById('clearBtn');
     const viewSchematicBtn = document.getElementById('viewSchematicBtn');
+    const viewSymbolBtn = document.getElementById('viewSymbolBtn');
     const componentList = document.getElementById('componentList');
     const compCount = document.getElementById('compCount');
     const modeIndicator = document.getElementById('modeIndicator');
@@ -20,10 +21,60 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentBtn = document.getElementById('agentBtn');
     const agentPrompt = document.getElementById('agentPrompt');
     const agentLog = document.getElementById('agentLog');
+    const coordDisplay = document.getElementById('coordDisplay');
+    const zoomLevelDisplay = document.getElementById('zoomLevel');
 
     let selectedComponent = null;
     let currentPreviewOps = null;
     let agentBusy = false;
+
+    // ── Tab Management ────────────────────────────────────────────────────────
+
+    function setActiveTab(tabId) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        const tab = document.getElementById(tabId);
+        if (tab) tab.classList.add('active');
+    }
+
+    if (viewSymbolBtn) {
+        viewSymbolBtn.addEventListener('click', () => {
+            if (currentPreviewOps) {
+                setActiveTab('viewSymbolBtn');
+                renderOps(currentPreviewOps);
+                modeIndicator.classList.add('hidden');
+            }
+        });
+    }
+
+    if (viewSchematicBtn) {
+        viewSchematicBtn.addEventListener('click', () => {
+            if (currentSchematic && currentSchematic.components.length > 0) {
+                setActiveTab('viewSchematicBtn');
+                enterSchematicMode();
+                modeIndicator.classList.remove('hidden');
+            }
+        });
+    }
+
+    // ── Canvas Coordinates ────────────────────────────────────────────────────
+
+    const canvas = document.getElementById('compCanvas');
+    canvas.addEventListener('mousemove', (e) => {
+        if (!currentTransform) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        
+        // Inverse transform to get mm coords
+        const t = currentTransform;
+        const s = t.baseScale * zoomLevel;
+        const mmX = (mouseX - t.cx - panX) / s + t.midX;
+        const mmY = -((mouseY - t.cy - panY) / s) + t.midY;
+        
+        if (coordDisplay) {
+            coordDisplay.textContent = `X: ${mmX.toFixed(2)} Y: ${mmY.toFixed(2)}`;
+        }
+    });
 
     // ── SocketIO ──────────────────────────────────────────────────────────────
 
@@ -126,30 +177,216 @@ document.addEventListener('DOMContentLoaded', () => {
             addLogEntry(`Laid out ${placements.length} components (fallback router).`, 'success');
         };
 
-        // Preferred: ELK (Eclipse Layout Kernel) — proven auto-layout +
-        // orthogonal edge routing. LLM decides connectivity only.
-        if (typeof ELK !== 'undefined') {
-            addLogEntry('Running ELK auto-layout (' + CIRCUITBOT_LAYOUT_VERSION + ')...', 'log');
-            runElkLayout(netlist, powerPins)
-                .then(() => {
-                    enterSchematicMode();
-                    addLogEntry(
-                        `ELK: placed ${currentSchematic.components.length} components, ` +
-                        `routed ${(currentSchematic.wirePaths || []).length} wires, ` +
-                        `${(currentSchematic.powerLabels || []).length} power symbols.`, 'success');
-                    saveLayoutToServer();
-                })
-                .catch(err => {
-                    console.error('ELK layout failed:', err);
-                    addLogEntry('ELK failed (' + err.message + '), using fallback router.', 'error');
-                    applyBackendLayout();
-                });
-        } else {
-            applyBackendLayout();
-        }
+        // Preferred: WireBender WASM — advanced placement + orthogonal routing.
+        addLogEntry('Running WireBender layout...', 'log');
+        runWireBenderLayout(netlist, powerPins)
+            .then(() => {
+                setActiveTab('viewSchematicBtn');
+                enterSchematicMode();
+                addLogEntry(
+                    `WireBender: placed ${currentSchematic.components.length} components, ` +
+                    `routed ${(currentSchematic.wirePaths || []).length} wires, ` +
+                    `${(currentSchematic.powerLabels || []).length} power symbols.`, 'success');
+                saveLayoutToServer();
+            })
+            .catch(err => {
+                console.error('WireBender failed:', err);
+                addLogEntry('WireBender failed (' + err.message + '), using fallback router.', 'error');
+                applyBackendLayout();
+            });
     }
 
-    // ── ELK auto-layout + orthogonal routing ────────────────────────────────
+    // ── WireBender (WASM) layout + routing ──────────────────────────────────
+
+    let _WB = null;     // WASM Module
+    let _wb = null;     // WireBender Instance
+    let _modulePromise = null;
+
+    async function initWireBender() {
+        if (_modulePromise) return _modulePromise;
+        console.log('[WireBender] Loading WASM module...');
+        _modulePromise = import('https://dev-lab.github.io/WireBender/latest/WireBender.js')
+            .then(m => m.default({
+                locateFile: f => f === 'WireBender.wasm' ? 'https://dev-lab.github.io/WireBender/latest/WireBender.wasm' : f,
+            }))
+            .then(module => {
+                _WB = module;
+                console.log('[WireBender] WASM module loaded');
+            })
+            .catch(err => {
+                console.error('[WireBender] Failed to load WASM module:', err);
+                throw err;
+            });
+        return _modulePromise;
+    }
+
+    async function runWireBenderLayout(netlist, powerPins) {
+        await initWireBender();
+        if (!_WB) throw new Error('WireBender module not loaded');
+
+        // Cleanup old instance
+        if (_wb) {
+            try { _wb.delete(); } catch(e) {}
+        }
+        _wb = new _WB.WireBender();
+
+        const comps = currentSchematic.components;
+
+        // 1. Register Components
+        comps.forEach(c => {
+            const g = c.geomBBox;
+            const pinsVec = new _WB.VectorPinDescriptor();
+            
+            // Extract pins for WireBender
+            for (const op of c.ops) {
+                if (op[0] !== 'pin') continue;
+                const at = _getAttr(op, 'at');
+                const len = _getAttr(op, 'length');
+                const num = _getAttr(op, 'number');
+                if (!at || !len || !num) continue;
+                
+                const x = parseFloat(at[1]), y = parseFloat(at[2]);
+                const angDeg = parseFloat(at[3] || 0);
+                const l = parseFloat(len[1]);
+                
+                // Endpoint relative to symbol origin
+                const ex = x + Math.cos(angDeg * Math.PI / 180) * l;
+                const ey = y + Math.sin(angDeg * Math.PI / 180) * l;
+                const key = String(num[1]).replace(/"/g, '');
+                
+                // Direction flags (libavoid style: Right=1, Up=2, Left=4, Down=8)
+                let df = 0;
+                const deg = (Math.round(angDeg) + 360) % 360;
+                if (deg === 0) df = 1;       // Right (East)
+                else if (deg === 90) df = 2;  // Up (North)
+                else if (deg === 180) df = 4; // Left (West)
+                else if (deg === 270) df = 8; // Down (South)
+                
+                pinsVec.push_back({
+                    number: parseInt(key) || 0,
+                    name: key,
+                    x: ex - g.x, // Local coords within the component bbox
+                    y: ey - g.y,
+                    directionFlags: df
+                });
+            }
+
+            _wb.addComponent({
+                id: c.refDesignator,
+                width: g.w,
+                height: g.h,
+                padding: 10.16, // Increase padding for cleaner routing
+                pins: pinsVec
+            });
+            pinsVec.delete();
+        });
+
+        // 2. Register Nets
+        const netGroups = {};
+        (netlist || []).forEach(conn => {
+            const netName = conn.net || `n_${conn.source.replace(/:/g,'_')}_${conn.target.replace(/:/g,'_')}`;
+            if (!netGroups[netName]) netGroups[netName] = new Set();
+            netGroups[netName].add(conn.source);
+            netGroups[netName].add(conn.target);
+        });
+
+        for (const netName in netGroups) {
+            const pinsVec = new _WB.VectorPinRef();
+            netGroups[netName].forEach(pinKey => {
+                const [ref, num] = pinKey.split(':');
+                pinsVec.push_back({ componentId: ref, pinNumber: parseInt(num) || 0 });
+            });
+            _wb.addNet({ name: netName, pins: pinsVec });
+            pinsVec.delete();
+        }
+
+        // 3. Compute Auto-Placement
+        const cls = _wb.classify();
+        _wb.applyClassification(cls);
+        cls.delete();
+
+        const placementResult = _wb.computePlacements();
+        const placements = placementResult.toObject();
+        placementResult.delete();
+        
+        // 4. Compute Orthogonal Routing
+        const routeResult = _wb.routeAll();
+        
+        // 5. Apply results to Schematic
+        for (const id in placements) {
+            const p = placements[id];
+            const comp = currentSchematic.components.find(c => c.refDesignator === id);
+            if (comp) {
+                const g = comp.geomBBox;
+                // WireBender gives center-based positions. 
+                // We need to set comp.x/y such that symbol (0,0) is at the right spot.
+                comp.x = snapToGrid(p.position.x - (g.w / 2 + g.x));
+                comp.y = snapToGrid(p.position.y - (g.h / 2 + g.y));
+            }
+        }
+
+        // Apply wires
+        currentSchematic.wirePaths = [];
+        for (let i = 0; i < routeResult.wires.size(); i++) {
+            const wire = routeResult.wires.get(i);
+            const pts = [];
+            for (let j = 0; j < wire.points.size(); j++) {
+                const p = wire.points.get(j);
+                pts.push({ x: p.x, y: p.y });
+            }
+            if (pts.length >= 2) {
+                currentSchematic.wirePaths.push({
+                    source: wire.net,
+                    target: '',
+                    path: pts
+                });
+            }
+        }
+        
+        // Apply junctions
+        currentSchematic.junctionPoints = [];
+        for (let i = 0; i < routeResult.junctions.size(); i++) {
+            const j = routeResult.junctions.get(i);
+            currentSchematic.junctionPoints.push({ x: j.position.x, y: j.position.y, net: j.net });
+        }
+
+        // Power symbols
+        const worldPin = (key) => {
+            const [ref, num] = key.split(':');
+            const comp = currentSchematic.components.find(cc => cc.refDesignator === ref);
+            if (!comp) return null;
+            const g = comp.geomBBox;
+            for (const op of comp.ops) {
+                if (op[0] === 'pin' && String(_getAttr(op, 'number')[1]).replace(/"/g,'') === num) {
+                    const at = _getAttr(op, 'at');
+                    const len = _getAttr(op, 'length');
+                    const x = parseFloat(at[1]), y = parseFloat(at[2]);
+                    const ang = parseFloat(at[3] || 0) * Math.PI / 180;
+                    const l = parseFloat(len[1]);
+                    return { 
+                        x: comp.x + x + Math.cos(ang) * l, 
+                        y: comp.y + y + Math.sin(ang) * l,
+                        side: (Math.abs(Math.cos(ang)) > 0.8) ? (Math.cos(ang) > 0 ? 'EAST' : 'WEST') : (Math.sin(ang) > 0 ? 'SOUTH' : 'NORTH')
+                    };
+                }
+            }
+            return null;
+        };
+
+        const labels = [];
+        (powerPins || []).forEach(pp => {
+            const pos = worldPin(pp.pin);
+            if (!pos) return;
+            let dir = 'right';
+            if (pos.side) {
+                dir = { EAST: 'right', WEST: 'left', NORTH: 'up', SOUTH: 'down' }[pos.side];
+            }
+            labels.push({ pin: pp.pin, net: pp.net, x: pos.x, y: pos.y, dir });
+        });
+        currentSchematic.powerLabels = labels;
+        
+        try { routeResult.delete(); } catch(e) {}
+    }
 
     function _getAttr(node, name) {
         if (!Array.isArray(node)) return null;
@@ -157,189 +394,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (Array.isArray(node[i]) && node[i][0] === name) return node[i];
         }
         return null;
-    }
-
-    // Extract pin endpoints (local symbol coords, y-up) keyed by pin number.
-    // Also records which SIDE of the symbol body each pin is on, so we can
-    // give ELK fixed port sides (lets it flip components to face neighbours).
-    function extractPinEndpoints(ops, geom) {
-        const pins = {};
-        const cx = geom.x + geom.w / 2;
-        const cy = geom.y + geom.h / 2;
-        for (const op of ops) {
-            if (op[0] !== 'pin') continue;
-            const at = _getAttr(op, 'at');
-            const len = _getAttr(op, 'length');
-            const num = _getAttr(op, 'number');
-            if (!at || !len || !num) continue;
-            const x = parseFloat(at[1]), y = parseFloat(at[2]);
-            const ang = parseFloat(at[3] || 0) * Math.PI / 180;
-            const l = parseFloat(len[1]);
-            const ex = x + Math.cos(ang) * l;
-            const ey = y + Math.sin(ang) * l;
-            const key = String(num[1]).replace(/"/g, '');
-            if (pins[key]) continue;
-            // Side relative to body center (endpoint is outside the body)
-            const dx = ex - cx, dy = ey - cy;
-            let side;
-            if (Math.abs(dx) >= Math.abs(dy)) side = dx >= 0 ? 'EAST' : 'WEST';
-            else side = dy >= 0 ? 'NORTH' : 'SOUTH';
-            pins[key] = { x: ex, y: ey, side };
-        }
-        return pins;
-    }
-
-    async function runElkLayout(netlist, powerPins) {
-        const elk = new ELK();
-        const comps = currentSchematic.components;
-        const localPins = {}; // refDes -> {pinNum: {x, y, side}}
-
-        // Single global Y-flip reference so every component shares the SAME
-        // coordinate origin (fixes the perimeter "ghost wire" artifact).
-        const FLIP = 1000;
-
-        const children = comps.map(c => {
-            const g = c.geomBBox;
-            const pins = extractPinEndpoints(c.ops, g);
-            localPins[c.refDesignator] = pins;
-            // Port position in node-local space (ELK y-down, origin = node TL)
-            const ports = Object.entries(pins).map(([numKey, p]) => ({
-                id: `${c.refDesignator}:${numKey}`,
-                x: p.x - g.x,
-                y: g.h - (p.y - g.y),       // flip y-up -> y-down within node
-                width: 0.01,
-                height: 0.01,
-                layoutOptions: {
-                    'elk.port.side': p.side,
-                    // order ports along their side by the cross-axis position
-                    'elk.port.index': String(Math.round(
-                        (p.side === 'EAST' || p.side === 'WEST') ? -p.y : p.x)),
-                },
-            }));
-            return {
-                id: c.refDesignator,
-                width: g.w,
-                height: g.h,
-                // FIXED_SIDE keeps each pin on its real side but lets ELK
-                // mirror/rotate the node so connected pins face neighbours.
-                layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE' },
-                ports,
-            };
-        });
-
-        const validPorts = new Set();
-        children.forEach(n => n.ports.forEach(p => validPorts.add(p.id)));
-
-        const edges = [];
-        const connectedNodes = new Set();
-        (netlist || []).forEach((conn, i) => {
-            if (validPorts.has(conn.source) && validPorts.has(conn.target)) {
-                edges.push({ id: 'e' + i, sources: [conn.source], targets: [conn.target] });
-                connectedNodes.add(conn.source.split(':')[0]);
-                connectedNodes.add(conn.target.split(':')[0]);
-            }
-        });
-
-        const graph = {
-            id: 'root',
-            layoutOptions: {
-                'elk.algorithm': 'layered',
-                'elk.direction': 'RIGHT',
-                'elk.edgeRouting': 'ORTHOGONAL',
-                // Group connected sub-circuits tightly; keep islands separate.
-                'elk.separateConnectedComponents': 'true',
-                'elk.spacing.componentComponent': '20',
-                'elk.spacing.nodeNode': '10',
-                'elk.layered.spacing.nodeNodeBetweenLayers': '18',
-                'elk.spacing.edgeNode': '6',
-                'elk.spacing.edgeEdge': '4',
-                'elk.layered.spacing.edgeNodeBetweenLayers': '6',
-                // Place nodes to MINIMIZE total edge length -> pulls connected
-                // parts together and stops oscillator-on-the-wrong-side U-turns.
-                'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-                'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-                'elk.layered.cycleBreaking.strategy': 'DEPTH_FIRST',
-                // Compact the result so there is no dead whitespace.
-                'elk.layered.compaction.postCompaction.strategy': 'LEFT_RIGHT_CONNECTION_LOCKING',
-                'elk.layered.mergeEdges': 'true',
-            },
-            children,
-            edges,
-        };
-
-        const res = await elk.layout(graph);
-
-        // Apply node positions. ELK gives node TOP-LEFT in y-down space.
-        // Convert to canvas y-up using ONE shared flip origin.
-        const nodeById = {};
-        (res.children || []).forEach(n => { nodeById[n.id] = n; });
-        comps.forEach(c => {
-            const n = nodeById[c.refDesignator];
-            if (!n) return;
-            const g = c.geomBBox;
-            // node TL (n.x,n.y) corresponds to symbol-local (g.x, g.y+g.h)
-            c.x = snapToGrid(n.x - g.x);
-            c.y = snapToGrid(FLIP - (n.y + g.h) - g.y);
-        });
-
-        const worldPin = (key) => {
-            const sep = key.indexOf(':');
-            const ref = key.slice(0, sep), numKey = key.slice(sep + 1);
-            const c = comps.find(cc => cc.refDesignator === ref);
-            const p = (localPins[ref] || {})[numKey];
-            if (!c || !p) return null;
-            return { x: c.x + p.x, y: c.y + p.y };
-        };
-
-        // Build wire paths from ELK edge sections. ELK routes in y-down space
-        // with the SAME origin as nodes, so flip with the shared FLIP origin.
-        const wirePaths = [];
-        (res.edges || []).forEach(e => {
-            const sec = (e.sections || [])[0];
-            if (!sec) return;
-            let pts = [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint]
-                .map(p => ({ x: snapToGrid(p.x), y: snapToGrid(FLIP - p.y) }));
-
-            // Snap the two ends exactly onto the real pin endpoints
-            const srcPin = worldPin(e.sources[0]);
-            const tgtPin = worldPin(e.targets[0]);
-            if (srcPin) attachEndpoint(pts, srcPin, true);
-            if (tgtPin) attachEndpoint(pts, tgtPin, false);
-
-            wirePaths.push({ source: e.sources[0], target: e.targets[0], path: pts });
-        });
-        currentSchematic.wirePaths = wirePaths;
-
-        // Power symbols at power/GND pins (no routed wires for power nets)
-        const labels = [];
-        (powerPins || []).forEach(pp => {
-            const pos = worldPin(pp.pin);
-            if (!pos) return;
-            const ref = pp.pin.split(':')[0];
-            const c = comps.find(cc => cc.refDesignator === ref);
-            if (!c) return;
-            const p = (localPins[ref] || {})[pp.pin.slice(pp.pin.indexOf(':') + 1)];
-            // Use the pin's real side for the symbol direction
-            let dir = 'right';
-            if (p && p.side) {
-                dir = { EAST: 'right', WEST: 'left', NORTH: 'up', SOUTH: 'down' }[p.side];
-            }
-            labels.push({ pin: pp.pin, net: pp.net, x: pos.x, y: pos.y, dir });
-        });
-        currentSchematic.powerLabels = labels;
-    }
-
-    // Move a path endpoint exactly onto the pin while keeping orthogonality
-    function attachEndpoint(pts, pinPos, isStart) {
-        if (!pts.length) return;
-        const idx = isStart ? 0 : pts.length - 1;
-        const adjIdx = isStart ? 1 : pts.length - 2;
-        if (pts.length >= 2) {
-            const p = pts[idx], a = pts[adjIdx];
-            if (Math.abs(a.x - p.x) < 0.01) a.x = pinPos.x;       // vertical segment
-            else if (Math.abs(a.y - p.y) < 0.01) a.y = pinPos.y;  // horizontal segment
-        }
-        pts[idx] = { x: pinPos.x, y: pinPos.y };
     }
 
     // Send the ELK-computed geometry to the server so .kicad_sch export matches
@@ -420,8 +474,13 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedComponent = { id_str, textDesc, ops, category };
             currentPreviewOps = ops;
             if (currentSchematic) currentSchematic.mode = 'single';
+            setActiveTab('viewSymbolBtn');
             renderOps(ops);
-            componentInfo.textContent = `ID: ${id_str}\nDesc: ${textDesc || 'Inherited'}\n\nReady to add to schematic. (${ops.length} ops)`;
+            componentInfo.innerHTML = `<div class="prop-group">
+                <div class="prop-row"><span class="prop-key">ID</span><span class="prop-val">${id_str}</span></div>
+                <div class="prop-row"><span class="prop-key">Description</span><span class="prop-val">${textDesc || 'Inherited'}</span></div>
+                <div class="prop-row"><span class="prop-key">Ops</span><span class="prop-val">${ops.length}</span></div>
+            </div>`;
             updateAddButton();
         } catch (err) {
             componentInfo.textContent = `Error loading ${id_str}:\n${err.message}`;
@@ -441,7 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
         autoRouteBtn.disabled = !hasComponents;
         clearBtn.disabled = !hasComponents;
         viewSchematicBtn.disabled = !hasComponents;
-        compCount.textContent = `(${currentSchematic ? currentSchematic.components.length : 0})`;
+        compCount.textContent = (currentSchematic ? currentSchematic.components.length : 0);
     }
 
     function updateComponentListUI() {
@@ -475,12 +534,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const { id_str, textDesc, ops, category } = selectedComponent;
         if (!currentSchematic) currentSchematic = new Schematic();
         const comp = currentSchematic.addComponent(id_str, id_str.split(':').pop(), ops, category, textDesc);
-        componentInfo.textContent = `Added: ${comp.refDesignator} (${comp.name})\nColumn: ${COLUMN_DEFS[comp.column].label}\nPosition: (${comp.x.toFixed(2)}, ${comp.y.toFixed(2)})\n\nTotal components: ${currentSchematic.components.length}`;
+        setActiveTab('viewSchematicBtn');
+        enterSchematicMode();
         updateComponentListUI();
         updateSchematicButtons();
-        if (currentSchematic.components.length >= 2) {
-            enterSchematicMode();
-        }
     });
 
     // ── Auto Route ────────────────────────────────────────────────────────────
@@ -489,7 +546,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentSchematic || currentSchematic.components.length < 2) return;
         const pinMatrix = currentSchematic.resolveAbsolutePins();
         const prompt = routePrompt.value.trim();
-        componentInfo.textContent = 'Generating netlist...';
+        addLogEntry('Generating netlist via LLM...', 'log');
         try {
             const res = await fetch('/api/generate_netlist', {
                 method: 'POST',
@@ -498,18 +555,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const netlist = await res.json();
             if (!netlist || netlist.length === 0) {
-                componentInfo.textContent = 'No connections generated.';
+                addLogEntry('No connections generated.', 'error');
                 return;
             }
             currentSchematic.autoRoute(netlist);
             if (currentSchematic.mode === 'schematic') {
                 drawSchematic();
             } else {
+                setActiveTab('viewSchematicBtn');
                 enterSchematicMode();
             }
-            componentInfo.textContent = `Auto-routed ${netlist.length} connections.`;
+            addLogEntry(`Auto-routed ${netlist.length} connections.`, 'success');
         } catch (err) {
-            componentInfo.textContent = `Route error: ${err.message}`;
+            addLogEntry(`Route error: ${err.message}`, 'error');
         }
     });
 
@@ -519,16 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentSchematic || currentSchematic.components.length === 0) return;
         currentSchematic.autoLayout();
         if (currentSchematic.mode === 'schematic') enterSchematicMode();
-        componentInfo.textContent = `Auto-layout applied to ${currentSchematic.components.length} components.\nColumns: ${COLUMN_DEFS.map((c, i) => `${c.label}: ${currentSchematic.components.filter(comp => comp.column === i).length}`).join(', ')}`;
-    });
-
-    // ── View Schematic ───────────────────────────────────────────────────────
-
-    viewSchematicBtn.addEventListener('click', () => {
-        if (!currentSchematic || currentSchematic.components.length === 0) return;
-        enterSchematicMode();
-        modeIndicator.classList.remove('hidden');
-        componentInfo.textContent = `Schematic View: ${currentSchematic.components.length} components\nScroll to zoom, drag to pan.\n\nColumns:\n${COLUMN_DEFS.map((c, i) => `  ${c.label}: ${currentSchematic.components.filter(comp => comp.column === i).length} components`).join('\n')}`;
+        addLogEntry(`Auto-layout applied to ${currentSchematic.components.length} components.`, 'success');
     });
 
     // ── Clear All ─────────────────────────────────────────────────────────────
@@ -545,7 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSchematicButtons();
         const { canvas, ctx } = getCanvasAndCtx();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        componentInfo.textContent = 'Schematic cleared.';
+        componentInfo.innerHTML = '<div class="empty-state">Schematic cleared.</div>';
     });
 
     // ── AI Agent ──────────────────────────────────────────────────────────────
@@ -563,7 +612,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     agentPrompt.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') agentBtn.click();
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            agentBtn.click();
+        }
     });
     agentPrompt.addEventListener('input', updateAgentButton);
 
@@ -608,4 +660,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.appContext = { fetchSExpr };
+    connectSocket();
 });

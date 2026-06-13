@@ -71,8 +71,7 @@ function calculateOpsBBox(ops) {
 }
 
 // Tight bounding box of ONLY the symbol geometry + pins (no property/text
-// labels). This is what the layout engine should use for node size — text
-// labels must never inflate the collision box or you get massive whitespace.
+// labels). This is what the layout engine should use for node size.
 function calculateGeometryBBox(ops) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const update = (x, y) => {
@@ -109,31 +108,10 @@ function calculateGeometryBBox(ops) {
                 update(x, y); update(x + Math.cos(a) * l, y + Math.sin(a) * l);
             }
         }
-        // NOTE: property/text intentionally excluded.
     });
     if (minX === Infinity) return { x: -2.54, y: -2.54, w: 5.08, h: 5.08 };
     const PAD = 1.27;
     const bbox = { x: minX - PAD, y: minY - PAD, w: maxX - minX + PAD * 2, h: maxY - minY + PAD * 2 };
-
-    // Pin-density minimum: reserve one label row per pin on each side so
-    // dense ICs always get enough room — generic, any pin count, no tuning.
-    const LABEL_PITCH = 1.8;
-    const side = { 0: 0, 90: 0, 180: 0, 270: 0 };
-    ops.forEach(op => {
-        if (op[0] !== 'pin') return;
-        const at = getAttr(op, 'at');
-        if (!at) return;
-        let ang = parseFloat(at[3] || 0) % 360;
-        if (ang < 0) ang += 360;
-        const bucket = [0, 90, 180, 270].reduce((b, a) =>
-            Math.min(Math.abs(ang - a), 360 - Math.abs(ang - a)) <
-            Math.min(Math.abs(ang - b), 360 - Math.abs(ang - b)) ? a : b, 0);
-        side[bucket]++;
-    });
-    const minH = Math.max(side[0], side[180], 1) * LABEL_PITCH;
-    const minW = Math.max(side[90], side[270], 1) * LABEL_PITCH;
-    if (bbox.h < minH) { bbox.y -= (minH - bbox.h) / 2; bbox.h = minH; }
-    if (bbox.w < minW) { bbox.x -= (minW - bbox.w) / 2; bbox.w = minW; }
     return bbox;
 }
 
@@ -387,18 +365,20 @@ class Schematic {
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         this.components.forEach(comp => {
-            minX = Math.min(minX, comp.x);
-            minY = Math.min(minY, comp.y);
-            maxX = Math.max(maxX, comp.x + comp.width + BBOX_PAD * 2);
-            maxY = Math.max(maxY, comp.y + comp.height + BBOX_PAD * 2);
+            const g = comp.geomBBox;
+            // Use actual rendered bounds (symbol origin + geom offset)
+            minX = Math.min(minX, comp.x + g.x);
+            minY = Math.min(minY, comp.y + g.y);
+            maxX = Math.max(maxX, comp.x + g.x + g.w);
+            maxY = Math.max(maxY, comp.y + g.y + g.h);
         });
 
-        const margin = 10;
+        const margin = 20; // 20mm margin
         minX -= margin; minY -= margin; maxX += margin; maxY += margin;
         const w = maxX - minX;
         const h = maxY - minY;
 
-        const scale = Math.min(canvasW / w, canvasH / h) * 0.85;
+        const scale = Math.min(canvasW / w, canvasH / h) * 0.9;
         const cx = canvasW / 2;
         const cy = canvasH / 2;
         const midX = (minX + maxX) / 2;
@@ -432,8 +412,8 @@ class Schematic {
         ctx.translate(-t.midX, -t.midY);
 
         // Minor grid dots
-        ctx.fillStyle = 'rgba(100, 160, 200, 0.2)';
-        const dotRadius = 0.08;
+        ctx.fillStyle = 'rgba(100, 160, 200, 0.15)';
+        const dotRadius = 0.06;
         for (let x = startGridX; x <= endGridX; x += gridMm) {
             for (let y = startGridY; y <= endGridY; y += gridMm) {
                 ctx.beginPath();
@@ -449,55 +429,19 @@ class Schematic {
         const majorStartY = Math.floor(visTop / majorGrid) * majorGrid;
         const majorEndY = Math.ceil(visBottom / majorGrid) * majorGrid;
 
-        ctx.strokeStyle = 'rgba(100, 160, 200, 0.1)';
-        ctx.lineWidth = 0.05;
+        ctx.strokeStyle = 'rgba(100, 160, 200, 0.08)';
+        ctx.lineWidth = 0.04;
         for (let x = majorStartX; x <= majorEndX; x += majorGrid) {
             ctx.beginPath();
-            ctx.moveTo(x, visTop - 10);
-            ctx.lineTo(x, visBottom + 10);
+            ctx.moveTo(x, visTop - 100);
+            ctx.lineTo(x, visBottom + 100);
             ctx.stroke();
         }
         for (let y = majorStartY; y <= majorEndY; y += majorGrid) {
             ctx.beginPath();
-            ctx.moveTo(visLeft - 10, y);
-            ctx.lineTo(visRight + 10, y);
+            ctx.moveTo(visLeft - 100, y);
+            ctx.lineTo(visRight + 100, y);
             ctx.stroke();
-        }
-
-        // Draw column zone backgrounds
-        const columns = [[], [], [], []];
-        // We need to know column positions, which are set by autoLayout
-        // Use the component positions to determine column zones
-        if (typeof currentSchematic !== 'undefined' && currentSchematic.components.length > 0) {
-            const colXPositions = new Map();
-            currentSchematic.components.forEach(comp => {
-                if (!colXPositions.has(comp.column)) colXPositions.set(comp.column, []);
-                colXPositions.get(comp.column).push(comp.x);
-            });
-
-            const colColors = ['rgba(80, 200, 80, 0.04)', 'rgba(200, 200, 80, 0.04)', 'rgba(80, 140, 240, 0.04)', 'rgba(220, 100, 80, 0.04)'];
-            const colLabels = ['Power & Inputs', 'Power Management', 'Core Processing', 'Peripherals'];
-
-            colXPositions.forEach((xPositions, colIdx) => {
-                if (xPositions.length === 0) return;
-                const colMinX = Math.min(...xPositions) - BBOX_PAD * 2;
-                const colMaxX = Math.max(...xPositions) + currentSchematic.components.find(c => c.column === colIdx).width + BBOX_PAD * 4;
-                const zoneW = colMaxX - colMinX;
-
-                ctx.fillStyle = colColors[colIdx] || colColors[3];
-                ctx.fillRect(colMinX - 2, visTop - 10, zoneW + 4, visBottom - visTop + 20);
-
-                // Column label at top
-                ctx.save();
-                ctx.translate(colMinX + zoneW / 2, visTop + 3);
-                ctx.scale(1, -1);
-                ctx.fillStyle = 'rgba(180, 200, 220, 0.25)';
-                ctx.font = `${1.8}px "Segoe UI", Arial, sans-serif`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'top';
-                ctx.fillText(colLabels[colIdx] || '', 0, 0);
-                ctx.restore();
-            });
         }
 
         ctx.restore();

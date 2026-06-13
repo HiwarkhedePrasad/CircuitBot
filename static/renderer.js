@@ -334,7 +334,7 @@ function resolveLabelCollisions(ops, ctx) {
             const txt = type === 'property' ? op[2] : op[1];
             if (!txt || txt === '"~"') return;
             const size = fontSizeOf(op);
-            ctx.font = `${size}px "Segoe UI", Arial, sans-serif`;
+            ctx.font = `${size}px "JetBrains Mono", "Fira Code", monospace`;
             const w = ctx.measureText(txt).width;
             labels.push({
                 op, x: parseFloat(at[1]), y: parseFloat(at[2]),
@@ -350,7 +350,7 @@ function resolveLabelCollisions(ops, ctx) {
             const len = parseFloat(lenNode[1]);
             const angDeg = parseFloat(at[3] || 0);
             const size = fontSizeOf(getAttr(op, 'name') || op);
-            ctx.font = `${size}px "Segoe UI", Arial, sans-serif`;
+            ctx.font = `${size}px "JetBrains Mono", "Fira Code", monospace`;
             const w = ctx.measureText(numNode[1]).width;
             let numx, numy, axis;
             if (angDeg === 0) { numx = x + len / 2; numy = y + 0.3 + size * 0.7; axis = 'y'; }
@@ -547,7 +547,7 @@ function drawSymbol() {
                 
                 ctx.save();
                 const size = getFontSize(nameNode || op);
-                ctx.font = `${size}px "Segoe UI", Arial, sans-serif`;
+                ctx.font = `${size}px "JetBrains Mono", "Fira Code", monospace`;
                 
                 if (nameNode && nameNode[1] !== '"~"') {
                     ctx.fillStyle = COLORS.pinName;
@@ -644,7 +644,7 @@ function drawSymbol() {
                     if (type === 'text') ctx.fillStyle = COLORS.text;
                     
                     const size = getFontSize(op);
-                    ctx.font = `${size}px "Segoe UI", Arial, sans-serif`;
+                    ctx.font = `${size}px "JetBrains Mono", "Fira Code", monospace`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     
@@ -789,7 +789,7 @@ function renderComponentAt(ctx, ops, offsetX, offsetY, globalOpState) {
                 if (sizeNode) { const font = getAttr(sizeNode, 'font'); if (font) { const s = getAttr(font, 'size'); if (s) fontSize = parseFloat(s[2]); } }
 
                 ctx.save();
-                ctx.font = `${fontSize}px "Segoe UI", Arial, sans-serif`;
+                ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
 
                 if (nameNode && nameNode[1] !== '"~"') {
                     ctx.fillStyle = COLORS.pinName;
@@ -843,7 +843,7 @@ function renderComponentAt(ctx, ops, offsetX, offsetY, globalOpState) {
                     let fontSize = 1.27;
                     const effects = getAttr(op, 'effects');
                     if (effects) { const font = getAttr(effects, 'font'); if (font) { const s = getAttr(font, 'size'); if (s) fontSize = parseFloat(s[2]); } }
-                    ctx.font = `${fontSize}px "Segoe UI", Arial, sans-serif`;
+                    ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(txt, 0, 0);
@@ -898,6 +898,16 @@ function drawSchematic() {
                 ctx.lineTo(wire.path[i].x, wire.path[i].y);
             }
             ctx.stroke();
+        });
+    }
+
+    // Render junctions (WireBender dots)
+    if (currentSchematic.junctionPoints) {
+        ctx.fillStyle = '#00A800';
+        currentSchematic.junctionPoints.forEach(j => {
+            ctx.beginPath();
+            ctx.arc(j.x, j.y, 0.5, 0, Math.PI * 2);
+            ctx.fill();
         });
     }
 
