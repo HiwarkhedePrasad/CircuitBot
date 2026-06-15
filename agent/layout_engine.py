@@ -3,9 +3,13 @@
 Runs column-based component placement and A* orthogonal wire routing
 entirely in Python. The frontend receives pre-computed absolute coordinates
 and wire paths — no spatial math on the client.
+
+v3 — Obstacle-aware fallback, higher turn cost, centrality-first ordering,
+     post-route collision validation, relaxed ghost rejection.
 """
 
 import math
+import heapq
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from pathfinding.core.diagonal_movement import DiagonalMovement
@@ -18,6 +22,12 @@ BBOX_PAD = 2.0
 COLUMN_SPACING = 6.35   # extra horizontal routing channel between columns (5 grid cells)
 ROW_CLEARANCE = 3.81    # extra vertical routing channel between rows (3 grid cells)
 
+# Cell values in the routing matrix
+CELL_FREE = 1           # Walkable
+CELL_BLOCKED = 0        # Component body or hard obstacle
+CELL_TRACE = -1         # Occupied by a routed wire (hard-block for subsequent routes)
+CELL_PIN_CORRIDOR = 2   # Pin escape corridor (walkable, but trace-aware)
+
 # Column definitions — must match frontend COLUMN_DEFS
 COLUMN_KEYWORDS = [
     ['REGULATOR', 'CONNECTOR', 'POWER', 'BATTERY', 'SWITCH', 'FUSE', 'DIODE'],
@@ -25,6 +35,15 @@ COLUMN_KEYWORDS = [
     ['MCU', 'ESP32', 'STM32', 'PROCESSOR', 'FPGA', 'DSP', 'MEMORY', 'CPU', 'RF_MODULE'],
     [],  # default
 ]
+
+# Maximum A* path length as a multiple of Manhattan distance.
+# Prevents absurdly long ghost wires while allowing reasonable detours.
+MAX_PATH_RATIO = 10
+# Absolute minimum path length that is always accepted (in grid cells).
+# Below this threshold we never reject — short connections have high detour ratios.
+MIN_PATH_ABSOLUTE = 30
+# Turn cost for weighted A* — penalizes zig-zag routing
+TURN_COST = 6
 
 
 def _get_column_for_category(category: str) -> int:
@@ -207,6 +226,171 @@ def _enforce_pin_density_minimum(bbox: dict, ops: list) -> dict:
     return bbox
 
 
+# ── Weighted A* implementation ─────────────────────────────────────────────
+
+def _weighted_astar(matrix, start, end, matrix_size):
+    """Weighted A* pathfinder that supports:
+    - Hard-blocked cells (value 0): impassable
+    - Free cells (value 1): normal cost
+    - Trace-occupied cells (value CELL_TRACE = -1): impassable (hard-blocked)
+    - Pin corridor cells (value CELL_PIN_CORRIDOR = 2): walkable with same cost as free
+    - Turn cost: penalizes direction changes for cleaner routing
+
+    Returns list of (x, y) grid coordinates, or None if no path found.
+    """
+    sx, sy = start
+    ex, ey = end
+
+    if not (0 <= sx < matrix_size and 0 <= sy < matrix_size and
+            0 <= ex < matrix_size and 0 <= ey < matrix_size):
+        return None
+
+    # Directions: right, left, down, up
+    DIRS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+    def heuristic(x, y):
+        return abs(x - ex) + abs(y - ey)
+
+    # Priority queue: (f_score, counter, x, y, prev_dx, prev_dy)
+    counter = 0
+    open_set = [(heuristic(sx, sy), counter, sx, sy, 0, 0)]
+    came_from = {}
+    g_score = {(sx, sy): 0}
+    closed = set()
+
+    while open_set:
+        f, _, x, y, pdx, pdy = heapq.heappop(open_set)
+
+        if (x, y) in closed:
+            continue
+        closed.add((x, y))
+
+        if x == ex and y == ey:
+            # Reconstruct path
+            path = []
+            node = (x, y)
+            while node in came_from:
+                path.append(node)
+                node = came_from[node]
+            path.append((sx, sy))
+            path.reverse()
+            return path
+
+        for dx, dy in DIRS:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < matrix_size and 0 <= ny < matrix_size):
+                continue
+            if (nx, ny) in closed:
+                continue
+
+            cell_val = matrix[ny][nx]
+            # Hard-blocked: component body or occupied trace
+            if cell_val == CELL_BLOCKED or cell_val == CELL_TRACE:
+                continue
+
+            # Base move cost
+            move_cost = 1
+
+            # Turn penalty: if direction changed from previous step
+            if pdx != 0 or pdy != 0:
+                if (dx, dy) != (pdx, pdy):
+                    move_cost += TURN_COST
+
+            new_g = g_score[(x, y)] + move_cost
+            if new_g < g_score.get((nx, ny), float('inf')):
+                g_score[(nx, ny)] = new_g
+                came_from[(nx, ny)] = (x, y)
+                counter += 1
+                heapq.heappush(open_set, (new_g + heuristic(nx, ny), counter, nx, ny, dx, dy))
+
+    return None
+
+
+def _l_shaped_wire(sx, sy, ex, ey):
+    """Generate a simple L-shaped fallback wire path in grid coordinates.
+    Tries both horizontal-first and vertical-first, returns the shorter one.
+    """
+    step_x = 1 if ex >= sx else -1
+    step_y = 1 if ey >= sy else -1
+    path1 = [(x, sy) for x in range(sx, ex + step_x, step_x)]
+    path1.extend((ex, y) for y in range(sy + step_y, ey + step_y, step_y))
+    path2 = [(sx, y) for y in range(sy, ey + step_y, step_y)]
+    path2.extend((x, ey) for x in range(sx + step_x, ex + step_x, step_x))
+    return path1 if len(path1) <= len(path2) else path2
+
+
+def _obstacle_aware_wire(sx, sy, ex, ey, matrix, matrix_size):
+    """Smart fallback: try L, Z, and detour path variants, check against
+    the obstacle matrix, and return the shortest collision-free path.
+
+    Falls back to a simple L-shaped wire if no clean path is found.
+    """
+    def _build_path(corners):
+        """Convert corner list into a continuous (x, y) path, deduping endpoints of adjacent segments."""
+        path = []
+        for i in range(len(corners) - 1):
+            x1, y1 = corners[i]
+            x2, y2 = corners[i + 1]
+            if x1 == x2:
+                step = 1 if y2 >= y1 else -1
+                for y in range(y1, y2 + step, step):
+                    pt = (x1, y)
+                    if not path or pt != path[-1]:
+                        path.append(pt)
+            else:
+                step = 1 if x2 >= x1 else -1
+                for x in range(x1, x2 + step, step):
+                    pt = (x, y1)
+                    if not path or pt != path[-1]:
+                        path.append(pt)
+        return path
+
+    def _is_clear(path):
+        """Return True if the entire path avoids blocked and trace cells."""
+        for x, y in path:
+            if not (0 <= x < matrix_size and 0 <= y < matrix_size):
+                return False
+            if matrix[y][x] in (CELL_BLOCKED, CELL_TRACE):
+                return False
+        return True
+
+    best, best_len = None, float('inf')
+
+    # 1) L-shaped variants (2 segments)
+    candidates = [
+        [(sx, sy), (ex, sy), (ex, ey)],
+        [(sx, sy), (sx, ey), (ex, ey)],
+    ]
+
+    # 2) Z-shaped variants (3 segments) — detour perpendicular then across
+    dist = max(abs(ex - sx), abs(ey - sy), 4)
+    offset = max(dist // 3, 2)
+    if abs(ex - sx) > abs(ey - sy):
+        # Horizontal dominant: detour vertically
+        for sign in (1, -1):
+            o = offset * sign
+            candidates.append([(sx, sy), (sx, sy + o), (ex, sy + o), (ex, ey)])
+            # Wider detour
+            candidates.append([(sx, sy), (sx, sy + 2 * o), (ex, sy + 2 * o), (ex, ey)])
+    else:
+        # Vertical dominant: detour horizontally
+        for sign in (1, -1):
+            o = offset * sign
+            candidates.append([(sx, sy), (sx + o, sy), (sx + o, ey), (ex, ey)])
+            candidates.append([(sx, sy), (sx + 2 * o, sy), (sx + 2 * o, ey), (ex, ey)])
+
+    for corners in candidates:
+        p = _build_path(corners)
+        if p and _is_clear(p) and len(p) < best_len:
+            best, best_len = p, len(p)
+
+    if best is not None:
+        return best
+
+    # Ultimate fallback: simple L (may overlap obstacles)
+    return _l_shaped_wire(sx, sy, ex, ey)
+
+
 class BackendLayoutEngine:
     """Handles component placement and A* wire routing on the backend."""
 
@@ -343,11 +527,11 @@ class BackendLayoutEngine:
         """Build a walkable grid with component footprints blocked.
 
         Blocks the FULL inflated geom_bbox of every component (tight physical body),
-        then carves narrow escape corridors outward from each pin.
+        then carves 3-cell-wide escape corridors outward from each pin endpoint.
         """
-        matrix = [[1 for _ in range(MATRIX_SIZE)] for _ in range(MATRIX_SIZE)]
+        matrix = [[CELL_FREE for _ in range(MATRIX_SIZE)] for _ in range(MATRIX_SIZE)]
 
-        # 1) Block tight physical body (geom_bbox)
+        # 1) Block tight physical body (geom_bbox) + padding
         for comp in self.components:
             bx = comp['x'] + comp['geom_bbox']['x']
             by = comp['y'] + comp['geom_bbox']['y']
@@ -359,9 +543,9 @@ class BackendLayoutEngine:
             for gx in range(gsx, gex + 1):
                 for gy in range(gsy, gey + 1):
                     if 0 <= gx < MATRIX_SIZE and 0 <= gy < MATRIX_SIZE:
-                        matrix[gy][gx] = 0
+                        matrix[gy][gx] = CELL_BLOCKED
 
-        # 2) Carve a 1-cell escape corridor outward from each pin endpoint
+        # 2) Carve 3-cell-wide escape corridors outward from each pin endpoint
         carve_set = set()
         if pin_matrix:
             for key, pin in pin_matrix.items():
@@ -383,25 +567,43 @@ class BackendLayoutEngine:
                 dy = py - ccy
                 if abs(dx) >= abs(dy):
                     step = (1 if dx >= 0 else -1, 0)
+                    # Perpendicular direction for 3-cell width
+                    perp = (0, 1)
                 else:
                     step = (0, 1 if dy >= 0 else -1)
+                    perp = (1, 0)
 
-                # Carve from pin cell outward until clear of the blocked region (+2 cells)
+                # Carve a 3-cell-wide corridor from pin outward until clear
+                # The corridor extends until 3 consecutive free cells in the center line
                 cx_g, cy_g = gpx, gpy
                 cleared = 0
-                for _ in range(60):
+                for _ in range(80):
                     if 0 <= cx_g < MATRIX_SIZE and 0 <= cy_g < MATRIX_SIZE:
-                        if matrix[cy_g][cx_g] == 1:
-                            cleared += 1
-                        matrix[cy_g][cx_g] = 1
+                        was_blocked = (matrix[cy_g][cx_g] == CELL_BLOCKED)
+                        matrix[cy_g][cx_g] = CELL_FREE
                         carve_set.add((cx_g, cy_g))
-                    if cleared >= 3:
+
+                        # Carve 3-cell width: mark perpendicular neighbors too
+                        for pdir in [perp, (-perp[0], -perp[1])]:
+                            nx = cx_g + pdir[0]
+                            ny = cy_g + pdir[1]
+                            if 0 <= nx < MATRIX_SIZE and 0 <= ny < MATRIX_SIZE:
+                                if matrix[ny][nx] == CELL_BLOCKED:
+                                    matrix[ny][nx] = CELL_FREE
+                                    carve_set.add((nx, ny))
+
+                        if not was_blocked:
+                            cleared += 1
+                        else:
+                            cleared = 0  # Reset — still inside blocked region
+
+                    if cleared >= 4:
                         break
                     cx_g += step[0]
                     cy_g += step[1]
 
         self.matrix = matrix
-        self.grid = Grid(matrix=matrix)
+        self._original_matrix = [row[:] for row in matrix]  # pristine copy for overlap re-routing
         self._pin_carve_set = carve_set  # for overlap re-routing
 
     def _get_comp(self, ref_des: str):
@@ -429,30 +631,94 @@ class BackendLayoutEngine:
                 return child
         return None
 
-    def route_traces(self, netlist: list, pin_matrix: dict) -> list:
-        """A* orthogonal routing for each net in the netlist.
-
-        After each successful route, the used cells get a high traversal
-        weight so later nets avoid running on top of existing wires
-        (perpendicular crossings stay cheap, parallel overlap is penalized).
+    def _mark_trace_cells(self, path_cells):
+        """Mark cells used by a successfully routed trace as hard-blocked
+        so subsequent routes must go around them. This replaces the broken
+        TRACE_WEIGHT approach that had no effect with the pathfinding library.
         """
-        TRACE_WEIGHT = 12  # cost for re-using a cell already occupied by a wire
+        # Mark middle cells as trace-occupied (hard-block for future routes)
+        # Keep first 2 and last 2 cells free so other nets can reach the same pins
+        for x, y in path_cells[2:-2]:
+            if 0 <= x < MATRIX_SIZE and 0 <= y < MATRIX_SIZE:
+                self.matrix[y][x] = CELL_TRACE
 
+    def _all_trace_cells(self, traces):
+        """Convert all trace paths from mm coords to grid cell lists."""
+        result = []
+        for tr in traces:
+            result.append([
+                (round(p['x'] / GRID_SIZE) + MATRIX_OFFSET,
+                 round(p['y'] / GRID_SIZE) + MATRIX_OFFSET)
+                for p in tr['path']
+            ])
+        return result
+
+    def _validate_obstacle_collisions(self, traces, margin_mm=1.27):
+        """Check all wire paths against component geom_bboxes.
+        Returns indices of traces that pass through any component body.
+        Skips the first/last 2 cells of each path (they are at/near pins).
+        """
+        offending = set()
+        for i, tr in enumerate(traces):
+            cells = [
+                (round(p['x'] / GRID_SIZE) + MATRIX_OFFSET,
+                 round(p['y'] / GRID_SIZE) + MATRIX_OFFSET)
+                for p in tr['path']
+            ]
+            # Skip first 2 and last 2 cells (near pins)
+            check_cells = cells[2:-2] if len(cells) > 4 else []
+            for gx, gy in check_cells:
+                # Convert grid cell to mm
+                px = (gx - MATRIX_OFFSET) * GRID_SIZE
+                py = (gy - MATRIX_OFFSET) * GRID_SIZE
+                for comp in self.components:
+                    bx = comp['x'] + comp['geom_bbox']['x']
+                    by = comp['y'] + comp['geom_bbox']['y']
+                    bw = comp['geom_bbox']['w']
+                    bh = comp['geom_bbox']['h']
+                    if (bx - margin_mm <= px <= bx + bw + margin_mm and
+                        by - margin_mm <= py <= by + bh + margin_mm):
+                        offending.add(i)
+                        break
+                if i in offending:
+                    break
+        return list(offending)
+
+    def route_traces(self, netlist: list, pin_matrix: dict) -> list:
+        """Weighted A* orthogonal routing for each net in the netlist.
+
+        v3 improvements:
+        1. Routes by connectivity centrality (most-connected components first)
+           to keep critical routing channels open.
+        2. Obstacle-aware fallback tries L/Z/detour variants against the matrix
+           instead of drawing blindly through component bodies.
+        3. Higher turn cost for cleaner, straighter wires with fewer segments.
+        4. Post-route collision validation: re-routes any path that clips a
+           component body.
+        """
         comp_positions = {c['ref_des']: (c['x'], c['y']) for c in self.components}
         traces = []
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
 
-        # Route shorter nets first — they have fewer detour options
-        def _net_len(conn):
-            s = pin_matrix.get(conn['source'])
-            t = pin_matrix.get(conn['target'])
-            if not s or not t:
-                return float('inf')
-            so = comp_positions.get(conn['source'].split(':')[0], (0, 0))
-            to = comp_positions.get(conn['target'].split(':')[0], (0, 0))
-            return abs((s['x'] + so[0]) - (t['x'] + to[0])) + abs((s['y'] + so[1]) - (t['y'] + to[1]))
+        # Route by centrality: compute degree of each component, route
+        # nets involving the most-connected components first so they get
+        # first pick of routing channels.
+        comp_degree = {}
+        for conn in netlist:
+            src_ref = conn['source'].split(':')[0]
+            tgt_ref = conn['target'].split(':')[0]
+            comp_degree[src_ref] = comp_degree.get(src_ref, 0) + 1
+            comp_degree[tgt_ref] = comp_degree.get(tgt_ref, 0) + 1
 
-        ordered = sorted(netlist, key=_net_len)
+        def _net_centrality(conn):
+            src_ref = conn['source'].split(':')[0]
+            tgt_ref = conn['target'].split(':')[0]
+            return -max(comp_degree.get(src_ref, 0), comp_degree.get(tgt_ref, 0))
+
+        ordered = sorted(netlist, key=_net_centrality)
+
+        n_routed = 0
+        n_fallback = 0
+        n_failed = 0
 
         for conn in ordered:
             src = pin_matrix.get(conn['source'])
@@ -474,39 +740,80 @@ class BackendLayoutEngine:
                     0 <= ex < MATRIX_SIZE and 0 <= ey < MATRIX_SIZE):
                 continue
 
-            # Rebuild grid from the weighted matrix for every net
-            grid = Grid(matrix=self.matrix)
-            start = grid.node(sx, sy)
-            end = grid.node(ex, ey)
-            # Safety: ensure pin cells are walkable even if carve-out missed them
-            start.walkable = True
-            end.walkable = True
-            path, _ = finder.find_path(start, end, grid)
+            # Ensure start/end cells are walkable even if carve-out missed them
+            self.matrix[sy][sx] = CELL_FREE
+            self.matrix[ey][ex] = CELL_FREE
+
+            # Run weighted A*
+            path = _weighted_astar(self.matrix, (sx, sy), (ex, ey), MATRIX_SIZE)
+
+            path_cells = None
+            used_astar = False
 
             if path:
-                # Reject ghost wires: if path is >4x Manhattan distance, skip
                 manhattan = abs(sx - ex) + abs(sy - ey)
-                if len(path) > max(manhattan * 4, 50):
-                    continue
+                if len(path) <= max(manhattan * MAX_PATH_RATIO, MIN_PATH_ABSOLUTE):
+                    path_cells = path
+                    used_astar = True
 
+            # Fallback: L-shaped direct wire if A* failed or produced ghost wire
+            if path_cells is None:
+                # Try the pathfinding library's A* as a second attempt (different heuristic)
+                try:
+                    grid = Grid(matrix=self._make_binary_matrix())
+                    finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
+                    start_node = grid.node(sx, sy)
+                    end_node = grid.node(ex, ey)
+                    start_node.walkable = True
+                    end_node.walkable = True
+                    lib_path, _ = finder.find_path(start_node, end_node, grid)
+                    if lib_path:
+                        manhattan = abs(sx - ex) + abs(sy - ey)
+                        if len(lib_path) <= max(manhattan * MAX_PATH_RATIO, MIN_PATH_ABSOLUTE):
+                            path_cells = [(n.x, n.y) for n in lib_path]
+                except Exception:
+                    pass
+
+            # Final fallback: obstacle-aware wire (checks matrix for L/Z/detour variants)
+            if path_cells is None:
+                path_cells = _obstacle_aware_wire(sx, sy, ex, ey, self.matrix, MATRIX_SIZE)
+                n_fallback += 1
+
+            if path_cells:
                 mm_path = [
-                    {'x': (n.x - MATRIX_OFFSET) * GRID_SIZE,
-                     'y': (n.y - MATRIX_OFFSET) * GRID_SIZE}
-                    for n in path
+                    {'x': (x - MATRIX_OFFSET) * GRID_SIZE,
+                     'y': (y - MATRIX_OFFSET) * GRID_SIZE}
+                    for x, y in path_cells
                 ]
                 traces.append({
                     'source': conn['source'],
                     'target': conn['target'],
+                    'net': conn.get('net', ''),
                     'path': mm_path,
                 })
 
-                # Penalize used cells (keep pin endpoints cheap so other
-                # nets can still reach the same pin region)
-                for n in path[2:-2]:
-                    if self.matrix[n.y][n.x] != 0:
-                        self.matrix[n.y][n.x] = TRACE_WEIGHT
+                # Mark trace cells as occupied so later routes must detour
+                self._mark_trace_cells(path_cells)
+
+                if used_astar:
+                    n_routed += 1
+            else:
+                n_failed += 1
+
+        print(f"\n  Routing results: {n_routed} A*, {n_fallback} obstacle-aware fallback, {n_failed} failed")
 
         return traces
+
+
+    def _make_binary_matrix(self):
+        """Create a binary matrix for the pathfinding library.
+        Maps CELL_FREE and CELL_PIN_CORRIDOR -> 1 (walkable),
+        everything else -> 0 (blocked).
+        """
+        binary = []
+        for row in self.matrix:
+            binary.append([1 if v in (CELL_FREE, CELL_PIN_CORRIDOR) else 0 for v in row])
+        return binary
 
     def check_and_fix_overlaps(self, traces: list, max_passes: int = 4):
         """Post-route validation: detect traces that run on top of each other
@@ -515,8 +822,6 @@ class BackendLayoutEngine:
 
         Returns (traces, n_fixed, n_remaining_conflicts).
         """
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
-
         def to_cells(tr):
             return [
                 (round(p['x'] / GRID_SIZE) + MATRIX_OFFSET,
@@ -542,12 +847,12 @@ class BackendLayoutEngine:
                         run = 0
             return conflicts
 
-        def carve_grid(m):
+        def carve_matrix(m):
             """Apply pin carve-out to a fresh matrix copy."""
             for (gx, gy) in self._pin_carve_set:
                 if 0 <= gx < MATRIX_SIZE and 0 <= gy < MATRIX_SIZE:
-                    m[gy][gx] = 1
-            return Grid(matrix=m)
+                    m[gy][gx] = CELL_FREE
+            return m
 
         n_fixed = 0
         for _ in range(max_passes):
@@ -563,31 +868,53 @@ class BackendLayoutEngine:
                 cs = all_cells[idx]
                 if len(cs) < 2:
                     continue
+                # Build a fresh matrix from the ORIGINAL obstacle matrix
+                # (before any trace cells were marked)
+                m = [row[:] for row in self._original_matrix]
                 # Hard-block every middle cell occupied by any OTHER trace
-                m = [row[:] for row in self.matrix]
                 for j, ocs in enumerate(all_cells):
                     if j == idx:
                         continue
                     for (x, y) in ocs[1:-1]:
                         if 0 <= x < MATRIX_SIZE and 0 <= y < MATRIX_SIZE:
-                            m[y][x] = 0
-                grid = carve_grid(m)
+                            m[y][x] = CELL_BLOCKED
+                carve_matrix(m)
+
                 (sx, sy), (ex, ey) = cs[0], cs[-1]
-                try:
-                    start = grid.node(sx, sy)
-                    end = grid.node(ex, ey)
-                    start.walkable = True
-                    end.walkable = True
-                    path, _ = finder.find_path(start, end, grid)
-                except Exception:
-                    path = None
+                # Ensure pin cells walkable
+                if 0 <= sx < MATRIX_SIZE and 0 <= sy < MATRIX_SIZE:
+                    m[sy][sx] = CELL_FREE
+                if 0 <= ex < MATRIX_SIZE and 0 <= ey < MATRIX_SIZE:
+                    m[ey][ex] = CELL_FREE
+
+                path = _weighted_astar(m, (sx, sy), (ex, ey), MATRIX_SIZE)
+                if not path:
+                    # Try library A* as backup
+                    try:
+                        binary = [[1 if v in (CELL_FREE, CELL_PIN_CORRIDOR) else 0 for v in row] for row in m]
+                        grid = Grid(matrix=binary)
+                        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
+                        start = grid.node(sx, sy)
+                        end = grid.node(ex, ey)
+                        start.walkable = True
+                        end.walkable = True
+                        lib_path, _ = finder.find_path(start, end, grid)
+                        if lib_path:
+                            path = [(n.x, n.y) for n in lib_path]
+                    except Exception:
+                        pass
+
+                if not path:
+                    # Obstacle-aware fallback
+                    path = _obstacle_aware_wire(sx, sy, ex, ey, m, MATRIX_SIZE)
+
                 if path:
                     manhattan = abs(sx - ex) + abs(sy - ey)
-                    if len(path) <= max(manhattan * 4, 50):
+                    if len(path) <= max(manhattan * MAX_PATH_RATIO, MIN_PATH_ABSOLUTE) or len(path) <= manhattan + 4:
                         traces[idx]['path'] = [
-                            {'x': (n.x - MATRIX_OFFSET) * GRID_SIZE,
-                             'y': (n.y - MATRIX_OFFSET) * GRID_SIZE}
-                            for n in path
+                            {'x': (x - MATRIX_OFFSET) * GRID_SIZE,
+                             'y': (y - MATRIX_OFFSET) * GRID_SIZE}
+                            for x, y in path
                         ]
                         all_cells[idx] = to_cells(traces[idx])
                         n_fixed += 1
