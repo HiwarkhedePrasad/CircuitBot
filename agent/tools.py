@@ -169,17 +169,15 @@ def fetch_footprint(id_str: str) -> dict | None:
     return rag.footprint(id_str)
 
 
-def llm_call(system: str, user: str, model: str = "meta/llama-3.3-70b-instruct") -> str:
+def llm_call(system: str, user: str) -> str:
     import sys
     from pathlib import Path
     sys.path.append(str(Path(__file__).resolve().parent.parent))
     from config import get_llm_client
 
-    client = get_llm_client(temperature=0.1, max_tokens=4096)
-    full_response = ""
-    for chunk in client.stream([{"role": "system", "content": system}, {"role": "user", "content": user}]):
-        full_response += chunk.content
-    return full_response.strip()
+    client = get_llm_client(temperature=0.1, max_tokens=8192)
+    response = client.invoke([{"role": "system", "content": system}, {"role": "user", "content": user}])
+    return response.content.strip()
 
 
 TOOL_DESCRIPTIONS = """AVAILABLE PCB CALCULATION TOOLS (call by outputting JSON with tool_name and args):
