@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-def get_llm_client(temperature=1.0, max_tokens=8192):
+def get_llm_client(temperature=1.0, max_completion_tokens=8192):
     nvidia_key = os.environ.get("NVIDIA_API_KEY")
     groq_key = os.environ.get("GROQ_API_KEY")
 
@@ -14,7 +14,7 @@ def get_llm_client(temperature=1.0, max_tokens=8192):
             api_key=nvidia_key,
             temperature=temperature,
             top_p=0.95,
-            max_tokens=max_tokens,
+            max_tokens=max_completion_tokens,
         )
     elif groq_key:
         try:
