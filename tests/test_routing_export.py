@@ -2,6 +2,8 @@
 and the .kicad_sch exporter."""
 
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 from agent.layout_engine import BackendLayoutEngine, GRID_SIZE, MATRIX_OFFSET

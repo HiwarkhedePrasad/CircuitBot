@@ -3,6 +3,10 @@ Quick test to verify the duplicate detection and pin validation fixes.
 Run this before starting the server to ensure fixes are working.
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import json
 from agent.graph import _generate_nets_fallback
 

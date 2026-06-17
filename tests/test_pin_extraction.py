@@ -7,6 +7,8 @@ the LLM is fed components with 0 pins and can never wire them.
 """
 
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 from agent.graph import _parse_sexpr_to_ops, _extract_pins_from_ops
@@ -59,6 +61,7 @@ check(f"Base symbol LTC4417CUF has 25 pins, got {len(pins3)}", len(pins3) == 25)
 check("Derived symbol pin set matches its parent's pin numbers",
       {p["pin_num"] for p in pins.values()} == {p["pin_num"] for p in pins3.values()})
 
-print()
-print(f"{'=' * 60}\nRESULT: {passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+if __name__ == "__main__":
+    print()
+    print(f"{'=' * 60}\nRESULT: {passed} passed, {failed} failed")
+    sys.exit(1 if failed else 0)

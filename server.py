@@ -14,24 +14,19 @@ app.config['SECRET_KEY'] = os.urandom(16).hex()
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # never cache static files
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=120, ping_interval=25)
 
+import threading
+
 rag = KicadRAG()
 
 # Last completed agent design — used by /api/export_sch
+design_lock = threading.Lock()
 LAST_DESIGN = {}
 
 
 def _generate_netlist_llm(pin_matrix, prompt):
-    api_key = os.environ.get("NVIDIA_API_KEY", "")
-    if not api_key:
-        return None
     try:
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
-        client = ChatNVIDIA(
-            model="meta/llama-3.3-70b-instruct",
-            api_key=api_key,
-            temperature=0.0,
-            max_tokens=4096,
-        )
+        from config import get_llm_client
+        client = get_llm_client(temperature=0.0, max_tokens=4096)
         pins_desc = "\n".join(
             f'  {key}: pin_name="{p["name"]}"'
             for key, p in sorted(pin_matrix.items())
@@ -145,25 +140,28 @@ def api_generate_netlist():
 def api_save_layout():
     """Receive the frontend (ELK) computed geometry for the last design."""
     data = request.get_json(silent=True) or {}
-    if not LAST_DESIGN.get('selected_components'):
-        return jsonify({'ok': False, 'error': 'No design to update'}), 404
-    if 'placements' in data:
-        LAST_DESIGN['component_placements'] = data['placements']
-    if 'wire_paths' in data:
-        LAST_DESIGN['wire_paths'] = data['wire_paths']
-    if 'power_labels' in data:
-        LAST_DESIGN['power_labels'] = data['power_labels']
+    with design_lock:
+        if not LAST_DESIGN.get('selected_components'):
+            return jsonify({'ok': False, 'error': 'No design to update'}), 404
+        if 'placements' in data:
+            LAST_DESIGN['component_placements'] = data['placements']
+        if 'wire_paths' in data:
+            LAST_DESIGN['wire_paths'] = data['wire_paths']
+        if 'power_labels' in data:
+            LAST_DESIGN['power_labels'] = data['power_labels']
     return jsonify({'ok': True})
 
 
 @app.route('/api/export_sch')
 def api_export_sch():
     """Export the last agent-generated design as a KiCad schematic file."""
-    if not LAST_DESIGN.get('selected_components'):
-        return "No design generated yet. Run the AI agent first.", 404
+    with design_lock:
+        if not LAST_DESIGN.get('selected_components'):
+            return "No design generated yet. Run the AI agent first.", 404
+        design_copy = LAST_DESIGN.copy()
     try:
         from agent.kicad_export import generate_kicad_sch
-        text = generate_kicad_sch(LAST_DESIGN)
+        text = generate_kicad_sch(design_copy)
         return Response(
             text,
             mimetype='application/octet-stream',
@@ -178,11 +176,13 @@ def api_export_sch():
 @app.route('/api/export_pcb')
 def api_export_pcb():
     """Export the last agent-generated design as a KiCad PCB file."""
-    if not LAST_DESIGN.get('selected_components'):
-        return "No design generated yet. Run the AI agent first.", 404
+    with design_lock:
+        if not LAST_DESIGN.get('selected_components'):
+            return "No design generated yet. Run the AI agent first.", 404
+        design_copy = LAST_DESIGN.copy()
     try:
         from pcb_design.pcb_export import generate_kicad_pcb
-        text = generate_kicad_pcb(LAST_DESIGN)
+        text = generate_kicad_pcb(design_copy)
         return Response(
             text,
             mimetype='application/octet-stream',
@@ -230,16 +230,17 @@ def _run_agent(prompt: str, sid: str):
         result = agent_graph.invoke({"prompt": prompt}, config)
 
         # Persist the final design state for .kicad_sch / .kicad_pcb export
-        LAST_DESIGN.clear()
-        LAST_DESIGN.update({
-            'selected_components': result.get('selected_components', []),
-            'component_ops': result.get('component_ops', {}),
-            'component_placements': result.get('component_placements', []),
-            'wire_paths': result.get('wire_paths', []),
-            'power_labels': result.get('power_labels', []),
-            'nets': result.get('nets', []),
-            'power_pins': result.get('power_pins', []),
-        })
+        with design_lock:
+            LAST_DESIGN.clear()
+            LAST_DESIGN.update({
+                'selected_components': result.get('selected_components', []),
+                'component_ops': result.get('component_ops', {}),
+                'component_placements': result.get('component_placements', []),
+                'wire_paths': result.get('wire_paths', []),
+                'power_labels': result.get('power_labels', []),
+                'nets': result.get('nets', []),
+                'power_pins': result.get('power_pins', []),
+            })
     except Exception as e:
         socketio.emit('agent:error', {'message': str(e)}, room=sid)
         print(f"Agent error: {e}")

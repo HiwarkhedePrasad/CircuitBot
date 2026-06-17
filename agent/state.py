@@ -53,3 +53,6 @@ class AgentState(TypedDict, total=False):
     component_placements: List[ComponentPlacement]
     wire_paths: List[WirePath]
     error: Optional[str]
+    retry_count: int
+    validation_errors: List[dict]
+    _stage: str

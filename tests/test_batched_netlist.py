@@ -9,6 +9,8 @@ Verifies:
 """
 
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 import json
@@ -155,6 +157,7 @@ clean = [
 _, nf2, nr2 = eng.check_and_fix_overlaps(clean)
 check("Clean traces untouched", nf2 == 0 and nr2 == 0)
 
-print()
-print(f"{'=' * 60}\nRESULT: {passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+if __name__ == "__main__":
+    print()
+    print(f"{'=' * 60}\nRESULT: {passed} passed, {failed} failed")
+    sys.exit(1 if failed else 0)

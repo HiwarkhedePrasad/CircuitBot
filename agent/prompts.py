@@ -295,6 +295,15 @@ PIN MATCHING GUIDELINES:
   by name (e.g., "3V3_PULLUP" only if no existing power net name is given)
 - A 1-Wire sensor data pin (e.g., DS18B20 "DQ") connects to an MCU GPIO plus its pull-up
 
+PCB CALCULATION TOOLS (use when you need to check trace widths or impedances):
+To use a tool, output {"_tool": "tool_name", "args": {...}} instead of the normal JSON array.
+The tool result will be returned and you can continue. Available tools:
+- calculate_trace_width(current_a, temp_rise_c=10, copper_oz=1, external=true)
+- calculate_max_current(trace_width_mm, temp_rise_c=10, copper_oz=1, external=true)
+- calculate_microstrip_impedance(trace_width_mm, dielectric_thickness_mm, er=4.5, trace_thickness_mm=0.035)
+- calculate_voltage_drop(current_a, trace_length_mm, trace_width_mm, copper_oz=1)
+- calculate_via_current(outer_diameter_mm, hole_diameter_mm, temp_rise_c=10, copper_oz=1)
+
 Output ONLY a JSON array of net objects:
 [{"net": "I2C_SDA", "pins": ["U1:3", "U2:5"]}, ...]
 No markdown, no explanation, just the JSON array."""

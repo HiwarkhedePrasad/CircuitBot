@@ -3,6 +3,8 @@ passive duplication rules, ref prefix fixing, and export with
 global labels + junctions."""
 
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 from agent.graph import (
@@ -98,8 +100,9 @@ for ch in sch:
     prev = ch
 check("Balanced parentheses", depth == 0)
 
-print()
-print("=" * 60)
-print(f"RESULTS: {passed} passed, {failed} failed")
-print("=" * 60)
-sys.exit(1 if failed else 0)
+if __name__ == "__main__":
+    print()
+    print("=" * 60)
+    print(f"RESULTS: {passed} passed, {failed} failed")
+    print("=" * 60)
+    sys.exit(1 if failed else 0)

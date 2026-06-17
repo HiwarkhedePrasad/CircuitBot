@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Ensure we can import from the current directory
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 load_dotenv()
 
