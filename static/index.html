@@ -3,36 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KiCad Schematic Editor</title>
+    <title>CircuitBot EDA</title>
     <link rel="stylesheet" href="/static/style.css">
+    <!-- Font for that EDA feel -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div class="sidebar">
-            <h2>KiCad Component RAG</h2>
-            <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Enter component (e.g. AMS1117)" autocomplete="off">
-                <button id="searchBtn">Search</button>
+    <div class="eda-app">
+        <!-- Top Menubar & Toolbar -->
+        <header class="eda-header">
+            <div class="brand">
+                <span class="logo">⚡</span>
+                <span class="title">CircuitBot <span class="version">v0.8.2</span></span>
             </div>
-            <ul id="searchResults"></ul>
-            <div id="loading" class="hidden">Loading...</div>
-
-            <div class="schematic-controls">
-                <h3>Schematic</h3>
-                <div class="btn-row">
-                    <button id="addBtn" class="btn-add" disabled>+ Add to Schematic</button>
-                    <button id="autoLayoutBtn" class="btn-layout" disabled>Auto Layout</button>
-                </div>
-                <div class="btn-row">
-                    <button id="clearBtn" class="btn-clear" disabled>Clear All</button>
-                    <button id="viewSchematicBtn" class="btn-view" disabled>View Schematic</button>
-                </div>
-                <div class="btn-row">
-                    <button id="autoRouteBtn" class="btn-route" disabled>Auto-Route</button>
-                </div>
-                <div class="prompt-row">
-                    <input type="text" id="routePrompt" placeholder="Describe connections (e.g. connect VCC to 3.3V pins)" autocomplete="off">
-                </div>
+            <div class="menu-bar">
+                <span class="menu-item">File</span>
+                <span class="menu-item">Edit</span>
+                <span class="menu-item">View</span>
+                <span class="menu-item">Tools</span>
+                <span class="menu-item">Help</span>
             </div>
             <div class="toolbar">
                 <button id="addBtn" class="tool-btn" title="Add Selected Component to Schematic" disabled>
@@ -52,23 +41,26 @@
                 <button id="exportSchBtn" class="tool-btn highlight" title="Export as KiCad .kicad_sch" disabled>
                     <span class="icon">⤓</span> Export .kicad_sch
                 </button>
-                <button id="exportPcbBtn" class="tool-btn highlight" title="Export as KiCad .kicad_pcb" disabled>
-                    <span class="icon">⬛</span> Export .kicad_pcb
-                </button>
             </div>
+        </header>
 
-            <div class="component-list-section">
-                <h3>Placed Components <span id="compCount">(0)</span></h3>
-                <ul id="componentList"></ul>
-            </div>
-        </div>
-        <div class="main-content">
-            <div class="canvas-container">
-                <canvas id="compCanvas" width="1600" height="1200"></canvas>
-                <div class="zoom-controls">
-                    <button id="zoomInBtn" title="Zoom In">+</button>
-                    <button id="zoomOutBtn" title="Zoom Out">&#x2212;</button>
-                    <button id="zoomResetBtn" title="Reset Zoom">&#x27F2;</button>
+        <div class="eda-workspace">
+            <!-- Left Sidebar: Library & Hierarchy -->
+            <aside class="eda-sidebar left-panel">
+                <div class="panel-section library-section">
+                    <div class="panel-header">
+                        <span class="panel-title">Library Browser</span>
+                    </div>
+                    <div class="search-container">
+                        <input type="text" id="searchInput" placeholder="Search components (e.g. ESP32, AMS1117)..." autocomplete="off">
+                        <button id="searchBtn" class="search-icon-btn">🔍</button>
+                    </div>
+                    <div id="loading" class="loading-indicator hidden">
+                        <span class="spinner"></span> Searching...
+                    </div>
+                    <ul id="searchResults" class="list-view">
+                        <!-- Results populated by app.js -->
+                    </ul>
                 </div>
                 
                 <div class="panel-divider horizontal"></div>
@@ -79,15 +71,16 @@
                         <span id="compCount" class="badge">0</span>
                     </div>
                     <ul id="componentList" class="list-view">
+                        <!-- Placed items populated by app.js -->
                     </ul>
                 </div>
             </aside>
 
+            <!-- Center: Workspace Canvas -->
             <main class="eda-main">
                 <div class="canvas-header">
                     <div class="tabs">
                         <button id="viewSchematicBtn" class="tab active">Schematic Editor</button>
-                        <button id="viewPcbBtn" class="tab">PCB View</button>
                         <button id="viewSymbolBtn" class="tab">Symbol Preview</button>
                     </div>
                     <div class="canvas-controls">
@@ -104,6 +97,7 @@
                     <canvas id="compCanvas"></canvas>
                     <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
                     
+                    <!-- Contextual Route Input (Floating at bottom of canvas) -->
                     <div class="floating-route-input">
                         <input type="text" id="routePrompt" placeholder="Routing constraints (e.g. 'connect VCC to 3.3V')..." autocomplete="off">
                     </div>
@@ -121,6 +115,7 @@
                 </footer>
             </main>
 
+            <!-- Right Sidebar: Properties & AI -->
             <aside class="eda-sidebar right-panel">
                 <div class="panel-section properties-section">
                     <div class="panel-header">
@@ -150,10 +145,11 @@
             </aside>
         </div>
     </div>
+
+    <!-- Scripts -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="/static/schematic.js?v=9"></script>
     <script src="/static/renderer.js?v=9"></script>
-    <script src="/static/pcb_view.js?v=1"></script>
     <script src="/static/app.js?v=9"></script>
 </body>
 </html>
