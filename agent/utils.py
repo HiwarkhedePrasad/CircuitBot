@@ -103,7 +103,7 @@ def _call_llm_with_tools(system: str, user: str, max_tool_rounds: int = 3) -> st
 
 def _check_stage_contract(stage: str, state, required: list[str]) -> str | None:
     for field in required:
-        if not state.get(field):
+        if state.get(field) is None:
             return f"{stage}: missing required input '{field}'"
     return None
 

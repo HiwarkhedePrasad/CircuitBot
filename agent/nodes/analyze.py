@@ -13,7 +13,7 @@ def analyze_node(state, config):
     try:
         text = _call_llm(ANALYZE_SYSTEM, ANALYZE_USER.format(prompt=state["prompt"]), stage="analyze")
     except Exception:
-        return _stage_result(state, "analyze", {"analysis": []})
+        text = ""
     text = _clean_json(text)
     try:
         analysis = json.loads(text) if text else []
