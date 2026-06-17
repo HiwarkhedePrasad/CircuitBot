@@ -60,3 +60,7 @@ Thumbs.db
 
 # Project context (generated)
 .content/
+
+# Large data files (not suitable for git)
+*.sqlite
+*dataset.json

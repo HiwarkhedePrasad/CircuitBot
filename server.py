@@ -12,7 +12,7 @@ load_dotenv(dotenv_path, override=True)
 app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = os.urandom(16).hex()
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # never cache static files
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=120, ping_interval=25)
 
 rag = KicadRAG()
 
@@ -21,12 +21,17 @@ LAST_DESIGN = {}
 
 
 def _generate_netlist_llm(pin_matrix, prompt):
-    api_key = os.environ.get("GROQ_API_KEY", "")
+    api_key = os.environ.get("NVIDIA_API_KEY", "")
     if not api_key:
         return None
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+        from langchain_nvidia_ai_endpoints import ChatNVIDIA
+        client = ChatNVIDIA(
+            model="meta/llama-3.3-70b-instruct",
+            api_key=api_key,
+            temperature=0.0,
+            max_tokens=4096,
+        )
         pins_desc = "\n".join(
             f'  {key}: pin_name="{p["name"]}"'
             for key, p in sorted(pin_matrix.items())
@@ -40,15 +45,10 @@ def _generate_netlist_llm(pin_matrix, prompt):
             "Temperature 0.0. No explanation, no markdown, just JSON."
         )
         user_prompt = f"Available pins:\n{pins_desc}\n\nUser intent: {prompt}" if prompt else f"Available pins:\n{pins_desc}\n\nConnect pins that share the same net name."
-        resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.0,
-        )
-        text = resp.choices[0].message.content.strip()
+        full_response = ""
+        for chunk in client.stream([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]):
+            full_response += chunk.content
+        text = full_response.strip()
         text = text.removeprefix("```json").removesuffix("```").strip()
         import re
         text = re.sub(r'^[^{[]*|[^}\]]*$', '', text)
@@ -175,6 +175,25 @@ def api_export_sch():
         return f"Export failed: {e}", 500
 
 
+@app.route('/api/export_pcb')
+def api_export_pcb():
+    """Export the last agent-generated design as a KiCad PCB file."""
+    if not LAST_DESIGN.get('selected_components'):
+        return "No design generated yet. Run the AI agent first.", 404
+    try:
+        from pcb_design.pcb_export import generate_kicad_pcb
+        text = generate_kicad_pcb(LAST_DESIGN)
+        return Response(
+            text,
+            mimetype='application/octet-stream',
+            headers={'Content-Disposition': 'attachment; filename=circuitbot.kicad_pcb'},
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"PCB export failed: {e}", 500
+
+
 # ── WebSocket Events ─────────────────────────────────────────────────────────
 
 @socketio.on('connect')
@@ -210,7 +229,7 @@ def _run_agent(prompt: str, sid: str):
         config = {"configurable": {"emit": ws_emit}}
         result = agent_graph.invoke({"prompt": prompt}, config)
 
-        # Persist the final design state for .kicad_sch export
+        # Persist the final design state for .kicad_sch / .kicad_pcb export
         LAST_DESIGN.clear()
         LAST_DESIGN.update({
             'selected_components': result.get('selected_components', []),
@@ -218,6 +237,8 @@ def _run_agent(prompt: str, sid: str):
             'component_placements': result.get('component_placements', []),
             'wire_paths': result.get('wire_paths', []),
             'power_labels': result.get('power_labels', []),
+            'nets': result.get('nets', []),
+            'power_pins': result.get('power_pins', []),
         })
     except Exception as e:
         socketio.emit('agent:error', {'message': str(e)}, room=sid)

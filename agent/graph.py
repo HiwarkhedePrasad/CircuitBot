@@ -8,7 +8,15 @@ from agent.prompts import (
     ANALYZE_SYSTEM, ANALYZE_USER, SELECT_SYSTEM, SELECT_USER,
     NETLIST_SYSTEM, NETLIST_USER, NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER,
 )
-from agent.tools import search_components, fetch_sexpr, llm_call
+from agent.tools import (
+    fetch_footprint,
+    fetch_sexpr,
+    llm_call,
+    search_components,
+)
+from agent.datasheet import fetch_datasheet_text
+from agent.support_rules import get_supporting_components
+from agent.prompts import DATASHEET_EXTEND_SYSTEM, DATASHEET_EXTEND_USER, VALIDATE_SYSTEM, VALIDATE_USER
 from agent.layout_engine import BackendLayoutEngine
 
 
@@ -242,7 +250,38 @@ def select_node(state: AgentState, config) -> dict:
         _emit(config, "agent:log", {"message": "No research results to select from."})
         return {"selected_components": []}
 
+    # ── Phase 1: Enrich top candidates with datasheet snippets ──
+    _emit(config, "agent:thinking", {"message": "Fetching datasheets for top candidates..."})
+    for sub in research:
+        for r in sub.get("results", [])[:2]:  # Only top 2 per subsystem
+            url = r.get("datasheet", "")
+            if url:
+                snippet = fetch_datasheet_text(url, offset=0, length=500)
+                r["datasheet_snippet"] = snippet
+                if snippet:
+                    _emit(config, "agent:log", {
+                        "message": f"  Fetched datasheet ({len(snippet)} chars) for {r['id_str']}"
+                    })
+            else:
+                r["datasheet_snippet"] = ""
+
+    # ── Phase 2: LLM selection with datasheet validation ──
     results_json = json.dumps(research, indent=2)
+    if len(results_json) > 8000:
+        truncated = []
+        for sub in research:
+            tsub = sub.copy()
+            tsub["results"] = []
+            for r in sub.get("results", []):
+                tr = r.copy()
+                if len(tr.get("text", "")) > 100:
+                    tr["text"] = tr["text"][:97] + "..."
+                if len(tr.get("datasheet_snippet", "")) > 200:
+                    tr["datasheet_snippet"] = tr["datasheet_snippet"][:197] + "..."
+                tsub["results"].append(tr)
+            truncated.append(tsub)
+        results_json = json.dumps(truncated, indent=2)
+
     text = _call_llm(SELECT_SYSTEM, SELECT_USER.format(
         prompt=state["prompt"], results_json=results_json
     ))
@@ -253,6 +292,44 @@ def select_node(state: AgentState, config) -> dict:
         print(f"Failed to parse selection JSON: {text[:200]}")
         selected = []
 
+    # ── Phase 3: Progressive datasheet re-fetch ──
+    # If LLM says need_more_datasheet for any component, fetch the next 500 chars
+    needs_more = [s for s in selected if s.get("need_more_datasheet")]
+    if needs_more:
+        _emit(config, "agent:thinking", {"message": f"Extending datasheet for {len(needs_more)} component(s)..."})
+        for s in needs_more:
+            id_str = s["id_str"]
+            # Find the original research result to get the URL
+            for sub in research:
+                for r in sub.get("results", []):
+                    if r["id_str"] == id_str:
+                        url = r.get("datasheet", "")
+                        if url:
+                            extra = fetch_datasheet_text(url, offset=500, length=500)
+                            if extra:
+                                ext_text = _call_llm(
+                                    DATASHEET_EXTEND_SYSTEM,
+                                    DATASHEET_EXTEND_USER.format(
+                                        id_str=id_str,
+                                        description=s.get("description", ""),
+                                        extended_text=extra,
+                                    )
+                                )
+                                ext_clean = _clean_json(ext_text)
+                                try:
+                                    ext_result = json.loads(ext_clean) if ext_clean else {}
+                                    if not ext_result.get("suitable", True):
+                                        _emit(config, "agent:log", {
+                                            "message": f"  Datasheet check: {id_str} marked unsuitable: {ext_result.get('justification', '')}"
+                                        })
+                                except json.JSONDecodeError:
+                                    pass
+                        break
+        # Clear the need_more flag
+        for s in selected:
+            s.pop("need_more_datasheet", None)
+
+    # ── Phase 4: Fallback if LLM returned nothing ──
     if not selected:
         ref_letters = "URCL"
         selected = []
@@ -266,6 +343,8 @@ def select_node(state: AgentState, config) -> dict:
                     "ref_des": ref,
                     "category": best["id_str"].split(":")[0] if ":" in best["id_str"] else "General",
                     "description": best.get("text", ""),
+                    "justification": "Fallback: first available component for subsystem",
+                    "datasheet_text": best.get("datasheet_snippet", ""),
                 })
     else:
         valid_ids = set()
@@ -281,17 +360,19 @@ def select_node(state: AgentState, config) -> dict:
                 for sub in research:
                     results = sub.get("results", [])
                     if results:
+                        # Carry the justification from the hallucinated entry
                         filtered.append({
                             "id_str": results[0]["id_str"],
                             "ref_des": s["ref_des"],
                             "category": results[0]["id_str"].split(":")[0] if ":" in results[0]["id_str"] else "General",
                             "description": results[0].get("text", ""),
+                            "justification": s.get("justification", f"Fallback for rejected {s['id_str']}"),
+                            "datasheet_text": results[0].get("datasheet_snippet", ""),
                         })
                         break
         selected = filtered
 
-    # Deduplicate: complex ICs must be unique; passives (R, C, L, Y) may repeat.
-    # Also normalize reference designator prefixes (no more "C3" microcontrollers).
+    # ── Phase 5: Deduplicate and assign ref designators ──
     seen_ids = set()
     seen_refs = set()
     deduped = []
@@ -313,7 +394,6 @@ def select_node(state: AgentState, config) -> dict:
             _emit(config, "agent:log", {"message": f"  Skipped duplicate IC: {id_str}"})
             continue
 
-        # Enforce correct ref prefix for the component type
         correct_prefix = _ref_prefix_for(id_str, category)
         current_prefix = ''.join(c for c in s.get("ref_des", "") if c.isalpha()) or 'U'
         if current_prefix != correct_prefix or s.get("ref_des", "") in seen_refs:
@@ -326,17 +406,243 @@ def select_node(state: AgentState, config) -> dict:
             if num_part:
                 ref_counter[correct_prefix] = max(ref_counter.get(correct_prefix, 0), int(num_part))
 
+        s.setdefault("justification", "")
+        s.setdefault("datasheet_text", "")
         seen_ids.add(id_str)
         seen_refs.add(s["ref_des"])
         deduped.append(s)
 
     selected = deduped
 
+    # ── Phase 6: USB connector swap (same as before) ──
+    for s in selected:
+        id_str = s["id_str"]
+        cat = (s.get("category", "") or "").upper()
+        desc = (s.get("description", "") or "").upper()
+        if cat.startswith("INTERFACE_USB") or "FUSB" in id_str.upper():
+            query = "USB-C connector" if "USB-C" in desc or "TYPE-C" in desc else "USB connector"
+            try:
+                for r in search_components(query, k=6):
+                    r_cat = (r.get("category", "") or "").upper()
+                    if r_cat.startswith("CONNECTOR") and "USB" in r_cat:
+                        old = s["id_str"]
+                        s["id_str"] = r["id_str"]
+                        s["category"] = r.get("category", s["category"])
+                        s["description"] = r.get("text", s.get("description", ""))
+                        _emit(config, "agent:log", {
+                            "message": f"  Swapped {old} -> {s['id_str']} (real connector)"
+                        })
+                        break
+            except Exception as e:
+                print(f"Connector swap failed: {e}")
+
+    # ── Phase 7: Inject supporting components ──
+    _emit(config, "agent:thinking", {"message": "Adding supporting components..."})
+    support_parts = []
+    for s in selected:
+        parts = get_supporting_components(s)
+        for p in parts:
+            count = p.get("count", 1)
+            for _ in range(count):
+                support_parts.append({
+                    "search_query": p["search_query"],
+                    "preferred_id_str": p.get("preferred_id_str", ""),
+                    "library_filter": p.get("library_filter", ""),
+                    "ref_des_prefix": p["ref_des_prefix"],
+                    "description": p["description"],
+                    "for_component": s["ref_des"],
+                })
+    injected = []
+    if support_parts:
+        _emit(config, "agent:log", {
+            "message": f"  Need {len(support_parts)} supporting part(s)"
+        })
+        for sp in support_parts:
+            try:
+                lib_filter = sp.get("library_filter") or None
+                candidates = search_components(sp["search_query"], k=8, library_filter=lib_filter)
+                chosen = None
+                if sp["preferred_id_str"]:
+                    for c in candidates:
+                        if c["id_str"] == sp["preferred_id_str"]:
+                            chosen = c
+                            break
+                if not chosen and candidates:
+                    for c in candidates:
+                        if c.get("footprint"):
+                            if not lib_filter or c["id_str"].startswith(lib_filter + ":"):
+                                chosen = c
+                                break
+                    if not chosen:
+                        for c in candidates:
+                            if not lib_filter or c["id_str"].startswith(lib_filter + ":"):
+                                chosen = c
+                                break
+                if chosen:
+                    ref_prefix = sp["ref_des_prefix"]
+                    ref = _next_ref(ref_prefix)
+                    injected.append({
+                        "id_str": chosen["id_str"],
+                        "ref_des": ref,
+                        "category": chosen["id_str"].split(":")[0] if ":" in chosen["id_str"] else "Device",
+                        "description": sp["description"],
+                        "footprint": chosen.get("footprint", ""),
+                        "pads": chosen.get("pads", []),
+                        "justification": f"Supporting part for {sp['for_component']}: {sp['description']}",
+                        "datasheet_text": "",
+                        "for_component": sp["for_component"],
+                    })
+                    _emit(config, "agent:log", {
+                        "message": f"  Added {ref} ({chosen['id_str']}) as {sp['description']}"
+                    })
+                else:
+                    _emit(config, "agent:log", {
+                        "message": f"  WARNING: no suitable component found for {sp['description']} (query='{sp['search_query']}', filter={lib_filter})"
+                    })
+            except Exception as e:
+                print(f"Support component search failed: {e}")
+
+    if injected:
+        selected.extend(injected)
+        _emit(config, "agent:log", {
+            "message": f"  Injected {len(injected)} supporting components"
+        })
+
+    # ── Phase 8: Emit justifications for main components ──
+    for s in selected:
+        if s.get("justification"):
+            _emit(config, "agent:log", {
+                "message": f"  {s['ref_des']} ({s['id_str']}): {s['justification']}"
+            })
+
+    # ── Phase 9: Enrich with footprint data from research results / RAG ──
+    fp_lookup = {}
+    for sub in research:
+        for r in sub.get("results", []):
+            fp_lookup[r["id_str"]] = {
+                "footprint": r.get("footprint") or "",
+                "pads": r.get("pads") or [],
+            }
+    for s in selected:
+        entry = fp_lookup.get(s["id_str"], {})
+        if not s.get("footprint"):
+            s["footprint"] = entry.get("footprint", "")
+        if not s.get("pads"):
+            s["pads"] = entry.get("pads", [])
+        if not s["footprint"]:
+            try:
+                info = fetch_footprint(s["id_str"])
+                if info:
+                    s["footprint"] = info.get("footprint", "")
+                    s["pads"] = info.get("pads", [])
+            except Exception:
+                pass
+
     _emit(config, "agent:log", {
         "message": f"Selected {len(selected)} components: " +
                    ", ".join(f'{s["ref_des"]}={s["id_str"].split(":")[-1][:20]}' for s in selected)
     })
     return {"selected_components": selected}
+
+
+def validate_node(state: AgentState, config) -> dict:
+    _emit(config, "agent:thinking", {"message": "Validating component selections..."})
+
+    comps = state.get("selected_components", [])
+    analysis = state.get("analysis", [])
+    prompt = state.get("prompt", "")
+    if not comps:
+        _emit(config, "agent:log", {"message": "No components to validate."})
+        return {"validated": True, "selected_components": comps}
+
+    components_list = "\n".join(
+        f'  {c["ref_des"]}: {c["id_str"]}  [{c.get("category", "?")}]  "{c.get("description", "")[:80]}"'
+        for c in comps
+    )
+    subsystems = "\n".join(
+        f'  {a.get("subsystem", "?")}: {a.get("function", "")}'
+        for a in analysis
+    )
+
+    text = _call_llm(VALIDATE_SYSTEM, VALIDATE_USER.format(
+        prompt=prompt,
+        subsystems=subsystems,
+        components_list=components_list,
+    ))
+    text = _clean_json(text)
+    try:
+        result = json.loads(text) if text else {"valid": True, "issues": []}
+    except json.JSONDecodeError:
+        print(f"Failed to parse validation JSON: {text[:200]}")
+        result = {"valid": True, "issues": []}
+
+    issues = result.get("issues", [])
+    missing = result.get("missing_components", [])
+
+    errors = [i for i in issues if i.get("severity") == "error"]
+    warnings = [i for i in issues if i.get("severity") == "warning"]
+
+    for issue in issues:
+        _emit(config, "agent:log", {
+            "message": f"  [{issue.get('severity', 'info').upper()}] {issue.get('message', '')}"
+        })
+
+    # If there are missing components (like LED not found), search for them
+    corrections = []
+    if missing:
+        _emit(config, "agent:thinking", {"message": f"Searching for {len(missing)} missing component(s)..."})
+        for mc in missing:
+            query = mc.get("suggested_query", mc.get("description", ""))
+            try:
+                results = search_components(query, k=5)
+                if results:
+                    best = results[0]
+                    ref_prefix = _ref_prefix_for(best["id_str"], best["id_str"].split(":")[0])
+                    # Use a simple counter starting after existing refs
+                    existing_nums = set()
+                    for c in comps + corrections:
+                        r = c.get("ref_des", "")
+                        prefix = "".join(ch for ch in r if ch.isalpha()) or "U"
+                        num = "".join(ch for ch in r if ch.isdigit())
+                        if prefix == ref_prefix and num:
+                            existing_nums.add(int(num))
+                    next_num = 1
+                    while next_num in existing_nums:
+                        next_num += 1
+                    ref = f"{ref_prefix}{next_num}"
+                    corrections.append({
+                        "id_str": best["id_str"],
+                        "ref_des": ref,
+                        "category": best["id_str"].split(":")[0] if ":" in best["id_str"] else "General",
+                        "description": best.get("text", mc.get("description", "")),
+                        "footprint": best.get("footprint", ""),
+                        "pads": best.get("pads", []),
+                        "justification": f"Auto-added by validator: {mc.get('description', query)}",
+                        "datasheet_text": "",
+                    })
+                    _emit(config, "agent:log", {
+                        "message": f"  Added missing {ref} ({best['id_str']}) for: {mc.get('description', query)}"
+                    })
+            except Exception as e:
+                print(f"Validator search failed for '{query}': {e}")
+
+    if corrections:
+        comps = comps + corrections
+        _emit(config, "agent:log", {
+            "message": f"  Corrected: added {len(corrections)} missing component(s)"
+        })
+
+    if errors:
+        _emit(config, "agent:log", {
+            "message": f"Validation found {len(errors)} error(s) — proceeding with warnings"
+        })
+
+    _emit(config, "agent:log", {
+        "message": f"Validation done: {len(comps)} components, {len(errors)} error(s), {len(warnings)} warning(s)"
+    })
+    return {
+        "selected_components": comps,
+    }
 
 
 def dispatch_node(state: AgentState, config) -> dict:
@@ -380,6 +686,8 @@ def dispatch_node(state: AgentState, config) -> dict:
             "category": comp["category"],
             "ref_des": ref_des,
             "description": comp.get("description", ""),
+            "footprint": comp.get("footprint", ""),
+            "pads": comp.get("pads", []),
             "ops": ops,
         })
 
@@ -545,7 +853,7 @@ def netlist_node(state: AgentState, config) -> dict:
     # ── Phase 3: rule-based fallback for pins the LLM left unassigned ──
     leftover = {k: pins[k] for k in pins if k not in assigned}
     if leftover:
-        for net in _generate_nets_fallback(leftover):
+        for net in _generate_nets_fallback(leftover, comps, nets):
             _merge_net(nets, net["net"], net["pins"])
         _emit(config, "agent:log", {
             "message": f"  Name-match fallback assigned {len(leftover)} leftover pins"
@@ -602,8 +910,13 @@ def netlist_node(state: AgentState, config) -> dict:
             n_signal_nets += 1
             # Chain consecutive pins: A-B, B-C (not a full mesh)
             ps = net["pins"]
-            for i in range(len(ps) - 1):
-                netlist.append({"source": ps[i], "target": ps[i + 1], "net": name})
+            # Star topology: connect all pins to the first pin instead of
+            # daisy-chaining. This avoids forcing wires through intermediate
+            # component territory and produces much cleaner routing.
+            if len(ps) >= 2:
+                hub = ps[0]
+                for i in range(1, len(ps)):
+                    netlist.append({"source": hub, "target": ps[i], "net": name})
 
     # ── Orphan detection: every component should touch at least one net ──
     connected_refs = set()
@@ -622,9 +935,11 @@ def netlist_node(state: AgentState, config) -> dict:
         })
         # Rescue: pull any GND/power-named pin of an orphan into the proper net
         for ref in orphans:
-            for key, pin in pins.items():
-                if key.split(":")[0] != ref or key in used_pins:
-                    continue
+            orphan_pins = [k for k in pins if k.split(":")[0] == ref and k not in used_pins]
+            # Check if this is a passive component (few pins, unnamed pins)
+            is_2pin_passive = len([k for k in pins if k.startswith(f"{ref}:")]) <= 2
+            for key in orphan_pins:
+                pin = pins[key]
                 pname = pin.get("name", "").upper()
                 if _is_gnd_net(pname):
                     power_pins.append({"pin": key, "net": "GND"})
@@ -632,6 +947,53 @@ def netlist_node(state: AgentState, config) -> dict:
                 elif _is_power_net(pname):
                     power_pins.append({"pin": key, "net": pname.lstrip('+')})
                     used_pins.add(key)
+                elif pin.get("etype") in POWER_ETYPES and pname and pname != "~":
+                    power_pins.append({"pin": key, "net": pname.lstrip('+')})
+                    used_pins.add(key)
+                elif is_2pin_passive:
+                    if len([k for k in power_pins if k["pin"].startswith(f"{ref}:")]) == 0:
+                        power_pins.append({"pin": key, "net": "GND"})
+                        used_pins.add(key)
+                        _emit(config, "agent:log", {
+                            "message": f"  Passive orphan rescue: {key} -> GND"
+                        })
+
+    # ── Auto-connect components that only have power labels but no signal wires ──
+    refs_with_signals = set()
+    for conn in netlist:
+        refs_with_signals.add(conn["source"].split(":")[0])
+        refs_with_signals.add(conn["target"].split(":")[0])
+    hub_ref = max(
+        (k.split(":")[0] for k in pins),
+        key=lambda r: sum(1 for k in pins if k.startswith(f"{r}:")),
+        default=None
+    )
+    if hub_ref:
+        for comp in state.get("selected_components", []):
+            ref = comp["ref_des"]
+            if ref in refs_with_signals or ref == hub_ref:
+                continue
+            spare_hub = sorted(
+                k for k in pins
+                if k.startswith(f"{hub_ref}:") and k not in used_pins
+                and pins[k].get("etype") in ("bidirectional", "input", "output", "passive")
+            )
+            ref_signal = sorted(
+                k for k in pins
+                if k.startswith(f"{ref}:") and k not in used_pins
+            )
+            if spare_hub and ref_signal:
+                hub_pin = spare_hub[0]
+                ref_pin = ref_signal[0]
+                net_name = pins[ref_pin].get("name", "").upper() or f"{ref}_SIG"
+                _merge_net(nets, net_name, [hub_pin, ref_pin])
+                netlist.append({"source": hub_pin, "target": ref_pin, "net": net_name})
+                used_pins.add(hub_pin)
+                used_pins.add(ref_pin)
+                refs_with_signals.add(ref)
+                _emit(config, "agent:log", {
+                    "message": f"  Auto-routed {ref_pin} ({pins[ref_pin]['name']}) -> {hub_pin} ({pins[hub_pin]['name']})"
+                })
 
     _emit(config, "agent:log", {
         "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "
@@ -665,16 +1027,29 @@ def layout_route_node(state: AgentState, config) -> dict:
         _emit(config, "agent:done", {"message": "No components could be placed."})
         return {}
 
-    engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
-    engine.build_obstacle_matrix(pin_matrix=pin_matrix)
-    traces = engine.route_traces(netlist, pin_matrix)
+    # ── Phase 3: PCB-aware placement (fallback to spring layout) ──
+    from pcb_design.placement import place_components
+    pcb_placements = place_components(comps, netlist)
+    if pcb_placements:
+        for p in pcb_placements:
+            engine.set_component_position(
+                p["ref_des"], p["x"], p["y"],
+                rotation=p.get("rotation", 0),
+            )
+    else:
+        engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
 
-    # ── Post-route validation: detect & fix parallel wire overlaps ──
-    traces, n_fixed, n_conflicts = engine.check_and_fix_overlaps(traces)
-    if n_fixed or n_conflicts:
+    engine.build_obstacle_matrix(pin_matrix=pin_matrix)
+
+    # ── Phase 4: Route + DRC ──
+    from pcb_design.router import route_board
+    traces, drc_violations = route_board(engine, netlist, pin_matrix)
+
+    if drc_violations:
+        n_warn = sum(1 for v in drc_violations if v.get("severity") == "warning")
+        n_info = sum(1 for v in drc_violations if v.get("severity") == "info")
         _emit(config, "agent:log", {
-            "message": f"  Overlap check: {n_fixed} wire(s) re-routed"
-                       + (f", {n_conflicts} unresolved overlap(s) remain" if n_conflicts else "")
+            "message": f"  DRC: {n_warn} warning(s), {n_info} info"
         })
 
     placements = engine.get_placements()
@@ -691,9 +1066,11 @@ def layout_route_node(state: AgentState, config) -> dict:
             continue
         ax = pin["x"] + comp["x"]
         ay = pin["y"] + comp["y"]
-        # Outward direction (away from component center)
-        ccx = comp["x"] + comp["bbox"]["x"] + comp["bbox"]["w"] / 2
-        ccy = comp["y"] + comp["bbox"]["y"] + comp["bbox"]["h"] / 2
+        # Outward direction (away from component GEOMETRY center, not label bbox)
+        # Using geom_bbox avoids wrong direction when labels are huge compared
+        # to the physical body (e.g., GND symbol pointing into component body)
+        ccx = comp["x"] + comp["geom_bbox"]["x"] + comp["geom_bbox"]["w"] / 2
+        ccy = comp["y"] + comp["geom_bbox"]["y"] + comp["geom_bbox"]["h"] / 2
         dx = ax - ccx
         dy = ay - ccy
         if abs(dx) >= abs(dy):
@@ -771,16 +1148,83 @@ def _canonical_signal_name(name: str):
     return None
 
 
-def _generate_nets_fallback(pin_matrix: dict) -> list:
-    """Rule-based fallback: group pins into named nets by pin name with aliasing."""
+def _resolve_hallucinated_pin(bad_key: str, pin_matrix: dict, assigned: set) -> str | None:
+    """Rescue a hallucinated pin key by matching its pin name/number against real pins.
+
+    The LLM often outputs keys like 'U1:21' (guessing pin number 21 = GPIO21)
+    when the real key is 'U1:3' (pin 3 has name='GPIO21'). This function looks
+    up the ref's actual pins and finds the best match by pin number, pin name,
+    or alias group.
+    """
+    ref = bad_key.split(':')[0]
+    hint = bad_key.split(':')[1] if ':' in bad_key else ''
+
+    candidates = []
+    for key, pin in pin_matrix.items():
+        if key.split(':')[0] == ref and key not in assigned:
+            candidates.append((key, pin))
+
+    if not hint:
+        return None
+
+    hint_upper = hint.upper()
+
+    for key, pin in candidates:
+        if pin.get('pin_num', '') == hint:
+            return key
+
+    for key, pin in candidates:
+        pname = pin.get('name', '').upper()
+        if pname == hint_upper:
+            return key
+
+    if hint.isdigit():
+        for key, pin in candidates:
+            pname = pin.get('name', '').upper()
+            if pname.endswith(hint) and not pname.startswith(('1', '2', '3', '4', '5', '6', '7', '8', '9')):
+                return key
+            if pname == f"IO{hint}" or pname == f"PIN{hint}" or pname == f"GPIO{hint}":
+                return key
+
+    hint_canon = _canonical_signal_name(hint)
+    if hint_canon:
+        for key, pin in candidates:
+            pname = pin.get('name', '').upper()
+            if _canonical_signal_name(pname) == hint_canon:
+                return key
+
+    if hint_upper in PIN_ALIASES:
+        for key, pin in candidates:
+            etype = pin.get('etype', '')
+            pname = pin.get('name', '').upper()
+            if etype in ('bidirectional', 'input', 'output') and pname.startswith('IO'):
+                return key
+
+    return None
+
+
+def _generate_nets_fallback(pin_matrix: dict,
+                            comps: list | None = None,
+                            existing_nets: list | None = None) -> list:
+    """Rule-based fallback: group pins into named nets by pin name with aliasing.
+
+    When *comps* and *existing_nets* are provided, also handles unnamed ``~``
+    pins on 2-pin passives that have a ``for_component`` relationship —
+    one pin goes to the parent IC's power net, the other to GND.
+    """
     by_name = {}
+    tilde_by_ref: dict[str, list[str]] = {}
     for key, pin in pin_matrix.items():
         name = pin.get("name", "").strip().upper()
-        if not name or name in ("~", "NC", ""):
+        if not name or name in ("NC", ""):
+            continue
+        if name == "~":
+            ref = key.split(":")[0]
+            tilde_by_ref.setdefault(ref, []).append(key)
             continue
         by_name.setdefault(name, []).append(key)
 
-    nets = []
+    nets: list[dict] = []
 
     # GND net: collect every ground-named pin
     gnd_pins = []
@@ -801,9 +1245,35 @@ def _generate_nets_fallback(pin_matrix: dict) -> list:
     for canon, pins_list in power_groups.items():
         nets.append({"net": canon, "pins": pins_list})
 
+    # ── Handle unnamed ~ pins on passives with for_component ──
+    if comps and existing_nets and tilde_by_ref:
+        comp_for = {c["ref_des"]: c.get("for_component", "") for c in comps}
+        # Build a map: parent_IC_ref -> its power net name from already-assigned nets
+        parent_power: dict[str, str] = {}
+        for net in existing_nets:
+            if not isinstance(net, dict):
+                continue
+            net_name = net.get("net", "")
+            for key in net.get("pins", []):
+                ref = key.split(":")[0]
+                # If this pin belongs to an IC that is someone's for_component parent
+                if any(pc == ref for pc in comp_for.values()):
+                    parent_power[ref] = net_name
+
+        for ref, keys in tilde_by_ref.items():
+            parent_ref = comp_for.get(ref, "")
+            if not parent_ref or len(keys) < 1:
+                continue
+            power_net = parent_power.get(parent_ref, "3V3")
+            if len(keys) >= 2:
+                nets.append({"net": power_net, "pins": [keys[0]]})
+                nets.append({"net": "GND", "pins": keys[1:]})
+            else:
+                nets.append({"net": "GND", "pins": keys})
+
     # ── Signal nets: group by canonical alias first ──
-    signal_groups = {}  # canonical_name -> list of pin keys
-    unmatched = []       # pin keys that didn't match any alias group
+    signal_groups: dict[str, list[str]] = {}
+    unmatched: list[tuple[str, list[str]]] = []
 
     for name, keys in by_name.items():
         canon = _canonical_signal_name(name)
@@ -816,15 +1286,28 @@ def _generate_nets_fallback(pin_matrix: dict) -> list:
         if len(pins) >= 1:
             nets.append({"net": canon.upper(), "pins": pins})
 
+    # Second pass: merge unmatched pins into existing canonical alias groups
+    still_unmatched: list[tuple[str, list[str]]] = []
+    for name, keys in unmatched:
+        canon = _canonical_signal_name(name)
+        existing_names = {n["net"] for n in nets}
+        if canon and canon.upper() in existing_names:
+            for n in nets:
+                if n["net"] == canon.upper():
+                    n["pins"].extend(keys)
+                    break
+        else:
+            still_unmatched.append((name, keys))
+    unmatched = still_unmatched
+
     # Match remaining unmatched by exact name (at least 2 pins sharing the same name)
     for name, keys in unmatched:
         if len(keys) >= 2:
             nets.append({"net": name, "pins": keys})
 
     # Remaining single unmatched pins: attach as standalone signal nets
-    # so they appear as labels (better than dropping them entirely)
-    leftover = {name: keys for name, keys in unmatched if len(keys) == 1}
-    for name, keys in leftover.items():
+    leftover_final = {name: keys for name, keys in unmatched if len(keys) == 1}
+    for name, keys in leftover_final.items():
         nets.append({"net": name, "pins": keys})
 
     return nets
@@ -983,6 +1466,7 @@ def build_graph() -> StateGraph:
     builder.add_node("analyze", analyze_node)
     builder.add_node("research", research_node)
     builder.add_node("select", select_node)
+    builder.add_node("validate", validate_node)
     builder.add_node("dispatch", dispatch_node)
     builder.add_node("netlist", netlist_node)
     builder.add_node("layout_route", layout_route_node)
@@ -990,7 +1474,8 @@ def build_graph() -> StateGraph:
     builder.set_entry_point("analyze")
     builder.add_edge("analyze", "research")
     builder.add_edge("research", "select")
-    builder.add_edge("select", "dispatch")
+    builder.add_edge("select", "validate")
+    builder.add_edge("validate", "dispatch")
     builder.add_edge("dispatch", "netlist")
     builder.add_edge("netlist", "layout_route")
 

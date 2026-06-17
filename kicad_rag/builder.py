@@ -21,6 +21,7 @@ from kicad_rag.constants import (
     DATA_DIR,
     EMBED_BATCH,
     EMBED_MODEL,
+    FOOTPRINTS_ROOT,
     INDEX_PATH,
     SQLITE_PATH,
     SYMBOLS_ROOT,
@@ -43,6 +44,41 @@ def _props_to_dict(sym) -> dict[str, str]:
     return {p.name: p.value for p in sym.properties}
 
 
+def _parse_footprint_pads(footprint_str: str) -> str:
+    """Parse a ``.kicad_mod`` file and return JSON string of pad data.
+
+    Returns ``'[]'`` if no footprint string, file missing, or parse error.
+    """
+    if not footprint_str:
+        return "[]"
+    cat, _, name = footprint_str.partition(":")
+    mod_path = FOOTPRINTS_ROOT / f"{cat}.pretty" / f"{name}.kicad_mod"
+    if not mod_path.is_file():
+        return "[]"
+    try:
+        _syspath()
+        import kicad_mod  # noqa: E402
+
+        mod = kicad_mod.KicadMod(str(mod_path))
+        pads = []
+        for p in mod.pads:
+            pads.append({
+                "number": p["number"],
+                "type": p["type"],
+                "shape": p["shape"],
+                "x": round(p["pos"]["x"], 4),
+                "y": round(p["pos"]["y"], 4),
+                "ox": round(p["pos"].get("orientation", 0), 4),
+                "sx": round(p["size"]["x"], 4),
+                "sy": round(p["size"]["y"], 4),
+                "layers": p["layers"],
+            })
+        return json.dumps(pads, separators=(",", ":"))
+    except Exception as exc:
+        print(f"  ! footprint parse failed {footprint_str}: {exc}", file=sys.stderr)
+        return "[]"
+
+
 def _resolve_inherited(sym):
     """Walk the ``_inheritance`` chain; return the root parent (the one
     that actually carries the pins)."""
@@ -51,9 +87,15 @@ def _resolve_inherited(sym):
     return sym
 
 
-def build_dataset() -> list[dict]:
+def build_dataset(limit: int = 0) -> list[dict]:
     """Parse every ``.kicad_symdir`` in *kicad-symbols* and return the
-    list of records ready for embedding and SQLite."""
+    list of records ready for embedding and SQLite.
+
+    Parameters
+    ----------
+    limit:
+        Stop after parsing *limit* symbols (not symdirs).  0 = no limit.
+    """
     _syspath()
     import kicad_sym  # noqa: E402
 
@@ -73,8 +115,16 @@ def build_dataset() -> list[dict]:
             continue
 
         for symbol in library.symbols:
+            if limit and len(records) >= limit:
+                break
             props = _props_to_dict(symbol)
             pin_source = _resolve_inherited(symbol)
+
+            # ki_fp_filters can appear multiple times — collect all
+            fp_filters = []
+            for p in symbol.properties:
+                if p.name == "ki_fp_filters":
+                    fp_filters.append(p.value)
 
             records.append({
                 "id": f"{category}:{symbol.name}",
@@ -90,7 +140,11 @@ def build_dataset() -> list[dict]:
                 ],
                 "datasheet": props.get("Datasheet", ""),
                 "extends": symbol.extends,
+                "footprint": props.get("Footprint", ""),
+                "fp_filters": fp_filters,
             })
+        if limit and len(records) >= limit:
+            break
 
     return records
 
@@ -127,7 +181,10 @@ def _init_sqlite(records: list[dict]) -> None:
             text      TEXT NOT NULL,
             datasheet TEXT,
             extends   TEXT,
-            pins_json TEXT NOT NULL
+            pins_json TEXT NOT NULL,
+            footprint TEXT DEFAULT '',
+            fp_filters TEXT DEFAULT '[]',
+            pads_json TEXT DEFAULT '[]'
         )"""
     )
     con.execute("CREATE INDEX idx_id_str ON symbols(id_str)")
@@ -140,10 +197,13 @@ def _init_sqlite(records: list[dict]) -> None:
             r.get("datasheet", ""),
             r.get("extends"),
             json.dumps(r["pins_ground_truth"], separators=(",", ":")),
+            r.get("footprint", ""),
+            json.dumps(r.get("fp_filters", []), separators=(",", ":")),
+            _parse_footprint_pads(r.get("footprint", "")),
         )
         for i, r in enumerate(records)
     ]
-    con.executemany("INSERT INTO symbols VALUES (?,?,?,?,?,?)", rows)
+    con.executemany("INSERT INTO symbols VALUES (?,?,?,?,?,?,?,?,?)", rows)
     con.commit()
     _build_fts(con)
     con.close()
@@ -196,8 +256,13 @@ def _build_index(vectors: np.ndarray, ids: np.ndarray) -> None:
 # ── public entry points ──────────────────────────────────────────────────────
 
 
-def build_full() -> int:
+def build_full(limit: int = 0) -> int:
     """Full pipeline: parse *.kicad_sym → embed → index.
+
+    Parameters
+    ----------
+    limit:
+        Stop after *limit* symbols (0 = no limit).
 
     Produces ``turbovec_dataset.json``, ``circuitbot.sqlite`` (with FTS5),
     and ``circuitbot.tvim`` in *data/*.
@@ -205,7 +270,7 @@ def build_full() -> int:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     print("[1/3] parsing symbols …")
-    records = build_dataset()
+    records = build_dataset(limit=limit)
     print(f"  {len(records):,} records")
 
     print("[2/3] writing ground-truth sqlite …")

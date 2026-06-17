@@ -175,6 +175,9 @@ def generate_kicad_sch(design: dict) -> str:
     placements = {p['ref_des']: p for p in design.get('component_placements', [])}
     wires = design.get('wire_paths', [])
 
+    # Build footprint lookup: ref_des -> footprint string
+    fp_lookup = {c['ref_des']: c.get('footprint', '') for c in comps}
+
     root_uuid = _new_uuid()
 
     # Compute translation so everything lands in positive sheet space.
@@ -234,8 +237,9 @@ def generate_kicad_sch(design: dict) -> str:
         out.append(f'    (property "Value" {_q(name)} (at {_fmt(sx)} {_fmt(sy + 2.54)} 0)')
         out.append('      (effects (font (size 1.27 1.27)) (justify left))')
         out.append('    )')
-        out.append(f'    (property "Footprint" "" (at {_fmt(sx)} {_fmt(sy)} 0)')
-        out.append('      (effects (font (size 1.27 1.27)) hide)')
+        fp_val = fp_lookup.get(ref, '') or ''
+        out.append(f'    (property "Footprint" {_q(fp_val)} (at {_fmt(sx)} {_fmt(sy)} 0)')
+        out.append('      (effects (font (size 1.27 1.27))' + (' hide)' if not fp_val else ')'))
         out.append('    )')
         out.append(f'    (property "Datasheet" "" (at {_fmt(sx)} {_fmt(sy)} 0)')
         out.append('      (effects (font (size 1.27 1.27)) hide)')

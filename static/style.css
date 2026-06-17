@@ -440,6 +440,10 @@ canvas:active {
     to { transform: rotate(360deg); }
 }
 
-.hidden {
-    display: none !important;
-}
+.hidden { display: none !important; }
+
+/* Custom Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-main); }
+::-webkit-scrollbar-thumb { background: var(--border); }
+::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }

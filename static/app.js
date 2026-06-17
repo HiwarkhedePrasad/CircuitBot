@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoLayoutBtn = document.getElementById('autoLayoutBtn');
     const clearBtn = document.getElementById('clearBtn');
     const viewSchematicBtn = document.getElementById('viewSchematicBtn');
+    const viewPcbBtn = document.getElementById('viewPcbBtn');
+    const viewSymbolBtn = document.getElementById('viewSymbolBtn');
+    const exportPcbBtn = document.getElementById('exportPcbBtn');
     const componentList = document.getElementById('componentList');
     const compCount = document.getElementById('compCount');
     const modeIndicator = document.getElementById('modeIndicator');
@@ -24,6 +27,65 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedComponent = null;
     let currentPreviewOps = null;
     let agentBusy = false;
+
+    // ── Tab Management ────────────────────────────────────────────────────────
+
+    function setActiveTab(tabId) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        const tab = document.getElementById(tabId);
+        if (tab) tab.classList.add('active');
+    }
+
+    if (viewSymbolBtn) {
+        viewSymbolBtn.addEventListener('click', () => {
+            if (currentPreviewOps) {
+                setActiveTab('viewSymbolBtn');
+                renderOps(currentPreviewOps);
+                modeIndicator.classList.add('hidden');
+            }
+        });
+    }
+
+    if (viewSchematicBtn) {
+        viewSchematicBtn.addEventListener('click', () => {
+            if (currentSchematic && currentSchematic.components.length > 0) {
+                setActiveTab('viewSchematicBtn');
+                enterSchematicMode();
+                modeIndicator.textContent = 'SCHEMATIC';
+                modeIndicator.classList.remove('hidden');
+            }
+        });
+    }
+
+    if (viewPcbBtn) {
+        viewPcbBtn.addEventListener('click', () => {
+            if (currentSchematic && currentSchematic.components.length > 0) {
+                setActiveTab('viewPcbBtn');
+                enterPcbMode();
+                modeIndicator.textContent = 'PCB VIEW';
+                modeIndicator.classList.remove('hidden');
+            }
+        });
+    }
+
+    // ── Canvas Coordinates ────────────────────────────────────────────────────
+
+    const canvas = document.getElementById('compCanvas');
+    canvas.addEventListener('mousemove', (e) => {
+        if (!currentTransform) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        
+        const t = currentTransform;
+        const s = t.baseScale * zoomLevel;
+        const mmX = (mouseX - t.cx - panX) / s + t.midX;
+        const mmY = -((mouseY - t.cy - panY) / s) + t.midY;
+        
+        if (coordDisplay) {
+            coordDisplay.textContent = `X: ${mmX.toFixed(2)} Y: ${mmY.toFixed(2)}`;
+        }
+    });
 
     // ── SocketIO ──────────────────────────────────────────────────────────────
 
@@ -54,8 +116,10 @@ document.addEventListener('DOMContentLoaded', () => {
             addLogEntry(data.message || 'Design complete.', 'success');
             updateComponentListUI();
             updateSchematicButtons();
-            const exportBtn = document.getElementById('exportSchBtn');
-            if (exportBtn) exportBtn.disabled = false;
+            const schBtn = document.getElementById('exportSchBtn');
+            if (schBtn) schBtn.disabled = false;
+            const pcbBtn = document.getElementById('exportPcbBtn');
+            if (pcbBtn) pcbBtn.disabled = false;
         });
         socket.on('agent:error', (data) => {
             agentBusy = false;
@@ -93,13 +157,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleAgentComponent(data) {
         if (!currentSchematic) currentSchematic = new Schematic();
-        const { id_str, category, ref_des, description, ops } = data;
+        const { id_str, category, ref_des, description, ops, pads } = data;
         if (!ops || ops.length === 0) {
             addLogEntry(`  Skipped ${ref_des}: no ops parsed.`, 'error');
             return;
         }
         const comp = currentSchematic.addRawComponent(id_str, ref_des, ops, category, description || '');
         if (comp) {
+            comp.pads = pads || [];
             addLogEntry(`  Placed ${comp.refDesignator} (${comp.name})`, 'log');
         }
         updateComponentListUI();
@@ -114,35 +179,112 @@ document.addEventListener('DOMContentLoaded', () => {
         const netlist = data.netlist || [];
         const powerPins = data.power_pins || [];
 
-        // Fallback: backend grid-router layout
-        const applyBackendLayout = () => {
-            placements.forEach(p => {
-                const comp = currentSchematic.components.find(c => c.refDesignator === p.ref_des);
-                if (comp) { comp.x = p.x; comp.y = p.y; }
-            });
-            currentSchematic.wirePaths = traces;
-            currentSchematic.powerLabels = powerLabels;
-            enterSchematicMode();
-            addLogEntry(`Laid out ${placements.length} components (fallback router).`, 'success');
-        };
+        // Primary: Apply backend A* router layout directly.
+        // The backend router now produces high-quality orthogonal routes with
+        // proper trace avoidance, star topology, and L-shaped fallback wires.
+        // WireBender WASM is only used as an optional enhancement if the user
+        // has explicitly enabled it (via localStorage flag).
+        placements.forEach(p => {
+            const comp = currentSchematic.components.find(c => c.refDesignator === p.ref_des);
+            if (comp) { comp.x = p.x; comp.y = p.y; comp.rotation = p.rotation || 0; }
+        });
+        currentSchematic.wirePaths = traces;
+        currentSchematic.powerLabels = powerLabels;
+        enterSchematicMode();
+        addLogEntry(
+            `Laid out ${placements.length} components, ` +
+            `routed ${traces.length} signal wires, ` +
+            `${powerLabels.length} power symbols.`, 'success');
+        saveLayoutToServer();
 
-        // Preferred: ELK (Eclipse Layout Kernel) — proven auto-layout +
-        // orthogonal edge routing. LLM decides connectivity only.
-        if (typeof ELK !== 'undefined') {
-            addLogEntry('Running ELK auto-layout (' + CIRCUITBOT_LAYOUT_VERSION + ')...', 'log');
-            runElkLayout(netlist, powerPins)
+        // Optional: Try WireBender WASM enhancement if explicitly enabled
+        const useWireBender = localStorage.getItem('circuitbot_wirebender') === 'true';
+        if (useWireBender) {
+            addLogEntry('WireBender enhancement enabled, attempting...', 'log');
+            runWireBenderLayout(netlist, powerPins)
                 .then(() => {
+                    setActiveTab('viewSchematicBtn');
                     enterSchematicMode();
                     addLogEntry(
-                        `ELK: placed ${currentSchematic.components.length} components, ` +
+                        `WireBender: placed ${currentSchematic.components.length} components, ` +
                         `routed ${(currentSchematic.wirePaths || []).length} wires, ` +
                         `${(currentSchematic.powerLabels || []).length} power symbols.`, 'success');
                     saveLayoutToServer();
                 })
                 .catch(err => {
-                    console.error('ELK layout failed:', err);
-                    addLogEntry('ELK failed (' + err.message + '), using fallback router.', 'error');
-                    applyBackendLayout();
+                    console.error('WireBender failed:', err);
+                    addLogEntry('WireBender failed (' + err.message + '), keeping backend routes.', 'error');
+                });
+        }
+    }
+
+    // ── WireBender (WASM) layout + routing ──────────────────────────────────
+
+    let _WB = null;
+    let _wb = null;
+    let _modulePromise = null;
+
+    async function initWireBender() {
+        if (_modulePromise) return _modulePromise;
+        console.log('[WireBender] Loading WASM module...');
+        _modulePromise = import('https://dev-lab.github.io/WireBender/latest/WireBender.js')
+            .then(m => m.default({
+                locateFile: f => f === 'WireBender.wasm' ? 'https://dev-lab.github.io/WireBender/latest/WireBender.wasm' : f,
+            }))
+            .then(module => {
+                _WB = module;
+                console.log('[WireBender] WASM module loaded');
+            })
+            .catch(err => {
+                console.error('[WireBender] Failed to load WASM module:', err);
+                throw err;
+            });
+        return _modulePromise;
+    }
+
+    async function runWireBenderLayout(netlist, powerPins) {
+        await initWireBender();
+        if (!_WB) throw new Error('WireBender module not loaded');
+
+        if (_wb) {
+            try { _wb.delete(); } catch(e) {}
+        }
+        _wb = new _WB.WireBender();
+
+        const comps = currentSchematic.components;
+
+        comps.forEach(c => {
+            const g = c.geomBBox;
+            const pinsVec = new _WB.VectorPinDescriptor();
+            
+            for (const op of c.ops) {
+                if (op[0] !== 'pin') continue;
+                const at = _getAttr(op, 'at');
+                const len = _getAttr(op, 'length');
+                const num = _getAttr(op, 'number');
+                if (!at || !len || !num) continue;
+                
+                const x = parseFloat(at[1]), y = parseFloat(at[2]);
+                const angDeg = parseFloat(at[3] || 0);
+                const l = parseFloat(len[1]);
+                
+                const ex = x + Math.cos(angDeg * Math.PI / 180) * l;
+                const ey = y + Math.sin(angDeg * Math.PI / 180) * l;
+                const key = String(num[1]).replace(/"/g, '');
+                
+                let df = 0;
+                const deg = (Math.round(angDeg) + 360) % 360;
+                if (deg === 0) df = 1;
+                else if (deg === 90) df = 2;
+                else if (deg === 180) df = 4;
+                else if (deg === 270) df = 8;
+                
+                pinsVec.push_back({
+                    number: parseInt(key) || 0,
+                    name: key,
+                    x: ex - g.x,
+                    y: ey - g.y,
+                    directionFlags: df
                 });
         } else {
             applyBackendLayout();
@@ -345,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Send the ELK-computed geometry to the server so .kicad_sch export matches
     function saveLayoutToServer() {
         const placements = currentSchematic.components.map(c => ({
-            ref_des: c.refDesignator, x: c.x, y: c.y,
+            ref_des: c.refDesignator, x: c.x, y: c.y, rotation: c.rotation || 0,
         }));
         fetch('/api/save_layout', {
             method: 'POST',
@@ -367,6 +509,16 @@ document.addEventListener('DOMContentLoaded', () => {
         exportSchBtn.addEventListener('click', () => {
             addLogEntry('Exporting KiCad schematic...', 'log');
             window.location.href = '/api/export_sch';
+        });
+    }
+
+    if (exportPcbBtn) {
+        exportPcbBtn.addEventListener('click', () => {
+            addLogEntry('Exporting KiCad PCB...', 'log');
+            saveLayoutToServer();
+            setTimeout(() => {
+                window.location.href = '/api/export_pcb';
+            }, 100);
         });
     }
 
@@ -441,7 +593,8 @@ document.addEventListener('DOMContentLoaded', () => {
         autoRouteBtn.disabled = !hasComponents;
         clearBtn.disabled = !hasComponents;
         viewSchematicBtn.disabled = !hasComponents;
-        compCount.textContent = `(${currentSchematic ? currentSchematic.components.length : 0})`;
+        viewPcbBtn.disabled = !hasComponents;
+        compCount.textContent = (currentSchematic ? currentSchematic.components.length : 0);
     }
 
     function updateComponentListUI() {
@@ -608,4 +761,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.appContext = { fetchSExpr };
+    connectSocket();
 });

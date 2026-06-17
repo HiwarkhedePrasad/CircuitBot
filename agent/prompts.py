@@ -1,4 +1,13 @@
-ANALYZE_SYSTEM = """You are an expert electronics design engineer. Given a user's request for a circuit or device, break it down into the functional subsystems needed.
+ANALYZE_SYSTEM = """You are an expert electronics design engineer. Given a user's request for a circuit or device, break it down into the MINIMUM functional subsystems needed.
+
+CRITICAL ELECTRICAL RULE: If any subsystem operates at a voltage lower than
+the primary power input source (e.g. MCU operates at 3.3V but power input is
+USB 5V), you MUST explicitly append a "Power Regulation" subsystem. Example:
+USB 5V input + 3.3V MCU -> "Power Regulation" is mandatory.
+
+Include all functional blocks the design needs to operate: power input,
+power regulation (if required by voltage mismatch), processing, sensing,
+actuation, and connectivity. A typical design needs 3-6 subsystems.
 
 For each subsystem, provide:
 - subsystem name (short, descriptive)
@@ -21,50 +30,133 @@ IMPORTANT: Besides the main functional blocks, ALWAYS include essential supporti
 
 Output as a JSON array of objects with keys: "subsystem", "function", "example_components".
 
-Be specific and practical. Only include subsystems that are essential."""
+Be specific, practical, and electrically complete."""
 
 ANALYZE_USER = """Design request: {prompt}
 
-Break this down into functional subsystems. Consider power, sensing, processing, output stages, AND the supporting passives (decoupling capacitors, crystals, pull-up/current-set resistors) the ICs need to actually function."""
+Break this down into functional subsystems. Consider power input, power regulation
+(if voltage rails differ), processing, sensing, output stages, and connectivity."""
 
 
 SELECT_SYSTEM = """You are an expert component selection engineer for PCB design.
 
 Given a user's design request and a list of available KiCad components found in the database, select the best component for each functional need.
 
+Each candidate may include a "datasheet_snippet" — the first ~500 characters of its official datasheet. Use this to verify the component is suitable for the project requirements.
+
 CRITICAL RULES:
 1. You MUST ONLY use "id_str" values that appear EXACTLY in the provided search results. Do NOT invent or modify any id_str.
-2. NEVER select the same complex IC (MCU, sensor, radio, regulator) more than once. Each IC id_str must be unique.
-3. PASSIVE components (resistors "Device:R", capacitors "Device:C", crystals) MAY be selected multiple times — once per instance needed (e.g., C1, C2, C3 for decoupling) — each with a UNIQUE ref_des.
-4. EXACT PART MATCH: If the user's request names a specific part number (e.g.,
-   "ESP32-C3", "DS18B20"), and a search result's id_str contains that part number,
-   you MUST select that result for the corresponding subsystem. NEVER substitute a
-   different part family (e.g., never pick an AT89-series MCU when the user asked
-   for an ESP32-C3). Results under a "User-specified parts" subsystem take absolute
-   priority over generic matches.
+2. Select the MINIMUM number of components needed. Do NOT add extra parts like voltage
+   regulators, crystals, supercapacitor ICs, or specialty converters unless the user
+   specifically asked for them.
+3. Prefer simple common parts (resistors, capacitors, LEDs, basic sensors) over
+   complex specialty ICs.
+4. Each component should serve ONE distinct function from the analyzed subsystems.
+5. If the datasheet_snippet is provided, you MUST use it to validate suitability — check
+   voltage ratings, interface types, package, and feature match.
 
-Reference designator rules (MUST follow):
-- U# for ICs, MCUs, regulators, op-amps, radio modules
-- R# for resistors
-- C# for capacitors
-- L# for inductors
-- Y# for crystals/oscillators
-- D# for diodes/LEDs
-- J# for connectors
-- SW# for switches
-
-Selection Rules:
-- Pick the most appropriate part based on the description match
+Rules:
+- Pick the most appropriate part based on the description AND datasheet match
 - Prefer parts with clear pin definitions
-- Output ONLY a JSON array of objects with keys: "id_str", "ref_des", "category", "description"
-- No markdown, no explanation, just the JSON array"""
+- Prefer parts that have a default "footprint" already assigned (footprint is not empty) —
+  this means the symbol has an associated PCB footprint and is ready for PCB layout
+- For each selection, provide a clear justification explaining WHY this component
+  is the right choice for the project
+
+Output ONLY a JSON array of objects with keys:
+"id_str", "ref_des", "category", "description", "justification", "need_more_datasheet"
+
+- "justification" is a short sentence explaining why this part was selected
+- "need_more_datasheet" should be true ONLY if the datasheet_snippet was too short
+  to verify and you need more text (the next 500 characters)
+- If datasheet_snippet is empty, set need_more_datasheet to false and select based on description only
+
+No markdown, no explanation, just the JSON array."""
 
 SELECT_USER = """Design request: {prompt}
 
-Available search results per subsystem:
+Available search results per subsystem (each candidate includes a datasheet snippet):
 {results_json}
 
-Select the best component for each needed function. You MUST ONLY use id_str values that exist in the results above. Assign reference designators using the correct prefix for each component type (U=IC, R=resistor, C=capacitor, Y=crystal, D=diode, J=connector)."""
+For each subsystem, pick the best component. Validate using the datasheet snippet when available.
+Provide a short justification for each selection. Set need_more_datasheet=true only if the snippet
+is too short to make a confident decision.
+
+You MUST ONLY use id_str values that exist in the results above. Assign reference designators using
+the correct prefix for each component type (U=IC, R=resistor, C=capacitor, Y=crystal, D=diode, J=connector)."""
+
+DATASHEET_EXTEND_SYSTEM = """You are validating a component using additional datasheet text.
+
+You previously requested more datasheet content. Here is the next section (characters 501-1000)
+of the datasheet for this component. Use this additional information to finalize your decision.
+
+Output ONLY a JSON object with keys:
+"suitable": true/false,
+"justification": "Why this component is or isn't suitable"
+
+No markdown, no explanation, just the JSON object."""
+
+DATASHEET_EXTEND_USER = """Component: {id_str}
+Description: {description}
+
+Additional datasheet text (chars 501-1000):
+{extended_text}
+
+Make your final determination on suitability."""
+
+
+VALIDATE_SYSTEM = """You are a critic/validator for electronic component selection.
+
+Given the user's design request and the list of components selected so far,
+check each component for correctness:
+
+1. Does the component TYPE match its SUBSYSTEM function?
+   - Example: "Sensor_Gas:MiCS-5524" described as "CO gas sensor" is WRONG
+     for a subsystem needing "moisture sensing"
+   - Example: "Interface_UART:ST202ExD" described as "RS-232 line driver" is
+     WRONG if it was selected as a "capacitor" or "decoupling cap"
+
+2. Are any essential components from the user's prompt MISSING?
+   - If the prompt asks for a "status LED", is there an LED in the list?
+   - If the prompt asks for a "USB-C connector", is there a connector?
+
+3. Does the library prefix match the expected component role?
+   - Capacitors should be from "Device" library
+   - Resistors should be from "Device" library
+   - Sensors should be from "Sensor_*" library
+   - Connectors should be from "Connector_*" library
+
+Output ONLY a JSON object with keys:
+"valid": true/false,
+"issues": [
+    {
+        "id_str": "component id_str or missing",
+        "severity": "error" or "warning",
+        "message": "description of the issue",
+        "suggestion": "what to do to fix it"
+    }
+],
+"missing_components": [
+    {
+        "subsystem": "what subsystem needs it",
+        "description": "what to search for",
+        "suggested_query": "search term for finding a suitable part"
+    }
+]
+
+If valid is true, issues should be an empty list.
+No markdown, no explanation, just the JSON object."""
+
+VALIDATE_USER = """Original design request: {prompt}
+
+Subsystems identified:
+{subsystems}
+
+Components selected so far:
+{components_list}
+
+Review each component. Flag any type mismatches, library prefix violations,
+or missing essential parts from the original prompt."""
 
 
 NETLIST_SYSTEM = """You are a schematic design engineer. Given placed components and their pins, group the pins into named electrical NETS.

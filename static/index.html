@@ -34,19 +34,27 @@
                     <input type="text" id="routePrompt" placeholder="Describe connections (e.g. connect VCC to 3.3V pins)" autocomplete="off">
                 </div>
             </div>
-
-            <div class="agent-section">
-                <h3>AI Agent</h3>
-                <div class="btn-row">
-                    <input type="text" id="agentPrompt" placeholder="Describe a circuit (e.g. temperature sensor)" autocomplete="off">
-                    <button id="agentBtn" class="btn-agent">Build</button>
-                </div>
-                <div class="btn-row">
-                    <button id="exportSchBtn" class="btn-export" disabled>Export .kicad_sch</button>
-                </div>
-                <div class="agent-log" id="agentLog">
-                    <div class="agent-log-empty">Enter a prompt and press Build.</div>
-                </div>
+            <div class="toolbar">
+                <button id="addBtn" class="tool-btn" title="Add Selected Component to Schematic" disabled>
+                    <span class="icon">+</span> Add Component
+                </button>
+                <div class="divider"></div>
+                <button id="autoLayoutBtn" class="tool-btn" title="Auto-place components" disabled>
+                    <span class="icon">⊞</span> Auto Layout
+                </button>
+                <button id="autoRouteBtn" class="tool-btn" title="Generate orthogonal traces" disabled>
+                    <span class="icon">⌇</span> Auto Route
+                </button>
+                <button id="clearBtn" class="tool-btn danger" title="Clear entire schematic" disabled>
+                    <span class="icon">×</span> Clear
+                </button>
+                <div class="divider"></div>
+                <button id="exportSchBtn" class="tool-btn highlight" title="Export as KiCad .kicad_sch" disabled>
+                    <span class="icon">⤓</span> Export .kicad_sch
+                </button>
+                <button id="exportPcbBtn" class="tool-btn highlight" title="Export as KiCad .kicad_pcb" disabled>
+                    <span class="icon">⬛</span> Export .kicad_pcb
+                </button>
             </div>
 
             <div class="component-list-section">
@@ -62,15 +70,90 @@
                     <button id="zoomOutBtn" title="Zoom Out">&#x2212;</button>
                     <button id="zoomResetBtn" title="Reset Zoom">&#x27F2;</button>
                 </div>
-                <div id="modeIndicator" class="mode-indicator hidden">Schematic View</div>
-            </div>
-            <div id="componentInfo"></div>
+                
+                <div class="panel-divider horizontal"></div>
+                
+                <div class="panel-section hierarchy-section">
+                    <div class="panel-header">
+                        <span class="panel-title">Placed Components</span>
+                        <span id="compCount" class="badge">0</span>
+                    </div>
+                    <ul id="componentList" class="list-view">
+                    </ul>
+                </div>
+            </aside>
+
+            <main class="eda-main">
+                <div class="canvas-header">
+                    <div class="tabs">
+                        <button id="viewSchematicBtn" class="tab active">Schematic Editor</button>
+                        <button id="viewPcbBtn" class="tab">PCB View</button>
+                        <button id="viewSymbolBtn" class="tab">Symbol Preview</button>
+                    </div>
+                    <div class="canvas-controls">
+                        <div class="zoom-group">
+                            <button id="zoomOutBtn" title="Zoom Out">-</button>
+                            <span id="zoomLevel">100%</span>
+                            <button id="zoomInBtn" title="Zoom In">+</button>
+                            <button id="zoomResetBtn" title="Fit to View">Fit</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="canvas-viewport">
+                    <canvas id="compCanvas"></canvas>
+                    <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
+                    
+                    <div class="floating-route-input">
+                        <input type="text" id="routePrompt" placeholder="Routing constraints (e.g. 'connect VCC to 3.3V')..." autocomplete="off">
+                    </div>
+                </div>
+
+                <footer class="eda-status-bar">
+                    <div class="status-left">
+                        <span class="status-item">Grid: 1.27mm</span>
+                        <span class="status-item" id="coordDisplay">X: 0.00 Y: 0.00</span>
+                    </div>
+                    <div class="status-right">
+                        <span class="status-item">Engine: v8-elk-fixed-side</span>
+                        <span class="status-item">Renderer: Canvas2D</span>
+                    </div>
+                </footer>
+            </main>
+
+            <aside class="eda-sidebar right-panel">
+                <div class="panel-section properties-section">
+                    <div class="panel-header">
+                        <span class="panel-title">Property Inspector</span>
+                    </div>
+                    <div id="componentInfo" class="properties-view">
+                        <div class="empty-state">No component selected</div>
+                    </div>
+                </div>
+
+                <div class="panel-divider horizontal"></div>
+
+                <div class="panel-section agent-section">
+                    <div class="panel-header">
+                        <span class="panel-title">AI Design Co-Pilot</span>
+                    </div>
+                    <div class="agent-container">
+                        <div class="agent-log" id="agentLog">
+                            <div class="agent-log-empty">Design co-pilot ready. Enter a prompt to generate circuits.</div>
+                        </div>
+                        <div class="agent-input-group">
+                            <textarea id="agentPrompt" placeholder="Describe a circuit... (e.g. 'Add an ESP32 with a DHT22 sensor and an LED status indicator')" rows="2"></textarea>
+                            <button id="agentBtn" class="btn-primary">Build Design</button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
     </div>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
-    <script src="/static/schematic.js?v=8"></script>
-    <script src="/static/renderer.js?v=8"></script>
-    <script src="/static/app.js?v=8"></script>
+    <script src="/static/schematic.js?v=9"></script>
+    <script src="/static/renderer.js?v=9"></script>
+    <script src="/static/pcb_view.js?v=1"></script>
+    <script src="/static/app.js?v=9"></script>
 </body>
 </html>

@@ -41,7 +41,7 @@ def _parse_symbols_path(s: str) -> Path:
 def cmd_build(args: argparse.Namespace) -> int:
     if args.fts_only:
         return build_fts_only()
-    return build_full()
+    return build_full(limit=args.limit or 0)
 
 
 def cmd_search(args: argparse.Namespace) -> int:
@@ -56,6 +56,8 @@ def cmd_search(args: argparse.Namespace) -> int:
             "score": r.score,
             "rank": r.rank,
             "pins": r.pins,
+            "footprint": r.footprint,
+            "fp_filters": r.fp_filters,
         } for r in results]
         json.dump(out, sys.stdout, indent=2)
         print()
@@ -66,8 +68,9 @@ def cmd_search(args: argparse.Namespace) -> int:
         print("  no results")
         return 0
     for r in results:
+        fp_str = f'  fp={r.footprint}' if r.footprint else '  no footprint'
         print(f"  [{r.rank}] {r.id_str}   score={r.score:.4f}   "
-              f"({len(r.pins)} pins)")
+              f"({len(r.pins)} pins){fp_str}")
         print(f"        {r.text}")
     return 0
 
@@ -116,6 +119,8 @@ def _build_parser() -> argparse.ArgumentParser:
     bp = sub.add_parser("build", help="Build the corpus, SQLite, and index")
     bp.add_argument("--fts-only", action="store_true",
                     help="Only rebuild FTS5 table (no re-embedding)")
+    bp.add_argument("--limit", type=int, default=0,
+                    help="Stop after N symbols (smoke test)")
     bp.set_defaults(func=cmd_build)
 
     # search

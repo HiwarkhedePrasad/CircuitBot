@@ -14,6 +14,7 @@ SQLITE_PATH = DATA_DIR / "circuitbot.sqlite"
 
 # --- external repos (stays at project root) ---
 SYMBOLS_ROOT = HERE / "kicad-symbols"
+FOOTPRINTS_ROOT = HERE.parent / "kicad-footprints"
 UTILS_ROOT = HERE.parent / "kicad-library-utils"
 
 # --- embedding ---

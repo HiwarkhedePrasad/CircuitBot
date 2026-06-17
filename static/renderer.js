@@ -845,19 +845,65 @@ function drawSchematic() {
     });
 
     // Render wires (from auto-routing)
+    // Color-coded by net name for clarity — each net gets a distinct color
+    // so overlapping or adjacent wires are easily distinguished.
     if (currentSchematic.wirePaths) {
-        ctx.strokeStyle = '#00A800';
+        // Generate a color for each unique net name
+        const netColors = {};
+        let colorIdx = 0;
+        const PALETTE = [
+            '#00A800', // KiCad green (default)
+            '#0066CC', // Blue
+            '#CC6600', // Orange
+            '#9900CC', // Purple
+            '#CC0066', // Magenta
+            '#009999', // Teal
+            '#666600', // Olive
+            '#CC0000', // Red
+            '#006633', // Dark green
+            '#336699', // Steel blue
+            '#993366', // Plum
+            '#CC9933', // Gold
+        ];
+        currentSchematic.wirePaths.forEach(wire => {
+            const netName = wire.net || wire.source || '';
+            if (!netColors[netName]) {
+                netColors[netName] = PALETTE[colorIdx % PALETTE.length];
+                colorIdx++;
+            }
+        });
+
         ctx.lineWidth = 0.254;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+
         currentSchematic.wirePaths.forEach(wire => {
             if (!wire.path || wire.path.length < 2) return;
+            const netName = wire.net || wire.source || '';
+            ctx.strokeStyle = netColors[netName] || '#00A800';
             ctx.beginPath();
             ctx.moveTo(wire.path[0].x, wire.path[0].y);
             for (let i = 1; i < wire.path.length; i++) {
                 ctx.lineTo(wire.path[i].x, wire.path[i].y);
             }
             ctx.stroke();
+
+            // Render net label at the midpoint of the wire for identification
+            if (netName && wire.path.length >= 2) {
+                const midIdx = Math.floor(wire.path.length / 2);
+                const midPt = wire.path[midIdx];
+                ctx.save();
+                ctx.translate(midPt.x, midPt.y + 1.5);
+                ctx.scale(1, -1); // un-flip Y for text
+                ctx.fillStyle = netColors[netName] || '#00A800';
+                ctx.font = '1.0px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.globalAlpha = 0.7;
+                ctx.fillText(netName, 0, 0);
+                ctx.globalAlpha = 1.0;
+                ctx.restore();
+            }
         });
     }
 
@@ -940,6 +986,8 @@ function exitSchematicMode() {
 function drawCurrentMode() {
     if (currentSchematic && currentSchematic.mode === 'schematic' && currentSchematic.components.length > 0) {
         drawSchematic();
+    } else if (currentSchematic && currentSchematic.mode === 'pcb') {
+        drawPCB();
     } else if (currentOps.length > 0) {
         drawSymbol();
     }

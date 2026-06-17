@@ -6,6 +6,10 @@ class ComponentSelection(TypedDict):
     ref_des: str
     category: str
     description: str
+    footprint: str
+    pads: list[dict]
+    justification: str
+    datasheet_text: str
 
 
 class PinInfo(TypedDict):

@@ -10,7 +10,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from kicad_rag.constants import SQLITE_PATH, SYMBOLS_ROOT
+from kicad_rag.constants import (
+    FOOTPRINTS_ROOT,
+    SQLITE_PATH,
+    SYMBOLS_ROOT,
+)
 
 
 def _con() -> sqlite3.Connection:
@@ -36,19 +40,49 @@ def lookup_pins(id_str: str) -> list[dict]:
 
 
 def lookup_batch(id_ints: list[int]) -> dict[int, tuple]:
-    """Fetch ``(id_int, id_str, text, pins_json)`` for a batch of uint64 ids."""
+    """Fetch ``(id_int, id_str, text, datasheet, pins_json, footprint, fp_filters, pads_json)`` for a batch of uint64 ids."""
     con = _con()
     try:
         ph = ",".join("?" for _ in id_ints)
         rows = {
             r[0]: r for r in con.execute(
-                f"SELECT id_int, id_str, text, pins_json "
+                f"SELECT id_int, id_str, text, datasheet, pins_json, "
+                f"footprint, fp_filters, pads_json "
                 f"FROM symbols WHERE id_int IN ({ph})", id_ints
             )
         }
     finally:
         con.close()
     return rows
+
+
+def lookup_footprint(id_str: str) -> dict | None:
+    """Return footprint info for a component: ``{footprint, fp_filters, pads}`` or ``None``."""
+    con = _con()
+    try:
+        row = con.execute(
+            "SELECT footprint, fp_filters, pads_json FROM symbols WHERE id_str = ?",
+            (id_str,),
+        ).fetchone()
+    finally:
+        con.close()
+    if not row or not row[0]:
+        return None
+    return {
+        "footprint": row[0],
+        "fp_filters": json.loads(row[1]) if row[1] else [],
+        "pads": json.loads(row[2]) if row[2] else [],
+    }
+
+
+def footprint_path_for(footprint_str: str) -> Path:
+    """Derive the ``.kicad_mod`` file path from a footprint reference string.
+
+    ``footprint_str`` shape: ``"<category>:<name>"`` which maps to
+    ``kicad-footprints/<category>.pretty/<name>.kicad_mod``.
+    """
+    cat, _, name = footprint_str.partition(":")
+    return FOOTPRINTS_ROOT / f"{cat}.pretty" / f"{name}.kicad_mod"
 
 
 def sexpr_path_for(id_str: str) -> Path:

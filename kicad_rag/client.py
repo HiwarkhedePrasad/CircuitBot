@@ -25,7 +25,12 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from kicad_rag.retrieval import dense_search, bm25_search, hybrid_search
-from kicad_rag.store import lookup_batch, lookup_pins, fetch_sexpr as _fetch_sexpr
+from kicad_rag.store import (
+    lookup_batch,
+    lookup_footprint,
+    lookup_pins,
+    fetch_sexpr as _fetch_sexpr,
+)
 from kicad_rag.constants import FANOUT
 
 
@@ -38,6 +43,10 @@ class Result:
     score: float
     rank: int
     pins: List[dict]
+    datasheet: str = ""
+    footprint: Optional[str] = None
+    fp_filters: Optional[List[str]] = None
+    pads: Optional[List[dict]] = None
 
 
 class KicadRAG:
@@ -96,13 +105,17 @@ class KicadRAG:
             row = rows.get(id_int)
             if row is None:
                 continue
-            _, id_str, text, pins_json = row
+            _, id_str, text, datasheet, pins_json, footprint, fp_filters_json, pads_json = row
             out.append(Result(
                 id_str=id_str,
                 text=text,
                 score=score,
                 rank=rank,
                 pins=json.loads(pins_json),
+                datasheet=datasheet or "",
+                footprint=footprint or None,
+                fp_filters=json.loads(fp_filters_json) if fp_filters_json else None,
+                pads=json.loads(pads_json) if pads_json else None,
             ))
         return out
 
@@ -113,3 +126,12 @@ class KicadRAG:
     def sexpr(self, id_str: str) -> str:
         """Raw KiCad S-expression from the on-disk ``.kicad_sym`` file."""
         return _fetch_sexpr(id_str)
+
+    def footprint(self, id_str: str) -> Optional[dict]:
+        """Footprint info ``{footprint, fp_filters, pads}`` or ``None``."""
+        return lookup_footprint(id_str)
+
+    def pads(self, id_str: str) -> List[dict]:
+        """Pad list for the default footprint, or empty list."""
+        info = lookup_footprint(id_str)
+        return info["pads"] if info else []
