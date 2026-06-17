@@ -26,7 +26,7 @@ def get_llm_client(temperature=1.0, max_completion_tokens=8192):
             model="llama-3.3-70b-versatile",
             api_key=groq_key,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_tokens=max_completion_tokens,
         )
     else:
         raise ValueError("Neither NVIDIA_API_KEY nor GROQ_API_KEY is set in the environment.")
