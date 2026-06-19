@@ -84,6 +84,22 @@ check each component for correctness:
    are integrated into the module. "RF_Module" is a perfectly valid library for
    ESP32/wireless microcontrollers. Do not flag it as an error.
 
+5. ATOMIC COMPONENT RULE: When listing missing components, you MUST break them
+   down into single, atomic parts. NEVER bundle components together (e.g., do
+   NOT say "LED and resistor" or "Connector with CC resistors").
+   - If an LED and a resistor are missing, create TWO separate entries.
+   - If a USB-C connector needs CC resistors, create ONE entry for the
+     connector and separate entries for the resistors.
+
+COMMON COMPONENT CHEAT SHEET:
+Use EXACTLY these KiCad symbols for generic supporting parts:
+- Resistors: "Device:R_Small"
+- Capacitors: "Device:C_Small"
+- Generic LEDs: "Device:LED"
+- Inductors: "Device:L_Small"
+- USB-C Connectors: "Connector_USB:USB_C_Receptacle_USB2.0"
+- Diodes: "Device:D_Small"
+
 Output ONLY a JSON object with keys:
 "valid": true/false,
 "issues": [
@@ -99,7 +115,8 @@ Output ONLY a JSON object with keys:
         "subsystem": "what subsystem needs it",
         "description": "what to search for",
         "suggested_query": "search term for finding a suitable part",
-        "library_filter": "restrict search to this KiCad library (e.g. 'Device' for passives/LEDs, 'Connector' for USB)"
+        "library_filter": "restrict search to this KiCad library (e.g. 'Device' for passives/LEDs, 'Connector' for USB)",
+        "preferred_id_str": "EXACT KiCad id_str (e.g. 'Device:R_Small') — set this when you know the exact symbol"
     }
 ]
 

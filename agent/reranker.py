@@ -18,6 +18,15 @@ Scoring rules:
 5. The "has_footprint" field shows if the symbol has an associated PCB footprint — prefer candidates that do
 6. PHYSICAL INTERFACE RULE: If the subsystem describes a physical connection to the outside world (e.g., "USB-C Power Input", "USB Interface", "Audio Jack", "Power Terminal"), the primary component MUST be a physical connector from the 'Connector_*' library. Protection ICs, ESD diodes, or PD controllers are supporting components — they must NOT be selected as the primary component. Score any non-connector primary component 0-2 for such subsystems.
 
+COMMON COMPONENT CHEAT SHEET:
+Use EXACTLY these KiCad symbols for generic supporting parts:
+- Resistors: "Device:R_Small"
+- Capacitors: "Device:C_Small"
+- Generic LEDs: "Device:LED"
+- Inductors: "Device:L_Small"
+- USB-C Connectors: "Connector_USB:USB_C_Receptacle_USB2.0"
+- Diodes: "Device:D_Small"
+
 Output ONLY a JSON array of objects:
 [{"id_str": "Device:R_Small", "score": 9, "justification": "Standard resistor, ideal for current limiting"}, ...]
 
