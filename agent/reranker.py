@@ -16,6 +16,7 @@ Scoring rules:
 3. Library prefix should match expected role: Device for passives, Connector for connectors, Sensor_* for sensors, Regulator_* for regulators
 4. MODULE AWARENESS: If a development board or module that was already selected covers this subsystem's function (e.g., WEMOS_C3_mini module has on-board USB and voltage regulation), output score 0 and set justification to "SKIPPED - integrated into module"
 5. The "has_footprint" field shows if the symbol has an associated PCB footprint — prefer candidates that do
+6. PHYSICAL INTERFACE RULE: If the subsystem describes a physical connection to the outside world (e.g., "USB-C Power Input", "USB Interface", "Audio Jack", "Power Terminal"), the primary component MUST be a physical connector from the 'Connector_*' library. Protection ICs, ESD diodes, or PD controllers are supporting components — they must NOT be selected as the primary component. Score any non-connector primary component 0-2 for such subsystems.
 
 Output ONLY a JSON array of objects:
 [{"id_str": "Device:R_Small", "score": 9, "justification": "Standard resistor, ideal for current limiting"}, ...]

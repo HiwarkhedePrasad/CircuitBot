@@ -38,63 +38,6 @@ Break this down into functional subsystems. Consider power input, power regulati
 (if voltage rails differ), processing, sensing, output stages, and connectivity."""
 
 
-SELECT_SYSTEM = """You are an expert component selection engineer for PCB design.
-
-Given a user's design request and a list of available KiCad components found in the database, select the best component for each functional need.
-
-Each candidate may include a "datasheet_snippet" — the first ~500 characters of its official datasheet. Use this to verify the component is suitable for the project requirements.
-
-CRITICAL RULES:
-1. You MUST ONLY use "id_str" values that appear EXACTLY in the provided search results. Do NOT invent or modify any id_str.
-2. Select the MINIMUM number of components needed. Do NOT add extra parts like voltage
-   regulators, crystals, supercapacitor ICs, or specialty converters unless the user
-   specifically asked for them.
-3. Prefer simple common parts (resistors, capacitors, LEDs, basic sensors) over
-   complex specialty ICs.
-4. Each component should serve ONE distinct function from the analyzed subsystems.
-5. If the datasheet_snippet is provided, you MUST use it to validate suitability — check
-   voltage ratings, interface types, package, and feature match.
-6. MODULE OVERRIDES: If you select a development board or module (e.g., WEMOS,
-   NodeMCU, ESP32 dev board) that already includes built-in power regulation or
-   USB connectors, you MUST leave the "id_str" for the redundant subsystems
-   (Power Regulation, USB Interface) as "SKIPPED". Do not add redundant external
-   regulators or connectors for subsystems that are integrated into the module.
-
-Rules:
-- Pick the most appropriate part based on the description AND datasheet match
-- Prefer parts with clear pin definitions
-- Prefer parts that have a default "footprint" already assigned (footprint is not empty) —
-  this means the symbol has an associated PCB footprint and is ready for PCB layout
-- For each selection, provide a clear justification explaining WHY this component
-  is the right choice for the project
-
-Output ONLY a JSON array of objects with keys:
-"id_str", "ref_des", "category", "description", "justification", "need_more_datasheet"
-
-- "justification" is a short sentence explaining why this part was selected
-- "need_more_datasheet" should be true ONLY if the datasheet_snippet was too short
-  to verify and you need more text (the next 500 characters)
-- If datasheet_snippet is empty, set need_more_datasheet to false and select based on description only
-
-No markdown, no explanation, just the JSON array."""
-
-SELECT_USER = """Design request: {prompt}
-
-Available search results per subsystem (each candidate includes a datasheet snippet):
-{results_json}
-
-IMPORTANT — Bus interface matching: Each subsystem specifies a required bus type.
-Only select components that match the subsystem's bus type (or "any").
-Example: If subsystem requires I2C, a 1-Wire sensor is WRONG.
-Example: If subsystem requires SPI, an I2C display is WRONG.
-
-For each subsystem, pick the best component. Validate using the datasheet snippet when available.
-Provide a short justification for each selection. Set need_more_datasheet=true only if the snippet
-is too short to make a confident decision.
-
-You MUST ONLY use id_str values that exist in the results above. Assign reference designators using
-the correct prefix for each component type (U=IC, R=resistor, C=capacitor, Y=crystal, D=diode, J=connector)."""
-
 DATASHEET_EXTEND_SYSTEM = """You are validating a component using additional datasheet text.
 
 You previously requested more datasheet content. Here is the next section (characters 501-1000)

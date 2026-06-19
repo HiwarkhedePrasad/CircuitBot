@@ -153,6 +153,19 @@ def select_node(state, config):
                         if c["id_str"] == sp["preferred_id_str"]:
                             chosen = c
                             break
+                if not chosen:
+                    pid = sp.get("preferred_id_str", "")
+                    if pid:
+                        chosen = {
+                            "id_str": pid,
+                            "category": pid.split(":")[0] if ":" in pid else "Device",
+                            "text": sp.get("description", ""),
+                            "footprint": "",
+                            "pads": [],
+                        }
+                        _emit(config, "agent:log", {
+                            "message": f"  Used fallback symbol {pid} for {sp['description']} (not in RAG results)"
+                        })
                 if not chosen and candidates:
                     for c in candidates:
                         if c.get("footprint"):
