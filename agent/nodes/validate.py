@@ -19,12 +19,34 @@ _KNOWN_SYMBOLS = frozenset([
     "Device:Polyfuse",
 ])
 
+LIBRARY_PREFIX_FIXES: dict[str, str] = {
+    'Connector:USB_C_':  'Connector_USB:USB_C_',
+    'Connector:USB_':    'Connector_USB:USB_',
+    'Connector:USB2':    'Connector_USB:USB2',
+}
+
 _CRITICAL_PATTERNS = [
     ("infrared", "led", "Status LED is infrared — not visible to human eye"),
     ("antenna", "resistor", "Antenna selected where resistor required"),
     ("cpld", "capacitor", "CPLD selected where capacitor required"),
     ("pd controller", "connector", "USB PD controller selected where USB-C connector required"),
 ]
+
+
+def _fix_library_prefixes(components: list[dict], emit_fn) -> int:
+    n_fixed = 0
+    for comp in components:
+        id_str = comp.get('id_str', '')
+        for wrong, right in LIBRARY_PREFIX_FIXES.items():
+            if id_str.startswith(wrong):
+                fixed = right + id_str[len(wrong):]
+                emit_fn("agent:log", {
+                    "message": f"  Corrected prefix: {id_str} -> {fixed}"
+                })
+                comp['id_str'] = fixed
+                n_fixed += 1
+                break
+    return n_fixed
 
 
 def validate_node(state, config):
@@ -67,33 +89,11 @@ def validate_node(state, config):
     errors = [i for i in issues if i.get("severity") == "error"]
     warnings = [i for i in issues if i.get("severity") == "warning"]
 
-    # Auto-correct library prefix mismatches in-place
-    fixed_issues = []
-    for issue in issues:
-        msg = (issue.get("message", "") or "").lower()
-        if "library prefix" in msg and issue.get("id_str"):
-            bad_id = issue["id_str"]
-            corrected = None
-            suggestion = issue.get("suggestion", "") or ""
-            if "use" in suggestion.lower() and ":" in suggestion:
-                parts = suggestion.split("Use", 1)
-                if len(parts) > 1:
-                    corrected = parts[1].split("instead")[0].strip().rstrip(".")
-            elif "should be" in msg:
-                prefix = msg.split("should be")[-1].strip().strip("'\"")
-                name = bad_id.split(":")[-1]
-                corrected = f"{prefix}:{name}"
-            if corrected and ":" in corrected:
-                for comp in comps:
-                    if comp.get("id_str") == bad_id and comp.get("id_str") != corrected:
-                        comp["id_str"] = corrected
-                        _emit(config, "agent:log", {
-                            "message": f"  Auto-corrected {bad_id} -> {corrected}"
-                        })
-                        break
-            continue
-        fixed_issues.append(issue)
-    issues = fixed_issues
+    n_fixed = _fix_library_prefixes(comps, lambda k, v: _emit(config, k, v))
+    if n_fixed:
+        _emit(config, "agent:log", {"message": f"  Fixed {n_fixed} library prefix(es)"})
+    # Remove prefix-fixable issues from the error list (data is now corrected)
+    issues = [i for i in issues if "library prefix" not in (i.get("message", "") or "").lower()]
     errors = [i for i in issues if i.get("severity") == "error"]
     warnings = [i for i in issues if i.get("severity") == "warning"]
 

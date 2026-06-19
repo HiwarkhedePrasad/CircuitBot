@@ -7,15 +7,13 @@ and wire paths — no spatial math on the client.
 
 import math
 from pathfinding.core.grid import Grid
-from pathfinding.finder.a_star import AStarFinder
-from pathfinding.core.diagonal_movement import DiagonalMovement
 
 GRID_SIZE = 1.27  # 50 mil KiCad standard
 MATRIX_SIZE = 300
 MATRIX_OFFSET = 150  # offset to keep grid coords positive
 
 BBOX_PAD = 2.0
-COLUMN_SPACING = 10.16  # extra horizontal routing channel between columns (8 grid cells)
+COLUMN_SPACING = 20.32  # extra horizontal routing channel between columns (16 grid cells)
 ROW_CLEARANCE = 6.35    # extra vertical routing channel between rows (5 grid cells)
 
 # Column definitions — must match frontend COLUMN_DEFS
@@ -332,81 +330,80 @@ class BackendLayoutEngine:
         return None
 
     def route_traces(self, netlist: list, pin_matrix: dict) -> list:
-        """A* orthogonal routing for each net in the netlist.
+        """Orthogonal L/Z-shaped schematic wire routing.
 
-        After each successful route, the used cells get a high traversal
-        weight so later nets avoid running on top of existing wires
-        (perpendicular crossings stay cheap, parallel overlap is penalized).
+        Replaces the A* maze router. Schematics allow wire crossings — no
+        obstacle avoidance needed. Simple 2-4-point Manhattan paths produce
+        clean, readable output without the giant ghost loops A* creates.
         """
-        TRACE_WEIGHT = 12  # cost for re-using a cell already occupied by a wire
-
+        EXIT_STUB = GRID_SIZE * 3
         comp_positions = {c['ref_des']: (c['x'], c['y']) for c in self.components}
         traces = []
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
 
-        # Route shorter nets first — they have fewer detour options
         def _net_len(conn):
             s = pin_matrix.get(conn['source'])
             t = pin_matrix.get(conn['target'])
             if not s or not t:
                 return float('inf')
-            so = comp_positions.get(conn['source'].split(':')[0], (0, 0))
-            to = comp_positions.get(conn['target'].split(':')[0], (0, 0))
-            return abs((s['x'] + so[0]) - (t['x'] + to[0])) + abs((s['y'] + so[1]) - (t['y'] + to[1]))
+            sr = conn['source'].split(':')[0]
+            tr = conn['target'].split(':')[0]
+            so = comp_positions.get(sr)
+            to_ = comp_positions.get(tr)
+            if so is None or to_ is None:
+                return float('inf')
+            return abs((s['x'] + so[0]) - (t['x'] + to_[0])) + abs((s['y'] + so[1]) - (t['y'] + to_[1]))
 
         ordered = sorted(netlist, key=_net_len)
 
         for conn in ordered:
-            src = pin_matrix.get(conn['source'])
-            tgt = pin_matrix.get(conn['target'])
+            src_key = conn['source']
+            tgt_key = conn['target']
+            src = pin_matrix.get(src_key)
+            tgt = pin_matrix.get(tgt_key)
             if not src or not tgt:
                 continue
 
-            src_ref = conn['source'].split(':')[0]
-            tgt_ref = conn['target'].split(':')[0]
-            src_off = comp_positions.get(src_ref, (0, 0))
-            tgt_off = comp_positions.get(tgt_ref, (0, 0))
+            src_ref = src_key.split(':')[0]
+            tgt_ref = tgt_key.split(':')[0]
 
-            sx = round((src['x'] + src_off[0]) / GRID_SIZE) + MATRIX_OFFSET
-            sy = round((src['y'] + src_off[1]) / GRID_SIZE) + MATRIX_OFFSET
-            ex = round((tgt['x'] + tgt_off[0]) / GRID_SIZE) + MATRIX_OFFSET
-            ey = round((tgt['y'] + tgt_off[1]) / GRID_SIZE) + MATRIX_OFFSET
-
-            if not (0 <= sx < MATRIX_SIZE and 0 <= sy < MATRIX_SIZE and
-                    0 <= ex < MATRIX_SIZE and 0 <= ey < MATRIX_SIZE):
+            if not src_ref or not tgt_ref:
                 continue
 
-            # Rebuild grid from the weighted matrix for every net
-            grid = Grid(matrix=self.matrix)
-            start = grid.node(sx, sy)
-            end = grid.node(ex, ey)
-            # Safety: ensure pin cells are walkable even if carve-out missed them
-            start.walkable = True
-            end.walkable = True
-            path, _ = finder.find_path(start, end, grid)
+            src_off = comp_positions.get(src_ref)
+            tgt_off = comp_positions.get(tgt_ref)
+            if src_off is None or tgt_off is None:
+                continue
 
-            if path:
-                # Reject ghost wires: if path is >4x Manhattan distance, skip
-                manhattan = abs(sx - ex) + abs(sy - ey)
-                if len(path) > max(manhattan * 4, 50):
-                    continue
+            sx = _snap(src['x'] + src_off[0])
+            sy = _snap(src['y'] + src_off[1])
+            ex = _snap(tgt['x'] + tgt_off[0])
+            ey = _snap(tgt['y'] + tgt_off[1])
 
-                mm_path = [
-                    {'x': (n.x - MATRIX_OFFSET) * GRID_SIZE,
-                     'y': (n.y - MATRIX_OFFSET) * GRID_SIZE}
-                    for n in path
+            if sx == ex and sy == ey:
+                continue
+
+            if sx == ex:
+                path = [{'x': sx, 'y': sy}, {'x': ex, 'y': ey}]
+            elif sy == ey:
+                path = [{'x': sx, 'y': sy}, {'x': ex, 'y': ey}]
+            else:
+                pin_dir = src.get('direction', 'right')
+                stub_dx = -EXIT_STUB if pin_dir == 'left' else EXIT_STUB
+                mid_x = _snap(sx + stub_dx)
+                if (stub_dx > 0 and mid_x > ex) or (stub_dx < 0 and mid_x < ex):
+                    mid_x = _snap((sx + ex) / 2)
+                path = [
+                    {'x': sx,    'y': sy},
+                    {'x': mid_x, 'y': sy},
+                    {'x': mid_x, 'y': ey},
+                    {'x': ex,    'y': ey},
                 ]
-                traces.append({
-                    'source': conn['source'],
-                    'target': conn['target'],
-                    'path': mm_path,
-                })
 
-                # Penalize used cells (keep pin endpoints cheap so other
-                # nets can still reach the same pin region)
-                for n in path[2:-2]:
-                    if self.matrix[n.y][n.x] != 0:
-                        self.matrix[n.y][n.x] = TRACE_WEIGHT
+            traces.append({
+                'source': src_key,
+                'target': tgt_key,
+                'path': path,
+            })
 
         return traces
 

@@ -50,16 +50,6 @@ pin_matrix = {
     'R1:2': {'x': 2.54, 'y': 0.0, 'name': '~'},
 }
 
-engine.build_obstacle_matrix(pin_matrix=pin_matrix)
-
-# Verify polyline component body cells are blocked now
-r1 = engine._get_comp('R1')
-body_cx = round((r1['x']) / GRID_SIZE) + MATRIX_OFFSET
-body_cy = round((r1['y']) / GRID_SIZE) + MATRIX_OFFSET
-center_blocked = engine.matrix[body_cy][body_cx] == 0
-print(f"R1 (polyline body) center cell blocked: {center_blocked}")
-print("[PASS]" if center_blocked else "[FAIL]", "- polyline components are now obstacles")
-
 netlist = [
     {'source': 'U1:3', 'target': 'R1:1'},
     {'source': 'U1:1', 'target': 'R1:2'},
@@ -68,28 +58,30 @@ netlist = [
 traces = engine.route_traces(netlist, pin_matrix)
 print(f"Routed {len(traces)}/{len(netlist)} traces")
 
-# Check no trace cell sits inside a component body (excluding pin corridors)
-violations = 0
+# Verify all paths are clean orthogonal segments
+orthogonal = True
 for t in traces:
-    for pt in t['path'][1:-1]:
-        gx = round(pt['x'] / GRID_SIZE) + MATRIX_OFFSET
-        gy = round(pt['y'] / GRID_SIZE) + MATRIX_OFFSET
-        if engine.matrix[gy][gx] == 0:
-            violations += 1
-print(f"Trace cells inside blocked areas: {violations}")
-print("[PASS]" if violations == 0 else "[FAIL]", "- no wires through components")
+    pts = t['path']
+    for i in range(1, len(pts)):
+        dx = abs(pts[i]['x'] - pts[i-1]['x'])
+        dy = abs(pts[i]['y'] - pts[i-1]['y'])
+        if dx > 0.01 and dy > 0.01:
+            orthogonal = False
+            break
+    if not orthogonal:
+        break
+print(f"All paths orthogonal: {orthogonal}")
+print("[PASS]" if orthogonal else "[FAIL]", "- paths are orthogonal L/Z-shaped")
 
-# Check overlap between traces (shared non-endpoint cells)
-cell_usage = {}
-overlaps = 0
+# Verify all paths have 2-4 points (L-shape or Z-shape)
+valid_shapes = True
 for t in traces:
-    for pt in t['path'][2:-2]:
-        key = (round(pt['x'] / GRID_SIZE), round(pt['y'] / GRID_SIZE))
-        if key in cell_usage and cell_usage[key] != id(t):
-            overlaps += 1
-        cell_usage[key] = id(t)
-print(f"Overlapping wire cells: {overlaps}")
-print("[PASS]" if overlaps <= 2 else "[WARN]", "- wire overlap minimized (crossings allowed)")
+    n = len(t['path'])
+    if n < 2 or n > 4:
+        valid_shapes = False
+        break
+print(f"All paths valid shapes (2-4 pts): {valid_shapes}")
+print("[PASS]" if valid_shapes else "[FAIL]", "- paths are valid L/Z shapes")
 
 print()
 print("=" * 60)

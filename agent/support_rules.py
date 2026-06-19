@@ -150,3 +150,59 @@ def get_supporting_components(component: dict) -> list[SupportDef]:
         if predicate(component):
             return parts
     return []
+
+
+# ── Semantic category builder functions ────────────────────────────────────
+# These set category to the semantic type (CAPACITOR, RESISTOR, POLYFUSE)
+# instead of the KiCad library prefix ("Device"), which fixes column
+# assignment in _get_column_for_category().
+
+def _make_cap(ref_des: str, value: str, for_ref: str) -> dict:
+    return {
+        "ref_des":     ref_des,
+        "id_str":      "Device:C_Small",
+        "category":    "CAPACITOR",
+        "description": f"{value} decoupling cap for {for_ref}",
+        "footprint":   "",
+        "pads":        [],
+    }
+
+def _make_resistor(ref_des: str, value: str, for_ref: str) -> dict:
+    return {
+        "ref_des":     ref_des,
+        "id_str":      "Device:R_Small",
+        "category":    "RESISTOR",
+        "description": f"{value} resistor for {for_ref}",
+        "footprint":   "",
+        "pads":        [],
+    }
+
+def _make_polyfuse(ref_des: str, value: str, for_ref: str) -> dict:
+    return {
+        "ref_des":     ref_des,
+        "id_str":      "Device:Polyfuse",
+        "category":    "POLYFUSE",
+        "description": f"{value} polyfuse for {for_ref}",
+        "footprint":   "",
+        "pads":        [],
+    }
+
+
+# ── Known fallback symbol map ──────────────────────────────────────────────
+# Used when the preferred_id_str is not found in RAG results, so protection
+# ICs don't end up in the wrong library (e.g. Connector_USB:TPD6S300A).
+
+KNOWN_FALLBACK_SYMBOLS: dict[str, str] = {
+    "TPD6S300A":    "Device:TPD6S300A",
+    "USBLC6-2SC6":  "Device:USBLC6-2SC6",
+    "IP4234CZ10":   "Device:IP4234CZ10",
+    "SRV05-4":      "Device:SRV05-4",
+    "Crystal":      "Device:Crystal",
+    "Crystal_GND24":"Device:Crystal_GND24",
+}
+
+def resolve_fallback_symbol(part_name: str) -> str | None:
+    for key, symbol in KNOWN_FALLBACK_SYMBOLS.items():
+        if key.upper() in part_name.upper():
+            return symbol
+    return None

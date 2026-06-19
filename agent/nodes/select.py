@@ -1,11 +1,56 @@
+import re
+
 from agent.datasheet import fetch_datasheet_text
 from agent.reranker import rank_candidates
 from agent.support_rules import get_supporting_components
 from agent.tools import search_components, fetch_footprint
 from agent.utils import (
     _emit, _emit_activity, _check_stage_contract, _stage_result,
-    _is_passive, _ref_prefix_for,
+    _is_passive,
 )
+
+_PREFIX_RULES: list[tuple[str, str]] = [
+    ('CONNECTOR',  'J'), ('USB',  'J'), ('JACK',  'J'),
+    ('FUSE',       'F'), ('POLYFUSE', 'F'),
+    ('CAPACITOR',  'C'), ('C_SMALL', 'C'), ('C_POLARIZED', 'C'),
+    ('RESISTOR',   'R'), ('R_SMALL', 'R'),
+    ('INDUCTOR',   'L'),
+    ('DIODE',      'D'), ('LED', 'D'), ('ZENER', 'D'),
+    ('TRANSISTOR', 'Q'), ('MOSFET', 'Q'), ('BJT', 'Q'),
+    ('REGULATOR',  'U'), ('LDO', 'U'), ('SENSOR', 'U'), ('DISPLAY', 'U'),
+    ('MCU',        'U'), ('PROCESSOR', 'U'), ('CPU', 'U'),
+    ('ESP32',      'U'), ('STM32', 'U'), ('FPGA', 'U'), ('MEMORY', 'U'),
+    ('DRIVER',     'U'), ('AMS', 'U'), ('DS18', 'U'), ('ATMEGA', 'U'),
+    ('OLED',       'U'), ('SSD', 'U'), ('ESD', 'U'), ('TPD', 'U'),
+]
+
+
+def _ref_prefix(category: str, id_str: str = '') -> str:
+    text = f"{category} {id_str}".upper()
+    for keyword, prefix in _PREFIX_RULES:
+        if keyword in text:
+            return prefix
+    return 'U'
+
+
+def _assign_ref_des(components: list[dict]) -> list[dict]:
+    counters: dict[str, int] = {}
+    for comp in components:
+        existing = comp.get('ref_des', '')
+        if existing and re.fullmatch(r'[A-Z]+\d+', existing):
+            m = re.match(r'([A-Z]+)(\d+)', existing)
+            if m:
+                counters[m.group(1)] = max(counters.get(m.group(1), 0), int(m.group(2)))
+    for comp in components:
+        existing = comp.get('ref_des', '')
+        if existing and re.fullmatch(r'[A-Z]+\d+', existing):
+            continue
+        cat = comp.get('category', '')
+        id_str = comp.get('id_str', '')
+        letter = _ref_prefix(cat, id_str)
+        counters[letter] = counters.get(letter, 0) + 1
+        comp['ref_des'] = f"{letter}{counters[letter]}"
+    return components
 
 
 def select_node(state, config):
@@ -96,17 +141,7 @@ def select_node(state, config):
             })
 
     seen_ids = set()
-    seen_refs = set()
     deduped = []
-    ref_counter = {}
-
-    def _next_ref(prefix):
-        n = ref_counter.get(prefix, 0) + 1
-        while f"{prefix}{n}" in seen_refs:
-            n += 1
-        ref_counter[prefix] = n
-        return f"{prefix}{n}"
-
     for s in selected:
         id_str = s["id_str"]
         category = s.get("category", "")
@@ -114,66 +149,33 @@ def select_node(state, config):
         if not passive and id_str in seen_ids:
             _emit(config, "agent:log", {"message": f"  Skipped duplicate IC: {id_str}"})
             continue
-        correct_prefix = _ref_prefix_for(id_str, category)
-        current_prefix = ''.join(c for c in s.get("ref_des", "") if c.isalpha()) or 'U'
-        if current_prefix != correct_prefix or s.get("ref_des", "") in seen_refs:
-            old_ref = s.get("ref_des", "?")
-            s["ref_des"] = _next_ref(correct_prefix)
-            if old_ref != s["ref_des"]:
-                _emit(config, "agent:log", {"message": f"  Renamed {old_ref} -> {s['ref_des']}"})
-        else:
-            num_part = ''.join(c for c in s["ref_des"] if c.isdigit())
-            if num_part:
-                ref_counter[correct_prefix] = max(ref_counter.get(correct_prefix, 0), int(num_part))
         s.setdefault("justification", "")
         s.setdefault("datasheet_text", "")
         seen_ids.add(id_str)
-        seen_refs.add(s["ref_des"])
         deduped.append(s)
-    selected = deduped
+    selected = _assign_ref_des(deduped)
 
     prev_selected = state.get("selected_components", [])
     current_ids = {c["id_str"] for c in selected}
     research_names = {s["subsystem"] for s in research}
     carried = 0
-
-    def _claim_carried_ref(c):
-        ref = c.get("ref_des", "")
-        id_str = c["id_str"]
-        category = c.get("category", "")
-        prefix = ''.join(ch for ch in ref if ch.isalpha()) or _ref_prefix_for(id_str, category)
-        if not ref or ref in seen_refs:
-            old_ref = ref or "?"
-            c["ref_des"] = _next_ref(prefix)
-            if old_ref != c["ref_des"]:
-                _emit(config, "agent:log", {
-                    "message": f"  Renamed {old_ref} -> {c['ref_des']} (carry-forward collision)"
-                })
-        else:
-            num_part = ''.join(ch for ch in ref if ch.isdigit())
-            if num_part:
-                ref_counter[prefix] = max(ref_counter.get(prefix, 0), int(num_part))
-            seen_refs.add(ref)
-        seen_ids.add(id_str)
-
     for c in prev_selected:
         if c["id_str"] in current_ids:
             continue
         if c.get("justification", "").startswith("Auto-added by validator"):
-            _claim_carried_ref(c)
             selected.append(c)
             carried += 1
             _emit(config, "agent:log", {
                 "message": f"  Preserved {c['id_str']} (validator-added, carried forward)"
             })
         elif c.get("subsystem", "") in research_names:
-            _claim_carried_ref(c)
             selected.append(c)
             carried += 1
             _emit(config, "agent:log", {
                 "message": f"  Preserved {c['id_str']} for '{c['subsystem']}' (reranker skipped, previous selection carried forward)"
             })
     if carried:
+        selected = _assign_ref_des(selected)
         _emit(config, "agent:log", {"message": f"  Carried forward {carried} component(s)"})
 
     covered_prefixes_by_subsystem = {}
@@ -264,12 +266,18 @@ def select_node(state, config):
                                 chosen = c
                                 break
                 if chosen:
+                    _infer_category = {
+                        "Device:C_Small": "CAPACITOR", "Device:R_Small": "RESISTOR",
+                        "Device:Polyfuse": "POLYFUSE", "Device:L_Small": "INDUCTOR",
+                        "Device:LED": "DIODE",
+                    }
                     ref_prefix = sp["ref_des_prefix"]
-                    ref = _next_ref(ref_prefix)
+                    ref = f"{ref_prefix}{len(injected) + 1}"
                     injected.append({
                         "id_str": chosen["id_str"],
                         "ref_des": ref,
-                        "category": chosen["id_str"].split(":")[0] if ":" in chosen["id_str"] else "Device",
+                        "category": _infer_category.get(chosen["id_str"],
+                            chosen["id_str"].split(":")[0] if ":" in chosen["id_str"] else "Device"),
                         "description": sp["description"],
                         "footprint": chosen.get("footprint", ""),
                         "pads": chosen.get("pads", []),
@@ -288,6 +296,7 @@ def select_node(state, config):
                 print(f"Support component search failed: {e}")
     if injected:
         selected.extend(injected)
+        selected = _assign_ref_des(selected)
         _emit(config, "agent:log", {
             "message": f"  Injected {len(injected)} supporting components"
         })
