@@ -2,7 +2,7 @@ import re
 
 from agent.datasheet import fetch_datasheet_text
 from agent.reranker import rank_candidates
-from agent.support_rules import get_supporting_components
+from agent.support_rules import get_supporting_components, resolve_fallback_symbol
 from agent.tools import search_components, fetch_footprint
 from agent.utils import (
     _emit, _emit_activity, _check_stage_contract, _stage_result,
@@ -35,21 +35,39 @@ def _ref_prefix(category: str, id_str: str = '') -> str:
 
 def _assign_ref_des(components: list[dict]) -> list[dict]:
     counters: dict[str, int] = {}
+    seen_refs: set[str] = set()
+
+    # Pass 1: register max counter from existing valid refs
     for comp in components:
         existing = comp.get('ref_des', '')
         if existing and re.fullmatch(r'[A-Z]+\d+', existing):
             m = re.match(r'([A-Z]+)(\d+)', existing)
             if m:
                 counters[m.group(1)] = max(counters.get(m.group(1), 0), int(m.group(2)))
+
+    # Pass 2: count how many components share each ref
+    ref_counts: dict[str, int] = {}
     for comp in components:
         existing = comp.get('ref_des', '')
         if existing and re.fullmatch(r'[A-Z]+\d+', existing):
+            ref_counts[existing] = ref_counts.get(existing, 0) + 1
+
+    # Pass 3: assign refs — keep unique valid refs, reassign collisions
+    for comp in components:
+        existing = comp.get('ref_des', '')
+        if existing and re.fullmatch(r'[A-Z]+\d+', existing) and ref_counts.get(existing, 0) == 1:
+            seen_refs.add(existing)
             continue
         cat = comp.get('category', '')
         id_str = comp.get('id_str', '')
         letter = _ref_prefix(cat, id_str)
         counters[letter] = counters.get(letter, 0) + 1
-        comp['ref_des'] = f"{letter}{counters[letter]}"
+        new_ref = f"{letter}{counters[letter]}"
+        while new_ref in seen_refs:
+            counters[letter] += 1
+            new_ref = f"{letter}{counters[letter]}"
+        comp['ref_des'] = new_ref
+        seen_refs.add(new_ref)
     return components
 
 
@@ -244,15 +262,17 @@ def select_node(state, config):
                 if not chosen:
                     pid = sp.get("preferred_id_str", "")
                     if pid:
+                        mapped = resolve_fallback_symbol(pid)
+                        final_id = mapped if mapped else pid
                         chosen = {
-                            "id_str": pid,
-                            "category": pid.split(":")[0] if ":" in pid else "Device",
+                            "id_str": final_id,
+                            "category": final_id.split(":")[0] if ":" in final_id else "Device",
                             "text": sp.get("description", ""),
                             "footprint": "",
                             "pads": [],
                         }
                         _emit(config, "agent:log", {
-                            "message": f"  Used fallback symbol {pid} for {sp['description']} (not in RAG results)"
+                            "message": f"  Used fallback symbol {final_id} for {sp['description']} (not in RAG results)"
                         })
                 if not chosen and candidates:
                     for c in candidates:
