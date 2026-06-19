@@ -57,6 +57,13 @@ RULES: list[Rule] = [
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "10µF bulk decoupling cap for MCU", "count": 1},
         ],
     ),
+    # ── 1-Wire sensors: data line pull-up (must match before generic Sensor rule) ──
+    (
+        lambda c: any(kw in _id(c) for kw in ["DS18B20", "DS18S20", "DS1822", "DS18", "1-WIRE"]),
+        [
+            {"search_query": "4.7k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "4.7kΩ 1-Wire data line pull-up", "count": 1},
+        ],
+    ),
     # ── Sensors: decoupling cap ──
     (
         lambda c: _has_lib(c, "Sensor"),
