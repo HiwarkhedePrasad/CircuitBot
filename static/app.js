@@ -21,6 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentBtn = document.getElementById('agentBtn');
     const agentPrompt = document.getElementById('agentPrompt');
     const agentLog = document.getElementById('agentLog');
+    const agentThinking = document.getElementById('agentThinking');
+    const activityLogEl = document.getElementById('activityLog');
     const coordDisplay = document.getElementById('coordDisplay');
     const zoomLevelDisplay = document.getElementById('zoomLevel');
 
@@ -46,12 +48,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const viewPCBBtn = document.getElementById('viewPCBBtn');
+    const exportPCBBtn = document.getElementById('exportPCBBtn');
+    const importPCBBtn = document.getElementById('importPCBBtn');
+    const pcbUploadArea = document.getElementById('pcbUploadArea');
+    const pcbFileInput = document.getElementById('pcbFileInput');
+
     if (viewSchematicBtn) {
         viewSchematicBtn.addEventListener('click', () => {
             if (currentSchematic && currentSchematic.components.length > 0) {
                 setActiveTab('viewSchematicBtn');
                 enterSchematicMode();
                 modeIndicator.classList.remove('hidden');
+                pcbUploadArea.classList.add('hidden');
+                document.getElementById('routePrompt').classList.remove('hidden');
+            }
+        });
+    }
+
+    if (viewPCBBtn) {
+        viewPCBBtn.addEventListener('click', () => {
+            setActiveTab('viewPCBBtn');
+            modeIndicator.classList.add('hidden');
+            document.getElementById('routePrompt').classList.add('hidden');
+            if (pcbState.boardModel) {
+                pcbUploadArea.classList.add('hidden');
+                pcbSetupCanvas();
+                pcbDraw();
+            } else {
+                pcbUploadArea.classList.remove('hidden');
+                const { canvas, ctx } = pcbGetCanvas();
+                if (canvas) {
+                    pcbSetupCanvas();
+                    ctx.fillStyle = '#0A0A14';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
             }
         });
     }
@@ -59,7 +90,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Canvas Coordinates ────────────────────────────────────────────────────
 
     const canvas = document.getElementById('compCanvas');
+
+    function isPCBMode() {
+        return document.getElementById('viewPCBBtn').classList.contains('active');
+    }
+
     canvas.addEventListener('mousemove', (e) => {
+        if (isPCBMode()) {
+            pcbHandleMouseMove(e);
+            return;
+        }
         if (!currentTransform) return;
         const rect = canvas.getBoundingClientRect();
         const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
@@ -74,6 +114,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (coordDisplay) {
             coordDisplay.textContent = `X: ${mmX.toFixed(2)} Y: ${mmY.toFixed(2)}`;
         }
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (isPCBMode()) {
+            pcbHandleMouseDown(e);
+            return;
+        }
+        handleMouseDown(e);
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+        if (isPCBMode()) {
+            pcbHandleMouseUp(e);
+            return;
+        }
+        handleMouseUp(e);
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+        if (isPCBMode()) {
+            pcbHandleWheel(e);
+            return;
+        }
+        handleWheel(e);
+    }, { passive: false });
+
+    canvas.addEventListener('mouseleave', (e) => {
+        if (isPCBMode()) pcbHandleMouseUp(e);
+        else handleMouseUp(e);
     });
 
     // ── SocketIO ──────────────────────────────────────────────────────────────
@@ -108,11 +177,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const exportBtn = document.getElementById('exportSchBtn');
             if (exportBtn) exportBtn.disabled = false;
         });
+        socket.on('agent:pcb_ready', (data) => {
+            if (data.board_model) {
+                pcbLoadBoard(data.board_model);
+                addLogEntry('PCB model loaded for board view.', 'success');
+                exportPCBBtn.disabled = false;
+                importPCBBtn.disabled = false;
+            }
+        });
         socket.on('agent:error', (data) => {
             agentBusy = false;
             updateAgentButton();
             showAgentStatus('');
             addLogEntry('Error: ' + (data.message || 'Unknown error'), 'error');
+        });
+        socket.on('agent:activity', (data) => {
+            handleActivity(data);
         });
     }
 
@@ -127,19 +207,118 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showAgentStatus(text) {
-        const existing = agentLog.querySelector('.agent-status');
-        if (existing) existing.remove();
-        if (!text) return;
-        const entry = document.createElement('div');
-        entry.className = 'agent-log-entry agent-status';
-        entry.innerHTML = '<span class="spinner"></span> ' + text;
-        agentLog.appendChild(entry);
-        agentLog.scrollTop = agentLog.scrollHeight;
+        agentThinking.textContent = text || '';
+        agentThinking.classList.toggle('active', !!text);
     }
 
     function updateAgentButton() {
         agentBtn.disabled = agentBusy || !agentPrompt.value.trim();
         agentBtn.textContent = agentBusy ? 'Building...' : 'Build';
+    }
+
+    const PHASES = [
+        { phase: 'analyze', title: 'Analyze Design', icon: '⚡' },
+        { phase: 'research', title: 'Component Research', icon: '🔍' },
+        { phase: 'select', title: 'Component Selection', icon: '✓' },
+        { phase: 'validate', title: 'Validation', icon: '✓' },
+        { phase: 'netlist', title: 'Netlist Generation', icon: '⚡' },
+        { phase: 'layout', title: 'PCB Layout', icon: '⚡' },
+    ];
+    const activityPhases = {}; // { phase: { title, element, updates, startedAt, card } }
+
+    const ACTIVITY_ICONS = { info: '○', success: '✓', warning: '⚠', error: '✖' };
+
+    function preCreateActivityCards() {
+        activityLogEl.innerHTML = '';
+        for (const p of PHASES) {
+            const card = document.createElement('div');
+            card.className = 'activity-card';
+            card.dataset.phase = p.phase;
+            card.innerHTML = `
+                <div class="activity-header">
+                    <span class="activity-icon">${p.icon}</span>
+                    <div class="activity-body">
+                        <span class="activity-title">${p.title}</span>
+                    </div>
+                    <span class="activity-timing"></span>
+                </div>
+                <div class="activity-updates"></div>
+            `;
+            activityLogEl.appendChild(card);
+            activityPhases[p.phase] = { title: p.title, element: card, updates: [], startedAt: null };
+        }
+    }
+
+    function handleActivity(data) {
+        const { runId, phase, title, status, level, kind, detail } = data;
+        let entry = activityPhases[phase];
+        if (!entry) {
+            // Lazy create if phase not in the predefined list
+            const card = document.createElement('div');
+            card.className = 'activity-card';
+            card.dataset.phase = phase;
+            card.innerHTML = `
+                <div class="activity-header">
+                    <span class="activity-icon">⚡</span>
+                    <div class="activity-body">
+                        <span class="activity-title">${title || phase}</span>
+                    </div>
+                    <span class="activity-timing"></span>
+                </div>
+                <div class="activity-updates"></div>
+            `;
+            activityLogEl.appendChild(card);
+            entry = { title: title || phase, element: card, updates: [], startedAt: null };
+            activityPhases[phase] = entry;
+        }
+
+        if (status === 'start') {
+            entry.startedAt = Date.now();
+            entry.updates = [];
+            const updatesEl = entry.element.querySelector('.activity-updates');
+            updatesEl.innerHTML = '';
+            entry.element.classList.add('active');
+            entry.element.classList.remove('done');
+            // Collapse all other cards
+            for (const [p, e] of Object.entries(activityPhases)) {
+                if (p !== phase && e.element) {
+                    e.element.classList.remove('active');
+                }
+            }
+        }
+
+        if (status === 'update' && detail) {
+            const lvl = level || 'info';
+            const updatesEl = entry.element.querySelector('.activity-updates');
+            const line = document.createElement('div');
+            line.className = `activity-update ${lvl}`;
+            line.innerHTML = `<span class="update-icon">${ACTIVITY_ICONS[lvl] || '○'}</span> ${escapeHtml(Array.isArray(detail) ? detail.join(', ') : detail)}`;
+            updatesEl.appendChild(line);
+            entry.updates.push({ detail, level: lvl });
+            entry.element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        if (status === 'done') {
+            entry.element.classList.remove('active');
+            entry.element.classList.add('done');
+            if (entry.startedAt) {
+                const elapsed = ((Date.now() - entry.startedAt) / 1000).toFixed(1);
+                entry.element.querySelector('.activity-timing').textContent = elapsed + 's';
+            }
+        }
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    function clearActivities() {
+        activityLogEl.innerHTML = '';
+        for (const key of Object.keys(activityPhases)) {
+            delete activityPhases[key];
+        }
     }
 
     function handleAgentComponent(data) {
@@ -397,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Send the ELK-computed geometry to the server so .kicad_sch export matches
-    function saveLayoutToServer() {
+    function saveLayoutToServer(boardModel) {
         const placements = currentSchematic.components.map(c => ({
             ref_des: c.refDesignator, x: c.x, y: c.y,
         }));
@@ -408,6 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 placements,
                 wire_paths: currentSchematic.wirePaths || [],
                 power_labels: currentSchematic.powerLabels || [],
+                board_model: boardModel || null,
             }),
         }).catch(() => {});
     }
@@ -421,6 +601,68 @@ document.addEventListener('DOMContentLoaded', () => {
         exportSchBtn.addEventListener('click', () => {
             addLogEntry('Exporting KiCad schematic...', 'log');
             window.location.href = '/api/export_sch';
+        });
+    }
+
+    if (exportPCBBtn) {
+        exportPCBBtn.addEventListener('click', () => {
+            addLogEntry('Exporting KiCad PCB...', 'log');
+            window.location.href = '/api/export_pcb';
+        });
+    }
+
+    if (importPCBBtn) {
+        importPCBBtn.addEventListener('click', () => {
+            pcbFileInput.click();
+        });
+    }
+
+    if (pcbFileInput) {
+        pcbFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            addLogEntry(`Importing ${file.name}...`, 'log');
+            const formData = new FormData();
+            formData.append('pcb_file', file);
+            try {
+                const res = await fetch('/api/import_pcb', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.error) {
+                    addLogEntry(`Import failed: ${data.error}`, 'error');
+                    return;
+                }
+                pcbLoadBoard(data.board_model);
+                addLogEntry(`Imported ${file.name}: ${data.board_model.components.length} components, ${data.board_model.traces.length} traces.`, 'success');
+                setActiveTab('viewPCBBtn');
+                viewPCBBtn.click();
+            } catch (err) {
+                addLogEntry(`Import error: ${err.message}`, 'error');
+            }
+        });
+    }
+
+    // PCB Upload area click-to-browse
+    if (pcbUploadArea) {
+        pcbUploadArea.addEventListener('click', () => {
+            pcbFileInput.click();
+        });
+        pcbUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            pcbUploadArea.style.borderColor = '#C40000';
+        });
+        pcbUploadArea.addEventListener('dragleave', () => {
+            pcbUploadArea.style.borderColor = '#2A2A3E';
+        });
+        pcbUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            pcbUploadArea.style.borderColor = '#2A2A3E';
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.kicad_pcb')) {
+                pcbFileInput.files = e.dataTransfer.files;
+                pcbFileInput.dispatchEvent(new Event('change'));
+            } else {
+                addLogEntry('Please drop a .kicad_pcb file.', 'error');
+            }
         });
     }
 
@@ -604,8 +846,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!prompt || agentBusy) return;
         agentBusy = true;
         updateAgentButton();
+        clearActivities();
+        preCreateActivityCards();
         agentLog.innerHTML = '';
-        addLogEntry(`Request: "${prompt}"`, 'system');
         showAgentStatus('Starting agent...');
         if (!currentSchematic) currentSchematic = new Schematic();
         socket.emit('agent:generate', { prompt });
@@ -636,16 +879,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Zoom & UI ─────────────────────────────────────────────────────────────
 
-    document.getElementById('zoomInBtn').addEventListener('click', zoomIn);
-    document.getElementById('zoomOutBtn').addEventListener('click', zoomOut);
-    document.getElementById('zoomResetBtn').addEventListener('click', resetZoom);
+    document.getElementById('zoomInBtn').addEventListener('click', () => {
+        if (isPCBMode()) { pcbState.zoom = Math.min(pcbState.zoom * 1.3, 50); pcbDraw(); }
+        else zoomIn();
+    });
+    document.getElementById('zoomOutBtn').addEventListener('click', () => {
+        if (isPCBMode()) { pcbState.zoom = Math.max(pcbState.zoom / 1.3, 0.05); pcbDraw(); }
+        else zoomOut();
+    });
+    document.getElementById('zoomResetBtn').addEventListener('click', () => {
+        if (isPCBMode()) { pcbComputeTransform(); pcbDraw(); }
+        else resetZoom();
+    });
 
     let resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             setupCanvasSize();
-            if (currentSchematic && currentSchematic.mode === 'schematic' && currentSchematic.components.length > 0) {
+            if (isPCBMode()) {
+                pcbSetupCanvas();
+                if (pcbState.boardModel) pcbDraw();
+            } else if (currentSchematic && currentSchematic.mode === 'schematic' && currentSchematic.components.length > 0) {
                 enterSchematicMode();
             } else if (currentPreviewOps) {
                 renderOps(currentPreviewOps);
@@ -660,5 +915,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.appContext = { fetchSExpr };
-    connectSocket();
 });

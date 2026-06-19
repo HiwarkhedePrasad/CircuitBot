@@ -41,6 +41,12 @@
                 <button id="exportSchBtn" class="tool-btn highlight" title="Export as KiCad .kicad_sch" disabled>
                     <span class="icon">⤓</span> Export .kicad_sch
                 </button>
+                <button id="exportPCBBtn" class="tool-btn highlight" title="Export as KiCad .kicad_pcb" disabled>
+                    <span class="icon">⤓</span> Export .kicad_pcb
+                </button>
+                <button id="importPCBBtn" class="tool-btn" title="Import .kicad_pcb file" disabled>
+                    <span class="icon">📂</span> Import PCB
+                </button>
             </div>
         </header>
 
@@ -81,6 +87,7 @@
                 <div class="canvas-header">
                     <div class="tabs">
                         <button id="viewSchematicBtn" class="tab active">Schematic Editor</button>
+                        <button id="viewPCBBtn" class="tab">PCB View</button>
                         <button id="viewSymbolBtn" class="tab">Symbol Preview</button>
                     </div>
                     <div class="canvas-controls">
@@ -97,6 +104,16 @@
                     <canvas id="compCanvas"></canvas>
                     <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
                     
+                    <!-- PCB Upload Overlay (hidden by default, shown in PCB View tab) -->
+                    <div id="pcbUploadArea" class="pcb-upload-overlay hidden">
+                        <div class="pcb-upload-content">
+                            <div class="pcb-upload-icon">📋</div>
+                            <p>Drop a <code>.kicad_pcb</code> file here</p>
+                            <p class="pcb-upload-sub">or click to browse</p>
+                            <input type="file" id="pcbFileInput" accept=".kicad_pcb" hidden>
+                        </div>
+                    </div>
+
                     <!-- Contextual Route Input (Floating at bottom of canvas) -->
                     <div class="floating-route-input">
                         <input type="text" id="routePrompt" placeholder="Routing constraints (e.g. 'connect VCC to 3.3V')..." autocomplete="off">
@@ -133,6 +150,8 @@
                         <span class="panel-title">AI Design Co-Pilot</span>
                     </div>
                     <div class="agent-container">
+                        <div class="agent-thinking" id="agentThinking"></div>
+                        <div class="agent-activity-log" id="activityLog"></div>
                         <div class="agent-log" id="agentLog">
                             <div class="agent-log-empty">Design co-pilot ready. Enter a prompt to generate circuits.</div>
                         </div>
@@ -150,6 +169,7 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="/static/schematic.js?v=9"></script>
     <script src="/static/renderer.js?v=9"></script>
-    <script src="/static/app.js?v=9"></script>
+    <script src="/static/pcb_viewer.js?v=1"></script>
+    <script src="/static/app.js?v=10"></script>
 </body>
 </html>

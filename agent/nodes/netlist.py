@@ -2,7 +2,7 @@ import json
 
 from agent.prompts import NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER
 from agent.utils import (
-    _emit, _make_signal_batches, _merge_net, _generate_nets_fallback,
+    _emit, _emit_activity, _make_signal_batches, _merge_net, _generate_nets_fallback,
     _clean_json, _call_llm_with_tools,
     _is_gnd_net, _is_power_net, _canonical_signal_name, _resolve_hallucinated_pin,
     PIN_ALIASES, POWER_ETYPES, MAX_BATCH_PINS,
@@ -11,6 +11,7 @@ from agent.utils import (
 
 def netlist_node(state, config):
     _emit(config, "agent:thinking", {"message": "Planning pin connections..."})
+    _emit_activity(config, "netlist", "Netlist Generation", "start")
     comps = state.get("selected_components", [])
     pins = state.get("pin_matrix", {})
     if not comps or not pins:
@@ -220,4 +221,7 @@ def netlist_node(state, config):
         "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "
                    f"{n_signal_nets} signal ({len(netlist)} wire connections)"
     })
+    _emit_activity(config, "netlist", "Netlist Generation", "update", level="success", kind="netlist",
+                   detail=f"Generated {len(netlist)} connections across {n_power_nets + n_signal_nets} nets")
+    _emit_activity(config, "netlist", "Netlist Generation", "done")
     return {"netlist": netlist, "nets": valid_nets, "power_pins": power_pins}

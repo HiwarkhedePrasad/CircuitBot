@@ -1,18 +1,18 @@
 import os
 from dotenv import load_dotenv
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
+from langchain_openai import ChatOpenAI
 
 load_dotenv(override=True)
 
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://127.0.0.1:4010/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "opencode/deepseek-v4-flash-free")
 
-def get_llm_client(temperature=1.0, max_completion_tokens=8192):
-    api_key = os.environ.get("NVIDIA_API_KEY")
-    if not api_key:
-        raise ValueError("NVIDIA_API_KEY is not set in the environment.")
-    return ChatNVIDIA(
-        model="minimaxai/minimax-m3",
-        api_key=api_key,
+
+def get_llm_client(temperature=1.0, max_tokens=8192):
+    return ChatOpenAI(
+        model=LLM_MODEL,
+        base_url=LLM_BASE_URL,
+        api_key="not-needed",
         temperature=temperature,
-        top_p=0.95,
-        max_tokens=max_completion_tokens,
+        max_tokens=max_tokens,
     )

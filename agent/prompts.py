@@ -78,6 +78,11 @@ SELECT_USER = """Design request: {prompt}
 Available search results per subsystem (each candidate includes a datasheet snippet):
 {results_json}
 
+IMPORTANT — Bus interface matching: Each subsystem specifies a required bus type.
+Only select components that match the subsystem's bus type (or "any").
+Example: If subsystem requires I2C, a 1-Wire sensor is WRONG.
+Example: If subsystem requires SPI, an I2C display is WRONG.
+
 For each subsystem, pick the best component. Validate using the datasheet snippet when available.
 Provide a short justification for each selection. Set need_more_datasheet=true only if the snippet
 is too short to make a confident decision.

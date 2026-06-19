@@ -14,8 +14,26 @@ import requests
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
-MAX_TOTAL = 1000
+MAX_TOTAL = 500
 _cached_texts: dict[str, str] = {}
+_FETCH_TIMEOUT = 5
+_BAD_DOMAINS = {"buydisplay.com"}
+_KNOWN_FAIL: set[str] = set()
+
+
+def _should_skip(url: str) -> bool:
+    if not url:
+        return True
+    for d in _BAD_DOMAINS:
+        if d in url:
+            return True
+    if url in _KNOWN_FAIL:
+        return True
+    return False
+
+
+def _mark_failed(url: str):
+    _KNOWN_FAIL.add(url)
 
 
 def _pdf_to_text(content: bytes) -> str:
@@ -52,13 +70,17 @@ def _try_html_fallback(url: str) -> str:
         # → https://www.st.com/en/microcontrollers-microprocessors/stm32f411.html
         (r'st\.com/resource/en/datasheet/(.+)\.pdf',
          lambda m: f"https://www.st.com/en/microcontrollers-microprocessors/{m.group(1).lower()}.html"),
+        # Microchip: https://ww1.microchip.com/downloads/en/DeviceDoc/ATmega328P_datasheet.pdf
+        # → https://www.microchip.com/en/product/ATmega328P
+        (r'ww1?\.microchip\.com/downloads/en/DeviceDoc/([A-Za-z0-9_\-]+?)(?:[_\.].*)?\.pdf',
+         lambda m: f"https://www.microchip.com/en/product/{m.group(1).rstrip('_-')}"),
     ]
     for pat, repl in patterns:
         m = re.search(pat, url, re.IGNORECASE)
         if m:
             try:
-                resp = requests.get(repl(m), timeout=8, headers={
-                    "User-Agent": "CircuitBot/1.0",
+                resp = requests.get(repl(m), timeout=_FETCH_TIMEOUT, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
                 })
                 resp.raise_for_status()
                 ctype = resp.headers.get("Content-Type", "").lower()
@@ -71,14 +93,17 @@ def _try_html_fallback(url: str) -> str:
                     return text[:MAX_TOTAL]
             except requests.RequestException:
                 continue
+    _mark_failed(url)
     return ""
 
 
 def _download_text(url: str) -> str:
     """Download and extract clean text from a URL (HTML or PDF)."""
+    if _should_skip(url):
+        return ""
     try:
-        resp = requests.get(url, timeout=10, headers={
-            "User-Agent": "CircuitBot/1.0",
+        resp = requests.get(url, timeout=_FETCH_TIMEOUT, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         })
         resp.raise_for_status()
@@ -96,9 +121,11 @@ def _download_text(url: str) -> str:
         return text[:MAX_TOTAL]
     except requests.RequestException as e:
         print(f"[datasheet] fetch failed for {url[:60]}...: {e}")
+        _mark_failed(url)
         return _try_html_fallback(url)[:MAX_TOTAL]
     except Exception as e:
         print(f"[datasheet] parse failed for {url[:60]}...: {e}")
+        _mark_failed(url)
         return ""
 
 

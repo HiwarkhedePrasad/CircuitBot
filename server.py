@@ -149,6 +149,8 @@ def api_save_layout():
             LAST_DESIGN['wire_paths'] = data['wire_paths']
         if 'power_labels' in data:
             LAST_DESIGN['power_labels'] = data['power_labels']
+        if 'board_model' in data and data['board_model'] is not None:
+            LAST_DESIGN['board_model'] = data['board_model']
     return jsonify({'ok': True})
 
 
@@ -194,6 +196,27 @@ def api_export_pcb():
         return f"PCB export failed: {e}", 500
 
 
+@app.route('/api/import_pcb', methods=['POST'])
+def api_import_pcb():
+    """Import a .kicad_pcb file and return BoardModel JSON."""
+    if 'pcb_file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    file = request.files['pcb_file']
+    tmp = Path(f"/tmp/_import_{os.urandom(4).hex()}.kicad_pcb")
+    try:
+        file.save(str(tmp))
+        from pcb_design.pcb_import import import_board
+        model = import_board(str(tmp))
+        return jsonify({'board_model': model.to_dict()})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
 # ── WebSocket Events ─────────────────────────────────────────────────────────
 
 @socketio.on('connect')
@@ -226,10 +249,13 @@ def _run_agent(prompt: str, sid: str):
         def ws_emit(event, data):
             socketio.emit(event, data, room=sid)
 
-        config = {"configurable": {"emit": ws_emit}}
+        run_id = os.urandom(3).hex()
+        config = {"configurable": {"emit": ws_emit, "run_id": run_id}}
+        socketio.emit("agent:log", {"message": f"Run {run_id} started"}, room=sid)
         result = agent_graph.invoke({"prompt": prompt}, config)
 
         # Persist the final design state for .kicad_sch / .kicad_pcb export
+        board_model = result.get('board_model', None) or result.get('_board_model', None)
         with design_lock:
             LAST_DESIGN.clear()
             LAST_DESIGN.update({
@@ -240,7 +266,11 @@ def _run_agent(prompt: str, sid: str):
                 'power_labels': result.get('power_labels', []),
                 'nets': result.get('nets', []),
                 'power_pins': result.get('power_pins', []),
+                'board_model': board_model,
             })
+
+        if board_model:
+            socketio.emit('agent:pcb_ready', {'board_model': board_model}, room=sid)
     except Exception as e:
         socketio.emit('agent:error', {'message': str(e)}, room=sid)
         print(f"Agent error: {e}")

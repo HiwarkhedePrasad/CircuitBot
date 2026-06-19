@@ -1,0 +1,4241 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d14" for="edge" attr.name="relation" attr.type="string"/>
+<key id="d13" for="node" attr.name="tier" attr.type="long"/>
+<key id="d12" for="node" attr.name="url" attr.type="string"/>
+<key id="d11" for="node" attr.name="manufacturer" attr.type="string"/>
+<key id="d10" for="node" attr.name="voltage" attr.type="string"/>
+<key id="d9" for="node" attr.name="voltage" attr.type="double"/>
+<key id="d8" for="node" attr.name="net_type" attr.type="string"/>
+<key id="d7" for="node" attr.name="part_number" attr.type="string"/>
+<key id="d6" for="node" attr.name="value" attr.type="string"/>
+<key id="d5" for="node" attr.name="comp_type" attr.type="string"/>
+<key id="d4" for="node" attr.name="designator" attr.type="string"/>
+<key id="d3" for="node" attr.name="subcategory" attr.type="string"/>
+<key id="d2" for="node" attr.name="category" attr.type="string"/>
+<key id="d1" for="node" attr.name="name" attr.type="string"/>
+<key id="d0" for="node" attr.name="type" attr.type="string"/>
+<graph edgedefault="directed"><node id="PWR-BUCK-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Synchronous Buck Converter 12V→3.3V 2A (TI TPS54360)</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">Buck Converters</data>
+</node>
+<node id="PWR-BUCK-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">regulator</data>
+  <data key="d6">TPS54360</data>
+  <data key="d7">TPS54360DDAR</data>
+</node>
+<node id="PWR-BUCK-001__L1">
+  <data key="d0">component</data>
+  <data key="d4">L1</data>
+  <data key="d5">inductor</data>
+  <data key="d6">4.7uH</data>
+  <data key="d7">XAL4040-472ME</data>
+</node>
+<node id="PWR-BUCK-001__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">4.7uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__C2">
+  <data key="d0">component</data>
+  <data key="d4">C2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">22uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__C3">
+  <data key="d0">component</data>
+  <data key="d4">C3</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">0.1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__C4">
+  <data key="d0">component</data>
+  <data key="d4">C4</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">8200pF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__C5">
+  <data key="d0">component</data>
+  <data key="d4">C5</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">47pF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__C6">
+  <data key="d0">component</data>
+  <data key="d4">C6</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1500pF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__R1">
+  <data key="d0">component</data>
+  <data key="d4">R1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1.00MΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__R2">
+  <data key="d0">component</data>
+  <data key="d4">R2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">182kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__R3">
+  <data key="d0">component</data>
+  <data key="d4">R3</data>
+  <data key="d5">resistor</data>
+  <data key="d6">100kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BUCK-001__R4">
+  <data key="d0">component</data>
+  <data key="d4">R4</data>
+  <data key="d5">resistor</data>
+  <data key="d6">2.2Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VIN_12V">
+  <data key="d0">net</data>
+  <data key="d1">VIN_12V</data>
+  <data key="d8">power</data>
+  <data key="d9">12.0</data>
+</node>
+<node id="NET__VCC_3V3">
+  <data key="d0">net</data>
+  <data key="d1">VCC_3V3</data>
+  <data key="d8">power</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__GND">
+  <data key="d0">net</data>
+  <data key="d1">GND</data>
+  <data key="d8">ground</data>
+  <data key="d9">0.0</data>
+</node>
+<node id="NET__SW">
+  <data key="d0">net</data>
+  <data key="d1">SW</data>
+  <data key="d8">signal</data>
+  <data key="d10"></data>
+</node>
+<node id="NET__VCC">
+  <data key="d0">net</data>
+  <data key="d1">VCC</data>
+  <data key="d8">power</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__FB">
+  <data key="d0">net</data>
+  <data key="d1">FB</data>
+  <data key="d8">signal</data>
+  <data key="d9">0.8</data>
+</node>
+<node id="NET__EN">
+  <data key="d0">net</data>
+  <data key="d1">EN</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__TPS54360 4.5V to 60V Input, 3.5A Step-Down Convert">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/ds/symlink/tps54360.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__SLVA443 – Simple Success with Conducted EMI in DC/">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/slva443/slva443.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="PWR-LDO-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Low-Dropout Linear Regulator 5V→3.3V 500mA (AMS1117-3.3)</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">LDOs</data>
+</node>
+<node id="PWR-LDO-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">regulator</data>
+  <data key="d6">AMS1117-3.3</data>
+  <data key="d7">AMS1117-3.3</data>
+</node>
+<node id="PWR-LDO-001__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-LDO-001__C2">
+  <data key="d0">component</data>
+  <data key="d4">C2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">22uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-LDO-001__C3">
+  <data key="d0">component</data>
+  <data key="d4">C3</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-LDO-001__C4">
+  <data key="d0">component</data>
+  <data key="d4">C4</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VIN_5V">
+  <data key="d0">net</data>
+  <data key="d1">VIN_5V</data>
+  <data key="d8">power</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="SRC__AMS1117 Advanced Monolithic Systems 1A Low Dropout">
+  <data key="d0">source</data>
+  <data key="d11">Advanced Monolithic Systems</data>
+  <data key="d12">https://www.advanced-monolithic.com/pdf/ds1117.pdf</data>
+  <data key="d13">2</data>
+</node>
+<node id="SRC__Adafruit HUZZAH32 ESP32 Feather Schematic">
+  <data key="d0">source</data>
+  <data key="d11">Adafruit</data>
+  <data key="d12">https://learn.adafruit.com/adafruit-huzzah32-esp32-feather/pinouts</data>
+  <data key="d13">2</data>
+</node>
+<node id="PWR-DECAP-001">
+  <data key="d0">pattern</data>
+  <data key="d1">IC Power Decoupling Pattern (100nF + 10uF per power pin)</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">Power Distribution</data>
+</node>
+<node id="PWR-DECAP-001__C_decoupling">
+  <data key="d0">component</data>
+  <data key="d4">C_decoupling</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-DECAP-001__C_bulk">
+  <data key="d0">component</data>
+  <data key="d4">C_bulk</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="SRC__AN-1355: Capacitor Selection Guidelines for Decoup">
+  <data key="d0">source</data>
+  <data key="d11">Analog Devices</data>
+  <data key="d12">https://www.analog.com/media/en/technical-documentation/application-notes/an-1355.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__Hardware Design Guidelines for ESP32">
+  <data key="d0">source</data>
+  <data key="d11">Espressif</data>
+  <data key="d12">https://www.espressif.com/sites/default/files/documentation/esp32_hardware_design_guidelines_en.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="PWR-USBC-001">
+  <data key="d0">pattern</data>
+  <data key="d1">USB-C UFP Sink with 5V Input to 3.3V LDO</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">USB-C</data>
+</node>
+<node id="PWR-USBC-001__J1">
+  <data key="d0">component</data>
+  <data key="d4">J1</data>
+  <data key="d5">connector</data>
+  <data key="d6">USB-C 16-pin</data>
+  <data key="d7">TYPE-C-31-M-12</data>
+</node>
+<node id="PWR-USBC-001__R_CC1">
+  <data key="d0">component</data>
+  <data key="d4">R_CC1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">5.1kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-USBC-001__R_CC2">
+  <data key="d0">component</data>
+  <data key="d4">R_CC2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">5.1kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-USBC-001__U_LDO">
+  <data key="d0">component</data>
+  <data key="d4">U_LDO</data>
+  <data key="d5">regulator</data>
+  <data key="d6">AP2112K-3.3</data>
+  <data key="d7">AP2112K-3.3</data>
+</node>
+<node id="PWR-USBC-001__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-USBC-001__C2">
+  <data key="d0">component</data>
+  <data key="d4">C2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">22uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-USBC-001__D_TVS">
+  <data key="d0">component</data>
+  <data key="d4">D_TVS</data>
+  <data key="d5">protection</data>
+  <data key="d6">USBLC6-2SC6</data>
+  <data key="d7">USBLC6-2SC6</data>
+</node>
+<node id="PWR-USBC-001__F1">
+  <data key="d0">component</data>
+  <data key="d4">F1</data>
+  <data key="d5">protection</data>
+  <data key="d6">PTC 500mA</data>
+  <data key="d7">MF-MSMF050</data>
+</node>
+<node id="NET__VBUS_5V">
+  <data key="d0">net</data>
+  <data key="d1">VBUS_5V</data>
+  <data key="d8">power</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="NET__USB_DP">
+  <data key="d0">net</data>
+  <data key="d1">USB_DP</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__USB_DN">
+  <data key="d0">net</data>
+  <data key="d1">USB_DN</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__CC1">
+  <data key="d0">net</data>
+  <data key="d1">CC1</data>
+  <data key="d8">signal</data>
+  <data key="d10"></data>
+</node>
+<node id="NET__CC2">
+  <data key="d0">net</data>
+  <data key="d1">CC2</data>
+  <data key="d8">signal</data>
+  <data key="d10"></data>
+</node>
+<node id="SRC__Universal Serial Bus Type-C Cable and Connector Sp">
+  <data key="d0">source</data>
+  <data key="d11">USB Implementers Forum</data>
+  <data key="d12">https://www.usb.org/document-library/usb-type-cr-cable-and-connector-specification-revision-20</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN4803 – Hardware design for USB Type-C">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an4803-hardware-design-for-usb-type-c-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="PWR-BATT-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Single-Cell LiPo Battery Charger (TP4056)</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">Battery Charging</data>
+</node>
+<node id="PWR-BATT-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">regulator</data>
+  <data key="d6">TP4056</data>
+  <data key="d7">TP4056</data>
+</node>
+<node id="PWR-BATT-001__R_PROG">
+  <data key="d0">component</data>
+  <data key="d4">R_PROG</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1.2kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__C_VCC">
+  <data key="d0">component</data>
+  <data key="d4">C_VCC</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__C_BAT">
+  <data key="d0">component</data>
+  <data key="d4">C_BAT</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__R_CHRG">
+  <data key="d0">component</data>
+  <data key="d4">R_CHRG</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__R_STDBY">
+  <data key="d0">component</data>
+  <data key="d4">R_STDBY</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__LED_CHRG">
+  <data key="d0">component</data>
+  <data key="d4">LED_CHRG</data>
+  <data key="d5">diode</data>
+  <data key="d6">Red LED</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__LED_STDBY">
+  <data key="d0">component</data>
+  <data key="d4">LED_STDBY</data>
+  <data key="d5">diode</data>
+  <data key="d6">Green LED</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__J_BAT">
+  <data key="d0">component</data>
+  <data key="d4">J_BAT</data>
+  <data key="d5">connector</data>
+  <data key="d6">JST-PH 2-pin</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BATT-001__U_PROT">
+  <data key="d0">component</data>
+  <data key="d4">U_PROT</data>
+  <data key="d5">protection</data>
+  <data key="d6">DW01A + FS8205A</data>
+  <data key="d7">DW01A</data>
+</node>
+<node id="NET__BAT+">
+  <data key="d0">net</data>
+  <data key="d1">BAT+</data>
+  <data key="d8">power</data>
+  <data key="d9">4.2</data>
+</node>
+<node id="NET__BAT_RAW">
+  <data key="d0">net</data>
+  <data key="d1">BAT_RAW</data>
+  <data key="d8">power</data>
+  <data key="d9">4.2</data>
+</node>
+<node id="SRC__TP4056 Lithium Battery Charge Management Chip Data">
+  <data key="d0">source</data>
+  <data key="d11">Nanjing TopPower</data>
+  <data key="d12">https://dlnmh9ip6v2uc.cloudfront.net/datasheets/Prototyping/TP4056.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__MCP73831/2 Tiny Single-Cell Li-Ion Charger">
+  <data key="d0">source</data>
+  <data key="d11">Microchip</data>
+  <data key="d12">https://ww1.microchip.com/downloads/en/DeviceDoc/20001984g.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="PWR-RPP-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Reverse Polarity Protection with P-Channel MOSFET</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">Protection Circuits</data>
+</node>
+<node id="PWR-RPP-001__Q1">
+  <data key="d0">component</data>
+  <data key="d4">Q1</data>
+  <data key="d5">mosfet</data>
+  <data key="d6">IRF9540N</data>
+  <data key="d7">IRF9540N</data>
+</node>
+<node id="PWR-RPP-001__R1">
+  <data key="d0">component</data>
+  <data key="d4">R1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-RPP-001__R2">
+  <data key="d0">component</data>
+  <data key="d4">R2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">100Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-RPP-001__D1">
+  <data key="d0">component</data>
+  <data key="d4">D1</data>
+  <data key="d5">diode</data>
+  <data key="d6">10V Zener</data>
+  <data key="d7">BZT52C10</data>
+</node>
+<node id="NET__VIN_RAW">
+  <data key="d0">net</data>
+  <data key="d1">VIN_RAW</data>
+  <data key="d8">power</data>
+  <data key="d10"></data>
+</node>
+<node id="NET__VIN_PROTECTED">
+  <data key="d0">net</data>
+  <data key="d1">VIN_PROTECTED</data>
+  <data key="d8">power</data>
+  <data key="d10"></data>
+</node>
+<node id="SRC__AN4784 – Reverse polarity protection for automotiv">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an4784-reverse-polarity-protection-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__SLVA862 – Reverse-Voltage Protection for Battery-P">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/slva862/slva862.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="PWR-BOOST-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Boost Converter 3.3V→5V 500mA (TI TPS61023)</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">Boost Converters</data>
+</node>
+<node id="PWR-BOOST-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">regulator</data>
+  <data key="d6">TPS61023</data>
+  <data key="d7">TPS61023</data>
+</node>
+<node id="PWR-BOOST-001__L1">
+  <data key="d0">component</data>
+  <data key="d4">L1</data>
+  <data key="d5">inductor</data>
+  <data key="d6">2.2uH</data>
+  <data key="d7">7440430022</data>
+</node>
+<node id="PWR-BOOST-001__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BOOST-001__C2">
+  <data key="d0">component</data>
+  <data key="d4">C2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">22uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BOOST-001__R1">
+  <data key="d0">component</data>
+  <data key="d4">R1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1.0MΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-BOOST-001__R2">
+  <data key="d0">component</data>
+  <data key="d4">R2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">200kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VSRC_3V3">
+  <data key="d0">net</data>
+  <data key="d1">VSRC_3V3</data>
+  <data key="d8">power</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__VCC_5V">
+  <data key="d0">net</data>
+  <data key="d1">VCC_5V</data>
+  <data key="d8">power</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="SRC__TPS61023 3.7-V to 5.5-V Input, 1-A Boost Converter">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/ds/symlink/tps61023.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="PWR-PWRSEQ-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Multi-Rail Power Sequencing with EN Delay (RC)</data>
+  <data key="d2">Power Supply</data>
+  <data key="d3">Power Sequencing</data>
+</node>
+<node id="PWR-PWRSEQ-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">regulator</data>
+  <data key="d6">1.2V buck</data>
+  <data key="d7">TPS56221</data>
+</node>
+<node id="PWR-PWRSEQ-001__U2">
+  <data key="d0">component</data>
+  <data key="d4">U2</data>
+  <data key="d5">regulator</data>
+  <data key="d6">1.8V buck</data>
+  <data key="d7">TPS56221</data>
+</node>
+<node id="PWR-PWRSEQ-001__U3">
+  <data key="d0">component</data>
+  <data key="d4">U3</data>
+  <data key="d5">regulator</data>
+  <data key="d6">3.3V buck</data>
+  <data key="d7">TPS56221</data>
+</node>
+<node id="PWR-PWRSEQ-001__R_EN1">
+  <data key="d0">component</data>
+  <data key="d4">R_EN1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">100kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-PWRSEQ-001__C_EN1">
+  <data key="d0">component</data>
+  <data key="d4">C_EN1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-PWRSEQ-001__R_EN2">
+  <data key="d0">component</data>
+  <data key="d4">R_EN2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">100kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-PWRSEQ-001__C_EN2">
+  <data key="d0">component</data>
+  <data key="d4">C_EN2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">2.2uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-PWRSEQ-001__R_EN3">
+  <data key="d0">component</data>
+  <data key="d4">R_EN3</data>
+  <data key="d5">resistor</data>
+  <data key="d6">100kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="PWR-PWRSEQ-001__C_EN3">
+  <data key="d0">component</data>
+  <data key="d4">C_EN3</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">4.7uF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VCC_1V2">
+  <data key="d0">net</data>
+  <data key="d1">VCC_1V2</data>
+  <data key="d8">power</data>
+  <data key="d9">1.2</data>
+</node>
+<node id="NET__VCC_1V8">
+  <data key="d0">net</data>
+  <data key="d1">VCC_1V8</data>
+  <data key="d8">power</data>
+  <data key="d9">1.8</data>
+</node>
+<node id="SRC__SLVAE70 – Power Supply Sequencing for FPGA and SoC">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/slyt631/slyt631.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN4891 – Hardware and startup guidelines for STM32">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an4891-stm32-power-supply-hardware-and-startup-guidelines-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="MCU-ESP32-001">
+  <data key="d0">pattern</data>
+  <data key="d1">ESP32 Boot/Strapping Pin Configuration</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">ESP32</data>
+</node>
+<node id="MCU-ESP32-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">mcu</data>
+  <data key="d6">ESP32-WROOM-32</data>
+  <data key="d7">ESP32-WROOM-32</data>
+</node>
+<node id="MCU-ESP32-001__R_EN">
+  <data key="d0">component</data>
+  <data key="d4">R_EN</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__C_EN">
+  <data key="d0">component</data>
+  <data key="d4">C_EN</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__R_GPIO0">
+  <data key="d0">component</data>
+  <data key="d4">R_GPIO0</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__R_GPIO2">
+  <data key="d0">component</data>
+  <data key="d4">R_GPIO2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__R_GPIO12">
+  <data key="d0">component</data>
+  <data key="d4">R_GPIO12</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__R_GPIO15">
+  <data key="d0">component</data>
+  <data key="d4">R_GPIO15</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__SW_RESET">
+  <data key="d0">component</data>
+  <data key="d4">SW_RESET</data>
+  <data key="d5">switch</data>
+  <data key="d6">Tactile button</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__SW_BOOT">
+  <data key="d0">component</data>
+  <data key="d4">SW_BOOT</data>
+  <data key="d5">switch</data>
+  <data key="d6">Tactile button</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-001__C0">
+  <data key="d0">component</data>
+  <data key="d4">C0</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__GPIO0">
+  <data key="d0">net</data>
+  <data key="d1">GPIO0</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__GPIO2">
+  <data key="d0">net</data>
+  <data key="d1">GPIO2</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__GPIO12">
+  <data key="d0">net</data>
+  <data key="d1">GPIO12</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__GPIO15">
+  <data key="d0">net</data>
+  <data key="d1">GPIO15</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__VDD_SDIO">
+  <data key="d0">net</data>
+  <data key="d1">VDD_SDIO</data>
+  <data key="d8">power</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__ESP32 Hardware Design Guidelines">
+  <data key="d0">source</data>
+  <data key="d11">Espressif</data>
+  <data key="d12">https://www.espressif.com/sites/default/files/documentation/esp32_hardware_design_guidelines_en.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__ESP32 Datasheet">
+  <data key="d0">source</data>
+  <data key="d11">Espressif</data>
+  <data key="d12">https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="MCU-ESP32-002">
+  <data key="d0">pattern</data>
+  <data key="d1">ESP32 Crystal Oscillator Circuit (40MHz)</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">ESP32</data>
+</node>
+<node id="MCU-ESP32-002__Y1">
+  <data key="d0">component</data>
+  <data key="d4">Y1</data>
+  <data key="d5">crystal</data>
+  <data key="d6">40MHz</data>
+  <data key="d7">ABM8-40.000MHZ-B4Y-T3</data>
+</node>
+<node id="MCU-ESP32-002__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">12pF</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-002__C2">
+  <data key="d0">component</data>
+  <data key="d4">C2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">12pF</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-002__R1">
+  <data key="d0">component</data>
+  <data key="d4">R1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">0Ω (optional 220Ω)</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__XTAL_P">
+  <data key="d0">net</data>
+  <data key="d1">XTAL_P</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__XTAL_N">
+  <data key="d0">net</data>
+  <data key="d1">XTAL_N</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="MCU-ESP32-003">
+  <data key="d0">pattern</data>
+  <data key="d1">ESP32 Auto-Reset and Auto-Boot via DTR/RTS</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">ESP32</data>
+</node>
+<node id="MCU-ESP32-003__U_USB">
+  <data key="d0">component</data>
+  <data key="d4">U_USB</data>
+  <data key="d5">interface</data>
+  <data key="d6">CP2102N</data>
+  <data key="d7">CP2102N-A02-GQFN24</data>
+</node>
+<node id="MCU-ESP32-003__Q1">
+  <data key="d0">component</data>
+  <data key="d4">Q1</data>
+  <data key="d5">transistor</data>
+  <data key="d6">NPN BJT</data>
+  <data key="d7">MMBT3904</data>
+</node>
+<node id="MCU-ESP32-003__Q2">
+  <data key="d0">component</data>
+  <data key="d4">Q2</data>
+  <data key="d5">transistor</data>
+  <data key="d6">NPN BJT</data>
+  <data key="d7">MMBT3904</data>
+</node>
+<node id="MCU-ESP32-003__R1">
+  <data key="d0">component</data>
+  <data key="d4">R1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-003__R2">
+  <data key="d0">component</data>
+  <data key="d4">R2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-003__R_EN">
+  <data key="d0">component</data>
+  <data key="d4">R_EN</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-003__R_GPIO0">
+  <data key="d0">component</data>
+  <data key="d4">R_GPIO0</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-ESP32-003__C_EN">
+  <data key="d0">component</data>
+  <data key="d4">C_EN</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__DTR">
+  <data key="d0">net</data>
+  <data key="d1">DTR</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__RTS">
+  <data key="d0">net</data>
+  <data key="d1">RTS</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__ESP32-DevKitC Schematic">
+  <data key="d0">source</data>
+  <data key="d11">Espressif</data>
+  <data key="d12">https://dl.espressif.com/dl/schematics/ESP32-DEVKITC-V4-schematic.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="MCU-STM32-001">
+  <data key="d0">pattern</data>
+  <data key="d1">STM32 Boot Mode Selection (BOOT0/BOOT1)</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">STM32</data>
+</node>
+<node id="MCU-STM32-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">mcu</data>
+  <data key="d6">STM32F103C8T6</data>
+  <data key="d7">STM32F103C8T6</data>
+</node>
+<node id="MCU-STM32-001__R_BOOT0">
+  <data key="d0">component</data>
+  <data key="d4">R_BOOT0</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-STM32-001__SW_BOOT0">
+  <data key="d0">component</data>
+  <data key="d4">SW_BOOT0</data>
+  <data key="d5">switch</data>
+  <data key="d6">Tactile button</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-STM32-001__JP_BOOT0">
+  <data key="d0">component</data>
+  <data key="d4">JP_BOOT0</data>
+  <data key="d5">connector</data>
+  <data key="d6">2-pin jumper</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-STM32-001__R_NRST">
+  <data key="d0">component</data>
+  <data key="d4">R_NRST</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-STM32-001__C_NRST">
+  <data key="d0">component</data>
+  <data key="d4">C_NRST</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__BOOT0">
+  <data key="d0">net</data>
+  <data key="d1">BOOT0</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__NRST">
+  <data key="d0">net</data>
+  <data key="d1">NRST</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__AN2606 – STM32 microcontroller system memory boot ">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an2606-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__STM32F103 Reference Manual (RM0008)">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/reference_manual/cd00171190-stm32f101-102-103-105-density-performance-line-microcontrollers-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="MCU-RP2040-001">
+  <data key="d0">pattern</data>
+  <data key="d1">RP2040 Boot Circuit (BOOTSEL + 12MHz Crystal)</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">RP2040</data>
+</node>
+<node id="MCU-RP2040-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">mcu</data>
+  <data key="d6">RP2040</data>
+  <data key="d7">RP2040</data>
+</node>
+<node id="MCU-RP2040-001__U_FLASH">
+  <data key="d0">component</data>
+  <data key="d4">U_FLASH</data>
+  <data key="d5">memory</data>
+  <data key="d6">W25Q16JV</data>
+  <data key="d7">W25Q16JVSIQ</data>
+</node>
+<node id="MCU-RP2040-001__Y1">
+  <data key="d0">component</data>
+  <data key="d4">Y1</data>
+  <data key="d5">crystal</data>
+  <data key="d6">12MHz</data>
+  <data key="d7">ABM8-12.000MHZ-B4Y-T3</data>
+</node>
+<node id="MCU-RP2040-001__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">27pF</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RP2040-001__C2">
+  <data key="d0">component</data>
+  <data key="d4">C2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">27pF</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RP2040-001__R_BOOTSEL">
+  <data key="d0">component</data>
+  <data key="d4">R_BOOTSEL</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RP2040-001__SW_BOOTSEL">
+  <data key="d0">component</data>
+  <data key="d4">SW_BOOTSEL</data>
+  <data key="d5">switch</data>
+  <data key="d6">Tactile button</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RP2040-001__R_RUN">
+  <data key="d0">component</data>
+  <data key="d4">R_RUN</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RP2040-001__C_RUN">
+  <data key="d0">component</data>
+  <data key="d4">C_RUN</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RP2040-001__R_FLASH">
+  <data key="d0">component</data>
+  <data key="d4">R_FLASH</data>
+  <data key="d5">resistor</data>
+  <data key="d6">2.2kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__XIN">
+  <data key="d0">net</data>
+  <data key="d1">XIN</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__XOUT">
+  <data key="d0">net</data>
+  <data key="d1">XOUT</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__BOOTSEL">
+  <data key="d0">net</data>
+  <data key="d1">BOOTSEL</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__RUN">
+  <data key="d0">net</data>
+  <data key="d1">RUN</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__QSPI_CS">
+  <data key="d0">net</data>
+  <data key="d1">QSPI_CS</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__QSPI_CLK">
+  <data key="d0">net</data>
+  <data key="d1">QSPI_CLK</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__QSPI_D0-D3">
+  <data key="d0">net</data>
+  <data key="d1">QSPI_D0-D3</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__RP2040 Datasheet">
+  <data key="d0">source</data>
+  <data key="d11">Raspberry Pi</data>
+  <data key="d12">https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__Raspberry Pi Pico Schematic">
+  <data key="d0">source</data>
+  <data key="d11">Raspberry Pi</data>
+  <data key="d12">https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="MCU-SWD-001">
+  <data key="d0">pattern</data>
+  <data key="d1">ARM Cortex-M SWD Debug Header (2x5 0.05")</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">Debug Circuits</data>
+</node>
+<node id="MCU-SWD-001__J_SWD">
+  <data key="d0">component</data>
+  <data key="d4">J_SWD</data>
+  <data key="d5">connector</data>
+  <data key="d6">2x5 0.05" SMD</data>
+  <data key="d7">FTSH-105-01-L-DV-K</data>
+</node>
+<node id="MCU-SWD-001__R_SWDIO">
+  <data key="d0">component</data>
+  <data key="d4">R_SWDIO</data>
+  <data key="d5">resistor</data>
+  <data key="d6">22Ω (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-SWD-001__R_SWCLK">
+  <data key="d0">component</data>
+  <data key="d4">R_SWCLK</data>
+  <data key="d5">resistor</data>
+  <data key="d6">22Ω (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-SWD-001__R_NRST">
+  <data key="d0">component</data>
+  <data key="d4">R_NRST</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VCC_TARGET">
+  <data key="d0">net</data>
+  <data key="d1">VCC_TARGET</data>
+  <data key="d8">power</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__SWDIO">
+  <data key="d0">net</data>
+  <data key="d1">SWDIO</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__SWCLK">
+  <data key="d0">net</data>
+  <data key="d1">SWCLK</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__SWO">
+  <data key="d0">net</data>
+  <data key="d1">SWO</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__nRST">
+  <data key="d0">net</data>
+  <data key="d1">nRST</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__ARM CoreSight Components Technical Reference Manua">
+  <data key="d0">source</data>
+  <data key="d11">ARM</data>
+  <data key="d12">https://developer.arm.com/documentation/102278/latest</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN4505 – Hardware and PCB guidelines for STM32 deb">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an4505-stm32-hardware-and-pcb-guidelines-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="MCU-AVR-001">
+  <data key="d0">pattern</data>
+  <data key="d1">AVR 6-pin ISP Programming Header</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">AVR</data>
+</node>
+<node id="MCU-AVR-001__J_ISP">
+  <data key="d0">component</data>
+  <data key="d4">J_ISP</data>
+  <data key="d5">connector</data>
+  <data key="d6">2x3 0.1" THT</data>
+  <data key="d7">68021-236HLF</data>
+</node>
+<node id="MCU-AVR-001__R_RST">
+  <data key="d0">component</data>
+  <data key="d4">R_RST</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__RESET">
+  <data key="d0">net</data>
+  <data key="d1">RESET</data>
+  <data key="d8">control</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="NET__SCK">
+  <data key="d0">net</data>
+  <data key="d1">SCK</data>
+  <data key="d8">signal</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="NET__MOSI">
+  <data key="d0">net</data>
+  <data key="d1">MOSI</data>
+  <data key="d8">signal</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="NET__MISO">
+  <data key="d0">net</data>
+  <data key="d1">MISO</data>
+  <data key="d8">signal</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="SRC__AVR910 – In-System Programming">
+  <data key="d0">source</data>
+  <data key="d11">Atmel/Microchip</data>
+  <data key="d12">https://www.microchip.com/content/dam/mchp/documents/ ApplicationNotes/Doc0943.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__Arduino Uno R3 Schematic">
+  <data key="d0">source</data>
+  <data key="d11">Arduino</data>
+  <data key="d12">https://www.arduino.cc/en/uploads/Main/Arduino_Uno_Rev3-schematic.pdf</data>
+  <data key="d13">2</data>
+</node>
+<node id="MCU-RESET-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Universal MCU Reset Circuit (RC Delay + Button + Supervisor)</data>
+  <data key="d2">Microcontroller Systems</data>
+  <data key="d3">Reset Circuits</data>
+</node>
+<node id="MCU-RESET-001__R_RST">
+  <data key="d0">component</data>
+  <data key="d4">R_RST</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RESET-001__C_RST">
+  <data key="d0">component</data>
+  <data key="d4">C_RST</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RESET-001__SW_RST">
+  <data key="d0">component</data>
+  <data key="d4">SW_RST</data>
+  <data key="d5">switch</data>
+  <data key="d6">Tactile button</data>
+  <data key="d7"></data>
+</node>
+<node id="MCU-RESET-001__U_SUP">
+  <data key="d0">component</data>
+  <data key="d4">U_SUP</data>
+  <data key="d5">supervisor</data>
+  <data key="d6">TPS3838K33</data>
+  <data key="d7">TPS3838K33</data>
+</node>
+<node id="SRC__SLVA698 – Reset ICs: When, Why, and How to Use The">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/slva698/slva698.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="WIRELESS-NRF52-001">
+  <data key="d0">pattern</data>
+  <data key="d1">nRF52 DCDC Converter Configuration</data>
+  <data key="d2">Wireless</data>
+  <data key="d3">BLE</data>
+</node>
+<node id="WIRELESS-NRF52-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">mcu</data>
+  <data key="d6">nRF52832</data>
+  <data key="d7">nRF52832-QFAA-R</data>
+</node>
+<node id="WIRELESS-NRF52-001__L_DCC">
+  <data key="d0">component</data>
+  <data key="d4">L_DCC</data>
+  <data key="d5">inductor</data>
+  <data key="d6">4.7uH</data>
+  <data key="d7">0805CS-472XJL</data>
+</node>
+<node id="WIRELESS-NRF52-001__C_DEC4">
+  <data key="d0">component</data>
+  <data key="d4">C_DEC4</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VDD_nRF">
+  <data key="d0">net</data>
+  <data key="d1">VDD_nRF</data>
+  <data key="d8">power</data>
+  <data key="d9">3.0</data>
+</node>
+<node id="NET__DEC4">
+  <data key="d0">net</data>
+  <data key="d1">DEC4</data>
+  <data key="d8">power</data>
+  <data key="d9">1.3</data>
+</node>
+<node id="NET__DCC">
+  <data key="d0">net</data>
+  <data key="d1">DCC</data>
+  <data key="d8">signal</data>
+  <data key="d9">1.3</data>
+</node>
+<node id="SRC__nRF52832 Product Specification">
+  <data key="d0">source</data>
+  <data key="d11">Nordic Semiconductor</data>
+  <data key="d12">https://infocenter.nordicsemi.com/pdf/nRF52832_PS_v1.4.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__nRF52 Hardware Design Guidelines">
+  <data key="d0">source</data>
+  <data key="d11">Nordic Semiconductor</data>
+  <data key="d12">https://infocenter.nordicsemi.com/pdf/nRF52_Hardware_Design_Guidelines_v1.0.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="WIRELESS-ANT-001">
+  <data key="d0">pattern</data>
+  <data key="d1">RF Antenna Matching Network (PI Network)</data>
+  <data key="d2">Wireless</data>
+  <data key="d3">RF Layout</data>
+</node>
+<node id="WIRELESS-ANT-001__L1">
+  <data key="d0">component</data>
+  <data key="d4">L1</data>
+  <data key="d5">inductor</data>
+  <data key="d6">3.3nH</data>
+  <data key="d7">LQW15AN3N3C00D</data>
+</node>
+<node id="WIRELESS-ANT-001__L2">
+  <data key="d0">component</data>
+  <data key="d4">L2</data>
+  <data key="d5">inductor</data>
+  <data key="d6">2.0nH</data>
+  <data key="d7">LQW15AN2N0C00D</data>
+</node>
+<node id="WIRELESS-ANT-001__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1.0pF</data>
+  <data key="d7">GRM1555C1H1R0CA01D</data>
+</node>
+<node id="WIRELESS-ANT-001__C_DC">
+  <data key="d0">component</data>
+  <data key="d4">C_DC</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100pF</data>
+  <data key="d7"></data>
+</node>
+<node id="WIRELESS-ANT-001__ANT1">
+  <data key="d0">component</data>
+  <data key="d4">ANT1</data>
+  <data key="d5">antenna</data>
+  <data key="d6">Chip PCB antenna</data>
+  <data key="d7">2450AT18B100E</data>
+</node>
+<node id="NET__RF_OUT">
+  <data key="d0">net</data>
+  <data key="d1">RF_OUT</data>
+  <data key="d8">signal</data>
+  <data key="d10"></data>
+</node>
+<node id="NET__ANT">
+  <data key="d0">net</data>
+  <data key="d1">ANT</data>
+  <data key="d8">signal</data>
+  <data key="d10"></data>
+</node>
+<node id="SRC__AN463 – Antenna and RF layout guidelines for nRF52">
+  <data key="d0">source</data>
+  <data key="d11">Nordic Semiconductor</data>
+  <data key="d12">https://infocenter.nordicsemi.com/pdf/nAN_463_v1.1.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="WIRELESS-RTC-001">
+  <data key="d0">pattern</data>
+  <data key="d1">32.768kHz RTC Crystal Oscillator</data>
+  <data key="d2">Wireless</data>
+  <data key="d3">Clock Circuits</data>
+</node>
+<node id="WIRELESS-RTC-001__Y_RTC">
+  <data key="d0">component</data>
+  <data key="d4">Y_RTC</data>
+  <data key="d5">crystal</data>
+  <data key="d6">32.768kHz</data>
+  <data key="d7">CM7V-T1A-32.768kHz-9pF-20ppm-TA-QC</data>
+</node>
+<node id="WIRELESS-RTC-001__C_RTC1">
+  <data key="d0">component</data>
+  <data key="d4">C_RTC1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">12pF</data>
+  <data key="d7"></data>
+</node>
+<node id="WIRELESS-RTC-001__C_RTC2">
+  <data key="d0">component</data>
+  <data key="d4">C_RTC2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">12pF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__XLF1">
+  <data key="d0">net</data>
+  <data key="d1">XLF1</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__XLF2">
+  <data key="d0">net</data>
+  <data key="d1">XLF2</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__AN4750 – Hardware and PCB guidelines for STM32 RTC">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an4750-stm32-rtc-hardware-and-pcb-guidelines-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SENSOR-I2C-001">
+  <data key="d0">pattern</data>
+  <data key="d1">I2C Bus with Pullup Resistors (4.7kΩ)</data>
+  <data key="d2">High-Speed Interfaces</data>
+  <data key="d3">I2C</data>
+</node>
+<node id="SENSOR-I2C-001__U_MCU">
+  <data key="d0">component</data>
+  <data key="d4">U_MCU</data>
+  <data key="d5">mcu</data>
+  <data key="d6">Any MCU with I2C</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-I2C-001__U_SENSOR1">
+  <data key="d0">component</data>
+  <data key="d4">U_SENSOR1</data>
+  <data key="d5">sensor</data>
+  <data key="d6">BME280</data>
+  <data key="d7">BME280</data>
+</node>
+<node id="SENSOR-I2C-001__R_SDA">
+  <data key="d0">component</data>
+  <data key="d4">R_SDA</data>
+  <data key="d5">resistor</data>
+  <data key="d6">4.7kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-I2C-001__R_SCL">
+  <data key="d0">component</data>
+  <data key="d4">R_SCL</data>
+  <data key="d5">resistor</data>
+  <data key="d6">4.7kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-I2C-001__R_SER_SDA">
+  <data key="d0">component</data>
+  <data key="d4">R_SER_SDA</data>
+  <data key="d5">resistor</data>
+  <data key="d6">22Ω (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-I2C-001__R_SER_SCL">
+  <data key="d0">component</data>
+  <data key="d4">R_SER_SCL</data>
+  <data key="d5">resistor</data>
+  <data key="d6">22Ω (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-I2C-001__C_SDA">
+  <data key="d0">component</data>
+  <data key="d4">C_SDA</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100pF (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VCC_IO">
+  <data key="d0">net</data>
+  <data key="d1">VCC_IO</data>
+  <data key="d8">power</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__I2C_SDA">
+  <data key="d0">net</data>
+  <data key="d1">I2C_SDA</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__I2C_SCL">
+  <data key="d0">net</data>
+  <data key="d1">I2C_SCL</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__UM10204 – I2C-bus Specification and User Manual (R">
+  <data key="d0">source</data>
+  <data key="d11">NXP Semiconductors</data>
+  <data key="d12">https://www.nxp.com/docs/en/user-guide/UM10204.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN10216 – I2C Manual">
+  <data key="d0">source</data>
+  <data key="d11">NXP Semiconductors</data>
+  <data key="d12">https://www.nxp.com/docs/en/application-note/AN10216.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SENSOR-SPI-001">
+  <data key="d0">pattern</data>
+  <data key="d1">SPI Bus with Multiple Chip Selects</data>
+  <data key="d2">High-Speed Interfaces</data>
+  <data key="d3">SPI</data>
+</node>
+<node id="SENSOR-SPI-001__U_MCU">
+  <data key="d0">component</data>
+  <data key="d4">U_MCU</data>
+  <data key="d5">mcu</data>
+  <data key="d6">Any MCU with SPI</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-SPI-001__U_DEV1">
+  <data key="d0">component</data>
+  <data key="d4">U_DEV1</data>
+  <data key="d5">sensor</data>
+  <data key="d6">SPI sensor/display</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-SPI-001__U_DEV2">
+  <data key="d0">component</data>
+  <data key="d4">U_DEV2</data>
+  <data key="d5">memory</data>
+  <data key="d6">SPI flash</data>
+  <data key="d7">W25Q128</data>
+</node>
+<node id="SENSOR-SPI-001__R_CS1">
+  <data key="d0">component</data>
+  <data key="d4">R_CS1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-SPI-001__R_CS2">
+  <data key="d0">component</data>
+  <data key="d4">R_CS2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__SPI_SCK">
+  <data key="d0">net</data>
+  <data key="d1">SPI_SCK</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__SPI_MOSI">
+  <data key="d0">net</data>
+  <data key="d1">SPI_MOSI</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__SPI_MISO">
+  <data key="d0">net</data>
+  <data key="d1">SPI_MISO</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__CS1">
+  <data key="d0">net</data>
+  <data key="d1">CS1</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__CS2">
+  <data key="d0">net</data>
+  <data key="d1">CS2</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__SPI Block Guide V4.01">
+  <data key="d0">source</data>
+  <data key="d11">Motorola/Freescale (now NXP)</data>
+  <data key="d12">https://www.nxp.com/docs/en/reference-manual/SPIBLKCFG.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__W25Q128JV Datasheet (SPI Flash)">
+  <data key="d0">source</data>
+  <data key="d11">Winbond</data>
+  <data key="d12">https://www.winbond.com/resource-files/w25q128jv%20revh%2004082019%20plus.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SENSOR-ADC-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Voltage Divider for ADC Input</data>
+  <data key="d2">Sensors</data>
+  <data key="d3">Current Sensing</data>
+</node>
+<node id="SENSOR-ADC-001__R_TOP">
+  <data key="d0">component</data>
+  <data key="d4">R_TOP</data>
+  <data key="d5">resistor</data>
+  <data key="d6">30kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-ADC-001__R_BOT">
+  <data key="d0">component</data>
+  <data key="d4">R_BOT</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-ADC-001__C_FILTER">
+  <data key="d0">component</data>
+  <data key="d4">C_FILTER</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-ADC-001__D_CLAMP">
+  <data key="d0">component</data>
+  <data key="d4">D_CLAMP</data>
+  <data key="d5">diode</data>
+  <data key="d6">BAT54S</data>
+  <data key="d7">BAT54S</data>
+</node>
+<node id="NET__V_SENSE">
+  <data key="d0">net</data>
+  <data key="d1">V_SENSE</data>
+  <data key="d8">analog</data>
+  <data key="d9">12.0</data>
+</node>
+<node id="NET__ADC_IN">
+  <data key="d0">net</data>
+  <data key="d1">ADC_IN</data>
+  <data key="d8">analog</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__AN3116 – ADC application notes for STM32">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/cd00211314.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN2834 – How to get the best ADC accuracy in STM32">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/cd00211314.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SENSOR-CURRENT-001">
+  <data key="d0">pattern</data>
+  <data key="d1">High-Side Current Sensing with Shunt + Difference Amplifier</data>
+  <data key="d2">Sensors</data>
+  <data key="d3">Current Sensing</data>
+</node>
+<node id="SENSOR-CURRENT-001__R_SHUNT">
+  <data key="d0">component</data>
+  <data key="d4">R_SHUNT</data>
+  <data key="d5">resistor</data>
+  <data key="d6">0.05Ω</data>
+  <data key="d7">CSS2H-2512K-0L05FT</data>
+</node>
+<node id="SENSOR-CURRENT-001__U_AMP">
+  <data key="d0">component</data>
+  <data key="d4">U_AMP</data>
+  <data key="d5">amplifier</data>
+  <data key="d6">INA180A3</data>
+  <data key="d7">INA180A3IDBVR</data>
+</node>
+<node id="SENSOR-CURRENT-001__R_FILTER1">
+  <data key="d0">component</data>
+  <data key="d4">R_FILTER1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-CURRENT-001__R_FILTER2">
+  <data key="d0">component</data>
+  <data key="d4">R_FILTER2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-CURRENT-001__C_FILTER">
+  <data key="d0">component</data>
+  <data key="d4">C_FILTER</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-CURRENT-001__C_BYP">
+  <data key="d0">component</data>
+  <data key="d4">C_BYP</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="SENSOR-CURRENT-001__C_OUT">
+  <data key="d0">component</data>
+  <data key="d4">C_OUT</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__V_LOAD_IN">
+  <data key="d0">net</data>
+  <data key="d1">V_LOAD_IN</data>
+  <data key="d8">power</data>
+  <data key="d9">12.0</data>
+</node>
+<node id="NET__V_LOAD_OUT">
+  <data key="d0">net</data>
+  <data key="d1">V_LOAD_OUT</data>
+  <data key="d8">power</data>
+  <data key="d9">12.0</data>
+</node>
+<node id="NET__I_SENSE_OUT">
+  <data key="d0">net</data>
+  <data key="d1">I_SENSE_OUT</data>
+  <data key="d8">analog</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__SBOA160 – High-Side Current Sensing with Different">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/sboa160/sboa160.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__INA180 Datasheet">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/ds/symlink/ina180.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="IF-CAN-001">
+  <data key="d0">pattern</data>
+  <data key="d1">CAN Bus Termination (120Ω)</data>
+  <data key="d2">High-Speed Interfaces</data>
+  <data key="d3">CAN</data>
+</node>
+<node id="IF-CAN-001__U_CAN1">
+  <data key="d0">component</data>
+  <data key="d4">U_CAN1</data>
+  <data key="d5">transceiver</data>
+  <data key="d6">SN65HVD230</data>
+  <data key="d7">SN65HVD230</data>
+</node>
+<node id="IF-CAN-001__U_CAN2">
+  <data key="d0">component</data>
+  <data key="d4">U_CAN2</data>
+  <data key="d5">transceiver</data>
+  <data key="d6">SN65HVD230</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-CAN-001__R_TERM1">
+  <data key="d0">component</data>
+  <data key="d4">R_TERM1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">120Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-CAN-001__R_TERM2">
+  <data key="d0">component</data>
+  <data key="d4">R_TERM2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">120Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-CAN-001__C_SPLIT1">
+  <data key="d0">component</data>
+  <data key="d4">C_SPLIT1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">4.7nF (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-CAN-001__C_SPLIT2">
+  <data key="d0">component</data>
+  <data key="d4">C_SPLIT2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">4.7nF (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__CAN_H">
+  <data key="d0">net</data>
+  <data key="d1">CAN_H</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="NET__CAN_L">
+  <data key="d0">net</data>
+  <data key="d1">CAN_L</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="SRC__CAN Specification (ISO 11898)">
+  <data key="d0">source</data>
+  <data key="d11">ISO/Bosch</data>
+  <data key="d12">https://www.bosch-semiconductors.com/media/technology_literature/systems/can/can_specification/</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__SLLA270 – CAN Bus Layout Guide">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/slla270/slla270.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="IF-ESD-001">
+  <data key="d0">pattern</data>
+  <data key="d1">USB ESD Protection with TVS Diode Array</data>
+  <data key="d2">High-Speed Interfaces</data>
+  <data key="d3">USB</data>
+</node>
+<node id="IF-ESD-001__U_ESD">
+  <data key="d0">component</data>
+  <data key="d4">U_ESD</data>
+  <data key="d5">protection</data>
+  <data key="d6">USBLC6-2SC6</data>
+  <data key="d7">USBLC6-2SC6</data>
+</node>
+<node id="IF-ESD-001__J_USB">
+  <data key="d0">component</data>
+  <data key="d4">J_USB</data>
+  <data key="d5">connector</data>
+  <data key="d6">USB-C or micro-USB</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VBUS">
+  <data key="d0">net</data>
+  <data key="d1">VBUS</data>
+  <data key="d8">power</data>
+  <data key="d9">5.0</data>
+</node>
+<node id="SRC__AN5020 – USB Type-C and Power Delivery ESD protect">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an5020-usb-typec-esd-protection-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__USBLC6-2SC6 Datasheet">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/datasheet/usblc6-2.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="IF-RS485-001">
+  <data key="d0">pattern</data>
+  <data key="d1">RS485 Bus Termination and Fail-Safe Biasing</data>
+  <data key="d2">High-Speed Interfaces</data>
+  <data key="d3">RS485</data>
+</node>
+<node id="IF-RS485-001__U_RS485">
+  <data key="d0">component</data>
+  <data key="d4">U_RS485</data>
+  <data key="d5">transceiver</data>
+  <data key="d6">MAX485</data>
+  <data key="d7">MAX485CSA+</data>
+</node>
+<node id="IF-RS485-001__R_TERM1">
+  <data key="d0">component</data>
+  <data key="d4">R_TERM1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">120Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-RS485-001__R_TERM2">
+  <data key="d0">component</data>
+  <data key="d4">R_TERM2</data>
+  <data key="d5">resistor</data>
+  <data key="d6">120Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-RS485-001__R_BIAS_A">
+  <data key="d0">component</data>
+  <data key="d4">R_BIAS_A</data>
+  <data key="d5">resistor</data>
+  <data key="d6">560Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-RS485-001__R_BIAS_B">
+  <data key="d0">component</data>
+  <data key="d4">R_BIAS_B</data>
+  <data key="d5">resistor</data>
+  <data key="d6">560Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-RS485-001__C_CM">
+  <data key="d0">component</data>
+  <data key="d4">C_CM</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__RS485_A">
+  <data key="d0">net</data>
+  <data key="d1">RS485_A</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="NET__RS485_B">
+  <data key="d0">net</data>
+  <data key="d1">RS485_B</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="SRC__ANSI/TIA/EIA-485-A Standard">
+  <data key="d0">source</data>
+  <data key="d11">TIA</data>
+  <data key="d12">https://www.tiaonline.org/standards/</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN-960 – RS485 Application Note">
+  <data key="d0">source</data>
+  <data key="d11">Analog Devices</data>
+  <data key="d12">https://www.analog.com/media/en/technical-documentation/application-notes/AN-960.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="IF-ETH-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Ethernet Magnetics and Bob Smith Termination</data>
+  <data key="d2">High-Speed Interfaces</data>
+  <data key="d3">Ethernet</data>
+</node>
+<node id="IF-ETH-001__U_PHY">
+  <data key="d0">component</data>
+  <data key="d4">U_PHY</data>
+  <data key="d5">phy</data>
+  <data key="d6">LAN8720A</data>
+  <data key="d7">LAN8720A-CP</data>
+</node>
+<node id="IF-ETH-001__T_MAG">
+  <data key="d0">component</data>
+  <data key="d4">T_MAG</data>
+  <data key="d5">transformer</data>
+  <data key="d6">Hanrun HR911105A</data>
+  <data key="d7">HR911105A</data>
+</node>
+<node id="IF-ETH-001__J_RJ45">
+  <data key="d0">component</data>
+  <data key="d4">J_RJ45</data>
+  <data key="d5">connector</data>
+  <data key="d6">RJ45 8P8C</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-ETH-001__R_BIAS_TD+">
+  <data key="d0">component</data>
+  <data key="d4">R_BIAS_TD+</data>
+  <data key="d5">resistor</data>
+  <data key="d6">49.9Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-ETH-001__R_BIAS_TD-">
+  <data key="d0">component</data>
+  <data key="d4">R_BIAS_TD-</data>
+  <data key="d5">resistor</data>
+  <data key="d6">49.9Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-ETH-001__R_BIAS_RD+">
+  <data key="d0">component</data>
+  <data key="d4">R_BIAS_RD+</data>
+  <data key="d5">resistor</data>
+  <data key="d6">49.9Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-ETH-001__R_BIAS_RD-">
+  <data key="d0">component</data>
+  <data key="d4">R_BIAS_RD-</data>
+  <data key="d5">resistor</data>
+  <data key="d6">49.9Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-ETH-001__R_BS1-4">
+  <data key="d0">component</data>
+  <data key="d4">R_BS1-4</data>
+  <data key="d5">resistor</data>
+  <data key="d6">75Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-ETH-001__C_BS">
+  <data key="d0">component</data>
+  <data key="d4">C_BS</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1nF 2kV</data>
+  <data key="d7">DE2E3KY102MA2BM02</data>
+</node>
+<node id="NET__CHASSIS_GND">
+  <data key="d0">net</data>
+  <data key="d1">CHASSIS_GND</data>
+  <data key="d8">ground</data>
+  <data key="d9">0.0</data>
+</node>
+<node id="NET__TD+">
+  <data key="d0">net</data>
+  <data key="d1">TD+</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="NET__TD-">
+  <data key="d0">net</data>
+  <data key="d1">TD-</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="NET__RD+">
+  <data key="d0">net</data>
+  <data key="d1">RD+</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="NET__RD-">
+  <data key="d0">net</data>
+  <data key="d1">RD-</data>
+  <data key="d8">signal</data>
+  <data key="d9">2.5</data>
+</node>
+<node id="SRC__IEEE 802.3 Standard for Ethernet">
+  <data key="d0">source</data>
+  <data key="d11">IEEE</data>
+  <data key="d12">https://standards.ieee.org/ieee/802.3/1045/</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN4757 – Hardware design guide for Ethernet PHYs">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an4757-ethernet-phy-hardware-design-guide-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="MOTOR-BDC-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Brushed DC Motor Driver with H-Bridge (DRV8833)</data>
+  <data key="d2">Motor Drivers</data>
+  <data key="d3">DC Motors</data>
+</node>
+<node id="MOTOR-BDC-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">driver</data>
+  <data key="d6">DRV8833</data>
+  <data key="d7">DRV8833PWPR</data>
+</node>
+<node id="MOTOR-BDC-001__C_VM_BULK">
+  <data key="d0">component</data>
+  <data key="d4">C_VM_BULK</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100uF</data>
+  <data key="d7"></data>
+</node>
+<node id="MOTOR-BDC-001__C_VM_CER">
+  <data key="d0">component</data>
+  <data key="d4">C_VM_CER</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="MOTOR-BDC-001__C_VCC">
+  <data key="d0">component</data>
+  <data key="d4">C_VCC</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="MOTOR-BDC-001__C_OUT1">
+  <data key="d0">component</data>
+  <data key="d4">C_OUT1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10nF</data>
+  <data key="d7"></data>
+</node>
+<node id="MOTOR-BDC-001__C_OUT2">
+  <data key="d0">component</data>
+  <data key="d4">C_OUT2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10nF</data>
+  <data key="d7"></data>
+</node>
+<node id="MOTOR-BDC-001__J_MOTOR1">
+  <data key="d0">component</data>
+  <data key="d4">J_MOTOR1</data>
+  <data key="d5">connector</data>
+  <data key="d6">2-pin terminal</data>
+  <data key="d7"></data>
+</node>
+<node id="MOTOR-BDC-001__J_MOTOR2">
+  <data key="d0">component</data>
+  <data key="d4">J_MOTOR2</data>
+  <data key="d5">connector</data>
+  <data key="d6">2-pin terminal</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VM">
+  <data key="d0">net</data>
+  <data key="d1">VM</data>
+  <data key="d8">power</data>
+  <data key="d9">9.0</data>
+</node>
+<node id="NET__M1_OUT1">
+  <data key="d0">net</data>
+  <data key="d1">M1_OUT1</data>
+  <data key="d8">signal</data>
+  <data key="d9">9.0</data>
+</node>
+<node id="NET__M1_OUT2">
+  <data key="d0">net</data>
+  <data key="d1">M1_OUT2</data>
+  <data key="d8">signal</data>
+  <data key="d9">9.0</data>
+</node>
+<node id="NET__M2_OUT1">
+  <data key="d0">net</data>
+  <data key="d1">M2_OUT1</data>
+  <data key="d8">signal</data>
+  <data key="d9">9.0</data>
+</node>
+<node id="NET__M2_OUT2">
+  <data key="d0">net</data>
+  <data key="d1">M2_OUT2</data>
+  <data key="d8">signal</data>
+  <data key="d9">9.0</data>
+</node>
+<node id="SRC__DRV8833 Dual H-Bridge Motor Driver Datasheet">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/ds/symlink/drv8833.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__SLVA249 – Motor driver layout best practices">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/slva249a/slva249a.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="DISPLAY-OLED-001">
+  <data key="d0">pattern</data>
+  <data key="d1">SSD1306 OLED Display via I2C</data>
+  <data key="d2">Displays</data>
+  <data key="d3">OLED</data>
+</node>
+<node id="DISPLAY-OLED-001__DISP1">
+  <data key="d0">component</data>
+  <data key="d4">DISP1</data>
+  <data key="d5">display</data>
+  <data key="d6">0.96" 128x64 OLED SSD1306</data>
+  <data key="d7">SSD1306 OLED module</data>
+</node>
+<node id="DISPLAY-OLED-001__C_VCC">
+  <data key="d0">component</data>
+  <data key="d4">C_VCC</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="DISPLAY-OLED-001__C_VCOMH">
+  <data key="d0">component</data>
+  <data key="d4">C_VCOMH</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="DISPLAY-OLED-001__C_VPP">
+  <data key="d0">component</data>
+  <data key="d4">C_VPP</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">2.2uF</data>
+  <data key="d7"></data>
+</node>
+<node id="DISPLAY-OLED-001__C_VBAT">
+  <data key="d0">component</data>
+  <data key="d4">C_VBAT</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">1uF</data>
+  <data key="d7"></data>
+</node>
+<node id="DISPLAY-OLED-001__R_SDA">
+  <data key="d0">component</data>
+  <data key="d4">R_SDA</data>
+  <data key="d5">resistor</data>
+  <data key="d6">4.7kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="DISPLAY-OLED-001__R_SCL">
+  <data key="d0">component</data>
+  <data key="d4">R_SCL</data>
+  <data key="d5">resistor</data>
+  <data key="d6">4.7kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VCOMH">
+  <data key="d0">net</data>
+  <data key="d1">VCOMH</data>
+  <data key="d8">analog</data>
+  <data key="d9">0.6</data>
+</node>
+<node id="NET__VPP">
+  <data key="d0">net</data>
+  <data key="d1">VPP</data>
+  <data key="d8">power</data>
+  <data key="d9">9.0</data>
+</node>
+<node id="SRC__SSD1306 128x64 Dot Matrix OLED/PLED Segment/Common">
+  <data key="d0">source</data>
+  <data key="d11">Solomon Systech</data>
+  <data key="d12">https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="AFE-TEMP-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Thermocouple AFE with Cold Junction Compensation</data>
+  <data key="d2">Data Acquisition</data>
+  <data key="d3">Analog Front Ends</data>
+</node>
+<node id="AFE-TEMP-001__U_AFE">
+  <data key="d0">component</data>
+  <data key="d4">U_AFE</data>
+  <data key="d5">amplifier</data>
+  <data key="d6">MAX31855K</data>
+  <data key="d7">MAX31855KASA+</data>
+</node>
+<node id="AFE-TEMP-001__C_T_P">
+  <data key="d0">component</data>
+  <data key="d4">C_T_P</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10nF</data>
+  <data key="d7"></data>
+</node>
+<node id="AFE-TEMP-001__C_T_N">
+  <data key="d0">component</data>
+  <data key="d4">C_T_N</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10nF</data>
+  <data key="d7"></data>
+</node>
+<node id="AFE-TEMP-001__C_DIFF">
+  <data key="d0">component</data>
+  <data key="d4">C_DIFF</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="AFE-TEMP-001__R_BIAS">
+  <data key="d0">component</data>
+  <data key="d4">R_BIAS</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1MΩ (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="AFE-TEMP-001__C_VCC">
+  <data key="d0">component</data>
+  <data key="d4">C_VCC</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="AFE-TEMP-001__J_TC">
+  <data key="d0">component</data>
+  <data key="d4">J_TC</data>
+  <data key="d5">connector</data>
+  <data key="d6">Thermocouple jack</data>
+  <data key="d7">PJ-102A</data>
+</node>
+<node id="NET__T_PLUS">
+  <data key="d0">net</data>
+  <data key="d1">T_PLUS</data>
+  <data key="d8">analog</data>
+  <data key="d9">1.5</data>
+</node>
+<node id="NET__T_MINUS">
+  <data key="d0">net</data>
+  <data key="d1">T_MINUS</data>
+  <data key="d8">analog</data>
+  <data key="d9">1.5</data>
+</node>
+<node id="NET__CS_TC">
+  <data key="d0">net</data>
+  <data key="d1">CS_TC</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__MAX31855 Cold-Junction-Compensated Thermocouple-to">
+  <data key="d0">source</data>
+  <data key="d11">Analog Devices (Maxim Integrated)</data>
+  <data key="d12">https://www.analog.com/media/en/technical-documentation/data-sheets/MAX31855.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AN4759 – Thermocouple Measurement Circuit Design">
+  <data key="d0">source</data>
+  <data key="d11">Analog Devices</data>
+  <data key="d12">https://www.analog.com/media/en/technical-documentation/application-notes/an4759.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="AUDIO-AMP-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Audio Power Amplifier (LM386)</data>
+  <data key="d2">Audio Circuits</data>
+  <data key="d3">Audio Amplifiers</data>
+</node>
+<node id="AUDIO-AMP-001__U1">
+  <data key="d0">component</data>
+  <data key="d4">U1</data>
+  <data key="d5">amplifier</data>
+  <data key="d6">LM386N-3</data>
+  <data key="d7">LM386N-3/NOPB</data>
+</node>
+<node id="AUDIO-AMP-001__C_IN">
+  <data key="d0">component</data>
+  <data key="d4">C_IN</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__R_VOL">
+  <data key="d0">component</data>
+  <data key="d4">R_VOL</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ pot</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__R_IN">
+  <data key="d0">component</data>
+  <data key="d4">R_IN</data>
+  <data key="d5">resistor</data>
+  <data key="d6">1kΩ (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__C_GAIN">
+  <data key="d0">component</data>
+  <data key="d4">C_GAIN</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF (optional)</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__C_BYPASS">
+  <data key="d0">component</data>
+  <data key="d4">C_BYPASS</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__C_VCC">
+  <data key="d0">component</data>
+  <data key="d4">C_VCC</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100uF</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__C_VCC_HF">
+  <data key="d0">component</data>
+  <data key="d4">C_VCC_HF</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__C_OUT">
+  <data key="d0">component</data>
+  <data key="d4">C_OUT</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">220uF</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__R_ZOBEL">
+  <data key="d0">component</data>
+  <data key="d4">R_ZOBEL</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10Ω</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__C_ZOBEL">
+  <data key="d0">component</data>
+  <data key="d4">C_ZOBEL</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">47nF</data>
+  <data key="d7"></data>
+</node>
+<node id="AUDIO-AMP-001__SPK1">
+  <data key="d0">component</data>
+  <data key="d4">SPK1</data>
+  <data key="d5">speaker</data>
+  <data key="d6">8Ω 0.5W</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__VCC_9V">
+  <data key="d0">net</data>
+  <data key="d1">VCC_9V</data>
+  <data key="d8">power</data>
+  <data key="d9">9.0</data>
+</node>
+<node id="NET__AUDIO_IN">
+  <data key="d0">net</data>
+  <data key="d1">AUDIO_IN</data>
+  <data key="d8">analog</data>
+  <data key="d9">1.0</data>
+</node>
+<node id="NET__AMP_OUT">
+  <data key="d0">net</data>
+  <data key="d1">AMP_OUT</data>
+  <data key="d8">analog</data>
+  <data key="d9">4.5</data>
+</node>
+<node id="SRC__LM386 Low Voltage Audio Power Amplifier Datasheet">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/ds/symlink/lm386.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="CLOCK-XTAL-001">
+  <data key="d0">pattern</data>
+  <data key="d1">Generic Crystal Oscillator Circuit (MCU HSE)</data>
+  <data key="d2">Clock Circuits</data>
+  <data key="d3">Crystal Oscillators</data>
+</node>
+<node id="CLOCK-XTAL-001__Y1">
+  <data key="d0">component</data>
+  <data key="d4">Y1</data>
+  <data key="d5">crystal</data>
+  <data key="d6">8MHz (or 16/25/32/etc)</data>
+  <data key="d7">ABM3-8.000MHZ-D2Y-T3</data>
+</node>
+<node id="CLOCK-XTAL-001__C1">
+  <data key="d0">component</data>
+  <data key="d4">C1</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">22pF</data>
+  <data key="d7"></data>
+</node>
+<node id="CLOCK-XTAL-001__C2">
+  <data key="d0">component</data>
+  <data key="d4">C2</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">22pF</data>
+  <data key="d7"></data>
+</node>
+<node id="CLOCK-XTAL-001__R1">
+  <data key="d0">component</data>
+  <data key="d4">R1</data>
+  <data key="d5">resistor</data>
+  <data key="d6">0Ω (optional 220Ω)</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__OSC_IN">
+  <data key="d0">net</data>
+  <data key="d1">OSC_IN</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__OSC_OUT">
+  <data key="d0">net</data>
+  <data key="d1">OSC_OUT</data>
+  <data key="d8">clock</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__AN4990 – Hardware and PCB guidelines for STM32 cry">
+  <data key="d0">source</data>
+  <data key="d11">STMicroelectronics</data>
+  <data key="d12">https://www.st.com/resource/en/application_note/an4990-stm32-hse-clock-source-selection-and-startup-time-stmicroelectronics.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__AVR186 – Best Practices for the ATmega Crystal Osc">
+  <data key="d0">source</data>
+  <data key="d11">Microchip</data>
+  <data key="d12">https://www.microchip.com/content/dam/mchp/documents/ApplicationNotes/ApplicationNotes/AVR186.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="PROTECTION-TVS-001">
+  <data key="d0">pattern</data>
+  <data key="d1">TVS Diode Protection for Power Inputs</data>
+  <data key="d2">Protection Circuits</data>
+  <data key="d3">Transient Protection</data>
+</node>
+<node id="PROTECTION-TVS-001__D_TVS">
+  <data key="d0">component</data>
+  <data key="d4">D_TVS</data>
+  <data key="d5">protection</data>
+  <data key="d6">SMAJ5.0A</data>
+  <data key="d7">SMAJ5.0A-13-F</data>
+</node>
+<node id="PROTECTION-TVS-001__F1">
+  <data key="d0">component</data>
+  <data key="d4">F1</data>
+  <data key="d5">protection</data>
+  <data key="d6">PTC 500mA (optional)</data>
+  <data key="d7">MF-MSMF050-2</data>
+</node>
+<node id="PROTECTION-TVS-001__C_BULK">
+  <data key="d0">component</data>
+  <data key="d4">C_BULK</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100uF</data>
+  <data key="d7"></data>
+</node>
+<node id="PROTECTION-TVS-001__C_CER">
+  <data key="d0">component</data>
+  <data key="d4">C_CER</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">100nF</data>
+  <data key="d7"></data>
+</node>
+<node id="SRC__AN1266 – Selecting TVS Diodes for Circuit Protecti">
+  <data key="d0">source</data>
+  <data key="d11">Littelfuse</data>
+  <data key="d12">https://www.littelfuse.com/~/media/electronics/application_notes/littelfuse_selecting_a_tvs_diode_application_note.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__SLVA064 – Transient Voltage Suppressor Diode Appli">
+  <data key="d0">source</data>
+  <data key="d11">Texas Instruments</data>
+  <data key="d12">https://www.ti.com/lit/an/slva064/slva064.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="IF-UART-001">
+  <data key="d0">pattern</data>
+  <data key="d1">UART Auto-Program Circuit (Legacy ESP8266-style)</data>
+  <data key="d2">High-Speed Interfaces</data>
+  <data key="d3">UART</data>
+</node>
+<node id="IF-UART-001__U_USB">
+  <data key="d0">component</data>
+  <data key="d4">U_USB</data>
+  <data key="d5">interface</data>
+  <data key="d6">CP2102N</data>
+  <data key="d7">CP2102N-A02-GQFN24R</data>
+</node>
+<node id="IF-UART-001__U_ESD">
+  <data key="d0">component</data>
+  <data key="d4">U_ESD</data>
+  <data key="d5">protection</data>
+  <data key="d6">USBLC6-2SC6</data>
+  <data key="d7">USBLC6-2SC6</data>
+</node>
+<node id="IF-UART-001__U_LDO">
+  <data key="d0">component</data>
+  <data key="d4">U_LDO</data>
+  <data key="d5">regulator</data>
+  <data key="d6">AP2112K-3.3</data>
+  <data key="d7">AP2112K-3.3</data>
+</node>
+<node id="IF-UART-001__Q1">
+  <data key="d0">component</data>
+  <data key="d4">Q1</data>
+  <data key="d5">transistor</data>
+  <data key="d6">MMBT3904</data>
+  <data key="d7">MMBT3904</data>
+</node>
+<node id="IF-UART-001__Q2">
+  <data key="d0">component</data>
+  <data key="d4">Q2</data>
+  <data key="d5">transistor</data>
+  <data key="d6">MMBT3904</data>
+  <data key="d7">MMBT3904</data>
+</node>
+<node id="IF-UART-001__R_DTR">
+  <data key="d0">component</data>
+  <data key="d4">R_DTR</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-UART-001__R_RTS">
+  <data key="d0">component</data>
+  <data key="d4">R_RTS</data>
+  <data key="d5">resistor</data>
+  <data key="d6">10kΩ</data>
+  <data key="d7"></data>
+</node>
+<node id="IF-UART-001__J_USB">
+  <data key="d0">component</data>
+  <data key="d4">J_USB</data>
+  <data key="d5">connector</data>
+  <data key="d6">USB-C</data>
+  <data key="d7">TYPE-C-31-M-12</data>
+</node>
+<node id="IF-UART-001__C_VBUS">
+  <data key="d0">component</data>
+  <data key="d4">C_VBUS</data>
+  <data key="d5">capacitor</data>
+  <data key="d6">10uF</data>
+  <data key="d7"></data>
+</node>
+<node id="NET__UART_TX">
+  <data key="d0">net</data>
+  <data key="d1">UART_TX</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__UART_RX">
+  <data key="d0">net</data>
+  <data key="d1">UART_RX</data>
+  <data key="d8">signal</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__EN_MCU">
+  <data key="d0">net</data>
+  <data key="d1">EN_MCU</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="NET__GPIO0_MCU">
+  <data key="d0">net</data>
+  <data key="d1">GPIO0_MCU</data>
+  <data key="d8">control</data>
+  <data key="d9">3.3</data>
+</node>
+<node id="SRC__CP2102N Single-Chip USB-to-UART Bridge">
+  <data key="d0">source</data>
+  <data key="d11">Silicon Labs</data>
+  <data key="d12">https://www.silabs.com/documents/public/data-sheets/cp2102n-datasheet.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SRC__ESP32-DevKitC V4 Schematic">
+  <data key="d0">source</data>
+  <data key="d11">Espressif</data>
+  <data key="d12">https://dl.espressif.com/dl/schematics/ESP32-DEVKITC-V4-schematic.pdf</data>
+  <data key="d13">1</data>
+</node>
+<node id="SUBCAT__Buck Converters">
+  <data key="d0">subcategory</data>
+  <data key="d1">Buck Converters</data>
+</node>
+<node id="SUBCAT__LDOs">
+  <data key="d0">subcategory</data>
+  <data key="d1">LDOs</data>
+</node>
+<node id="SUBCAT__Power Distribution">
+  <data key="d0">subcategory</data>
+  <data key="d1">Power Distribution</data>
+</node>
+<node id="SUBCAT__USB-C">
+  <data key="d0">subcategory</data>
+  <data key="d1">USB-C</data>
+</node>
+<node id="SUBCAT__Battery Charging">
+  <data key="d0">subcategory</data>
+  <data key="d1">Battery Charging</data>
+</node>
+<node id="SUBCAT__Protection Circuits">
+  <data key="d0">subcategory</data>
+  <data key="d1">Protection Circuits</data>
+</node>
+<node id="SUBCAT__Boost Converters">
+  <data key="d0">subcategory</data>
+  <data key="d1">Boost Converters</data>
+</node>
+<node id="SUBCAT__Power Sequencing">
+  <data key="d0">subcategory</data>
+  <data key="d1">Power Sequencing</data>
+</node>
+<node id="SUBCAT__ESP32">
+  <data key="d0">subcategory</data>
+  <data key="d1">ESP32</data>
+</node>
+<node id="SUBCAT__STM32">
+  <data key="d0">subcategory</data>
+  <data key="d1">STM32</data>
+</node>
+<node id="SUBCAT__RP2040">
+  <data key="d0">subcategory</data>
+  <data key="d1">RP2040</data>
+</node>
+<node id="SUBCAT__Debug Circuits">
+  <data key="d0">subcategory</data>
+  <data key="d1">Debug Circuits</data>
+</node>
+<node id="SUBCAT__AVR">
+  <data key="d0">subcategory</data>
+  <data key="d1">AVR</data>
+</node>
+<node id="SUBCAT__Reset Circuits">
+  <data key="d0">subcategory</data>
+  <data key="d1">Reset Circuits</data>
+</node>
+<node id="SUBCAT__BLE">
+  <data key="d0">subcategory</data>
+  <data key="d1">BLE</data>
+</node>
+<node id="SUBCAT__RF Layout">
+  <data key="d0">subcategory</data>
+  <data key="d1">RF Layout</data>
+</node>
+<node id="SUBCAT__Clock Circuits">
+  <data key="d0">subcategory</data>
+  <data key="d1">Clock Circuits</data>
+</node>
+<node id="SUBCAT__I2C">
+  <data key="d0">subcategory</data>
+  <data key="d1">I2C</data>
+</node>
+<node id="SUBCAT__SPI">
+  <data key="d0">subcategory</data>
+  <data key="d1">SPI</data>
+</node>
+<node id="SUBCAT__Current Sensing">
+  <data key="d0">subcategory</data>
+  <data key="d1">Current Sensing</data>
+</node>
+<node id="SUBCAT__CAN">
+  <data key="d0">subcategory</data>
+  <data key="d1">CAN</data>
+</node>
+<node id="SUBCAT__USB">
+  <data key="d0">subcategory</data>
+  <data key="d1">USB</data>
+</node>
+<node id="SUBCAT__RS485">
+  <data key="d0">subcategory</data>
+  <data key="d1">RS485</data>
+</node>
+<node id="SUBCAT__Ethernet">
+  <data key="d0">subcategory</data>
+  <data key="d1">Ethernet</data>
+</node>
+<node id="SUBCAT__DC Motors">
+  <data key="d0">subcategory</data>
+  <data key="d1">DC Motors</data>
+</node>
+<node id="SUBCAT__OLED">
+  <data key="d0">subcategory</data>
+  <data key="d1">OLED</data>
+</node>
+<node id="SUBCAT__Analog Front Ends">
+  <data key="d0">subcategory</data>
+  <data key="d1">Analog Front Ends</data>
+</node>
+<node id="SUBCAT__Audio Amplifiers">
+  <data key="d0">subcategory</data>
+  <data key="d1">Audio Amplifiers</data>
+</node>
+<node id="SUBCAT__Crystal Oscillators">
+  <data key="d0">subcategory</data>
+  <data key="d1">Crystal Oscillators</data>
+</node>
+<node id="SUBCAT__Transient Protection">
+  <data key="d0">subcategory</data>
+  <data key="d1">Transient Protection</data>
+</node>
+<node id="SUBCAT__UART">
+  <data key="d0">subcategory</data>
+  <data key="d1">UART</data>
+</node>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__L1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__C2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__C3">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__C4">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__C5">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__C6">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__R1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__R2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__R3">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="PWR-BUCK-001__R4">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BUCK-001" target="NET__VIN_12V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BUCK-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BUCK-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BUCK-001" target="NET__SW">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BUCK-001" target="NET__VCC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BUCK-001" target="NET__FB">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BUCK-001" target="NET__EN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BUCK-001" target="SRC__TPS54360 4.5V to 60V Input, 3.5A Step-Down Convert">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-BUCK-001" target="SRC__SLVA443 – Simple Success with Conducted EMI in DC/">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-LDO-001" target="PWR-LDO-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-LDO-001" target="PWR-LDO-001__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-LDO-001" target="PWR-LDO-001__C2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-LDO-001" target="PWR-LDO-001__C3">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-LDO-001" target="PWR-LDO-001__C4">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-LDO-001" target="NET__VIN_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-LDO-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-LDO-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-LDO-001" target="SRC__AMS1117 Advanced Monolithic Systems 1A Low Dropout">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-LDO-001" target="SRC__Adafruit HUZZAH32 ESP32 Feather Schematic">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-DECAP-001" target="PWR-DECAP-001__C_decoupling">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-DECAP-001" target="PWR-DECAP-001__C_bulk">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-DECAP-001" target="NET__VCC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-DECAP-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-DECAP-001" target="SRC__AN-1355: Capacitor Selection Guidelines for Decoup">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-DECAP-001" target="SRC__Hardware Design Guidelines for ESP32">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__J1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__R_CC1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__R_CC2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__U_LDO">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__C2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__D_TVS">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="PWR-USBC-001__F1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-USBC-001" target="NET__VBUS_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-USBC-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-USBC-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-USBC-001" target="NET__USB_DP">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-USBC-001" target="NET__USB_DN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-USBC-001" target="NET__CC1">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-USBC-001" target="NET__CC2">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-USBC-001" target="SRC__Universal Serial Bus Type-C Cable and Connector Sp">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-USBC-001" target="SRC__AN4803 – Hardware design for USB Type-C">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__R_PROG">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__C_VCC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__C_BAT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__R_CHRG">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__R_STDBY">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__LED_CHRG">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__LED_STDBY">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__J_BAT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="PWR-BATT-001__U_PROT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BATT-001" target="NET__VBUS_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BATT-001" target="NET__BAT+">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BATT-001" target="NET__BAT_RAW">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BATT-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BATT-001" target="SRC__TP4056 Lithium Battery Charge Management Chip Data">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-BATT-001" target="SRC__MCP73831/2 Tiny Single-Cell Li-Ion Charger">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-RPP-001" target="PWR-RPP-001__Q1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-RPP-001" target="PWR-RPP-001__R1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-RPP-001" target="PWR-RPP-001__R2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-RPP-001" target="PWR-RPP-001__D1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-RPP-001" target="NET__VIN_RAW">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-RPP-001" target="NET__VIN_PROTECTED">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-RPP-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-RPP-001" target="SRC__AN4784 – Reverse polarity protection for automotiv">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-RPP-001" target="SRC__SLVA862 – Reverse-Voltage Protection for Battery-P">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-BOOST-001" target="PWR-BOOST-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BOOST-001" target="PWR-BOOST-001__L1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BOOST-001" target="PWR-BOOST-001__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BOOST-001" target="PWR-BOOST-001__C2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BOOST-001" target="PWR-BOOST-001__R1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BOOST-001" target="PWR-BOOST-001__R2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-BOOST-001" target="NET__VSRC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BOOST-001" target="NET__VCC_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BOOST-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BOOST-001" target="NET__SW">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-BOOST-001" target="SRC__TPS61023 3.7-V to 5.5-V Input, 1-A Boost Converter">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__U2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__U3">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__R_EN1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__C_EN1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__R_EN2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__C_EN2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__R_EN3">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="PWR-PWRSEQ-001__C_EN3">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="NET__VIN_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="NET__VCC_1V2">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="NET__VCC_1V8">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="SRC__SLVAE70 – Power Supply Sequencing for FPGA and SoC">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PWR-PWRSEQ-001" target="SRC__AN4891 – Hardware and startup guidelines for STM32">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__R_EN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__C_EN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__R_GPIO0">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__R_GPIO2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__R_GPIO12">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__R_GPIO15">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__SW_RESET">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__SW_BOOT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-001__C0">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__EN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__GPIO0">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__GPIO2">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__GPIO12">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__GPIO15">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="NET__VDD_SDIO">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-001" target="SRC__ESP32 Hardware Design Guidelines">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-ESP32-001" target="SRC__ESP32 Datasheet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-002">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="MCU-ESP32-001" target="MCU-ESP32-003">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="MCU-ESP32-002" target="MCU-ESP32-002__Y1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-002" target="MCU-ESP32-002__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-002" target="MCU-ESP32-002__C2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-002" target="MCU-ESP32-002__R1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-002" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-002" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-002" target="NET__XTAL_P">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-002" target="NET__XTAL_N">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-002" target="SRC__ESP32 Hardware Design Guidelines">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-ESP32-002" target="SRC__ESP32 Datasheet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-ESP32-002" target="MCU-ESP32-001">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="MCU-ESP32-002" target="MCU-ESP32-003">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__U_USB">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__Q1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__Q2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__R1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__R2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__R_EN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__R_GPIO0">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-003__C_EN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-ESP32-003" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-003" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-003" target="NET__DTR">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-003" target="NET__RTS">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-003" target="NET__EN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-003" target="NET__GPIO0">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-ESP32-003" target="SRC__ESP32 Hardware Design Guidelines">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-ESP32-003" target="SRC__ESP32-DevKitC Schematic">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-001">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="MCU-ESP32-003" target="MCU-ESP32-002">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="MCU-STM32-001" target="MCU-STM32-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-STM32-001" target="MCU-STM32-001__R_BOOT0">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-STM32-001" target="MCU-STM32-001__SW_BOOT0">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-STM32-001" target="MCU-STM32-001__JP_BOOT0">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-STM32-001" target="MCU-STM32-001__R_NRST">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-STM32-001" target="MCU-STM32-001__C_NRST">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-STM32-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-STM32-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-STM32-001" target="NET__BOOT0">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-STM32-001" target="NET__NRST">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-STM32-001" target="SRC__AN2606 – STM32 microcontroller system memory boot ">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-STM32-001" target="SRC__STM32F103 Reference Manual (RM0008)">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__U_FLASH">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__Y1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__C2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__R_BOOTSEL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__SW_BOOTSEL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__R_RUN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__C_RUN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="MCU-RP2040-001__R_FLASH">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__XIN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__XOUT">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__BOOTSEL">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__RUN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__QSPI_CS">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__QSPI_CLK">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="NET__QSPI_D0-D3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RP2040-001" target="SRC__RP2040 Datasheet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-RP2040-001" target="SRC__Raspberry Pi Pico Schematic">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-SWD-001" target="MCU-SWD-001__J_SWD">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-SWD-001" target="MCU-SWD-001__R_SWDIO">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-SWD-001" target="MCU-SWD-001__R_SWCLK">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-SWD-001" target="MCU-SWD-001__R_NRST">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-SWD-001" target="NET__VCC_TARGET">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-SWD-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-SWD-001" target="NET__SWDIO">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-SWD-001" target="NET__SWCLK">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-SWD-001" target="NET__SWO">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-SWD-001" target="NET__nRST">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-SWD-001" target="SRC__ARM CoreSight Components Technical Reference Manua">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-SWD-001" target="SRC__AN4505 – Hardware and PCB guidelines for STM32 deb">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-AVR-001" target="MCU-AVR-001__J_ISP">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-AVR-001" target="MCU-AVR-001__R_RST">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-AVR-001" target="NET__VCC_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-AVR-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-AVR-001" target="NET__RESET">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-AVR-001" target="NET__SCK">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-AVR-001" target="NET__MOSI">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-AVR-001" target="NET__MISO">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-AVR-001" target="SRC__AVR910 – In-System Programming">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-AVR-001" target="SRC__Arduino Uno R3 Schematic">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MCU-RESET-001" target="MCU-RESET-001__R_RST">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RESET-001" target="MCU-RESET-001__C_RST">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RESET-001" target="MCU-RESET-001__SW_RST">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RESET-001" target="MCU-RESET-001__U_SUP">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MCU-RESET-001" target="NET__VCC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RESET-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RESET-001" target="NET__NRST">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MCU-RESET-001" target="SRC__SLVA698 – Reset ICs: When, Why, and How to Use The">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="WIRELESS-NRF52-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="WIRELESS-NRF52-001__L_DCC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="WIRELESS-NRF52-001__C_DEC4">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="NET__VDD_nRF">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="NET__DEC4">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="NET__DCC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="SRC__nRF52832 Product Specification">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="WIRELESS-NRF52-001" target="SRC__nRF52 Hardware Design Guidelines">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="WIRELESS-ANT-001__L1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="WIRELESS-ANT-001__L2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="WIRELESS-ANT-001__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="WIRELESS-ANT-001__C_DC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="WIRELESS-ANT-001__ANT1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="NET__RF_OUT">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="NET__ANT">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="SRC__nRF52 Hardware Design Guidelines">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="SRC__AN463 – Antenna and RF layout guidelines for nRF52">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="WIRELESS-ANT-001" target="SRC__ESP32 Hardware Design Guidelines">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="WIRELESS-RTC-001__Y_RTC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="WIRELESS-RTC-001__C_RTC1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="WIRELESS-RTC-001__C_RTC2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="NET__VCC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="NET__XLF1">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="NET__XLF2">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="SRC__AN4750 – Hardware and PCB guidelines for STM32 RTC">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="WIRELESS-RTC-001" target="SRC__nRF52832 Product Specification">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SENSOR-I2C-001__U_MCU">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SENSOR-I2C-001__U_SENSOR1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SENSOR-I2C-001__R_SDA">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SENSOR-I2C-001__R_SCL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SENSOR-I2C-001__R_SER_SDA">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SENSOR-I2C-001__R_SER_SCL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SENSOR-I2C-001__C_SDA">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="NET__VCC_IO">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="NET__I2C_SDA">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="NET__I2C_SCL">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SRC__UM10204 – I2C-bus Specification and User Manual (R">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-I2C-001" target="SRC__AN10216 – I2C Manual">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="SENSOR-SPI-001__U_MCU">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="SENSOR-SPI-001__U_DEV1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="SENSOR-SPI-001__U_DEV2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="SENSOR-SPI-001__R_CS1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="SENSOR-SPI-001__R_CS2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="NET__VCC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="NET__SPI_SCK">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="NET__SPI_MOSI">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="NET__SPI_MISO">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="NET__CS1">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="NET__CS2">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="SRC__SPI Block Guide V4.01">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-SPI-001" target="SRC__W25Q128JV Datasheet (SPI Flash)">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="SENSOR-ADC-001__R_TOP">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="SENSOR-ADC-001__R_BOT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="SENSOR-ADC-001__C_FILTER">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="SENSOR-ADC-001__D_CLAMP">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="NET__V_SENSE">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="NET__ADC_IN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="SRC__AN3116 – ADC application notes for STM32">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="SRC__AN2834 – How to get the best ADC accuracy in STM32">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-ADC-001" target="SENSOR-CURRENT-001">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-CURRENT-001__R_SHUNT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-CURRENT-001__U_AMP">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-CURRENT-001__R_FILTER1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-CURRENT-001__R_FILTER2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-CURRENT-001__C_FILTER">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-CURRENT-001__C_BYP">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-CURRENT-001__C_OUT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="NET__V_LOAD_IN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="NET__V_LOAD_OUT">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="NET__I_SENSE_OUT">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SRC__SBOA160 – High-Side Current Sensing with Different">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SRC__INA180 Datasheet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SENSOR-CURRENT-001" target="SENSOR-ADC-001">
+  <data key="d14">related_pattern</data>
+</edge>
+<edge source="IF-CAN-001" target="IF-CAN-001__U_CAN1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-CAN-001" target="IF-CAN-001__U_CAN2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-CAN-001" target="IF-CAN-001__R_TERM1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-CAN-001" target="IF-CAN-001__R_TERM2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-CAN-001" target="IF-CAN-001__C_SPLIT1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-CAN-001" target="IF-CAN-001__C_SPLIT2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-CAN-001" target="NET__VCC_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-CAN-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-CAN-001" target="NET__CAN_H">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-CAN-001" target="NET__CAN_L">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-CAN-001" target="SRC__CAN Specification (ISO 11898)">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-CAN-001" target="SRC__SLLA270 – CAN Bus Layout Guide">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-ESD-001" target="IF-ESD-001__U_ESD">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ESD-001" target="IF-ESD-001__J_USB">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ESD-001" target="NET__VBUS">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ESD-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ESD-001" target="NET__USB_DP">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ESD-001" target="NET__USB_DN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ESD-001" target="SRC__AN5020 – USB Type-C and Power Delivery ESD protect">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-ESD-001" target="SRC__USBLC6-2SC6 Datasheet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-RS485-001" target="IF-RS485-001__U_RS485">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-RS485-001" target="IF-RS485-001__R_TERM1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-RS485-001" target="IF-RS485-001__R_TERM2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-RS485-001" target="IF-RS485-001__R_BIAS_A">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-RS485-001" target="IF-RS485-001__R_BIAS_B">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-RS485-001" target="IF-RS485-001__C_CM">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-RS485-001" target="NET__VCC_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-RS485-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-RS485-001" target="NET__RS485_A">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-RS485-001" target="NET__RS485_B">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-RS485-001" target="SRC__ANSI/TIA/EIA-485-A Standard">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-RS485-001" target="SRC__AN-960 – RS485 Application Note">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__U_PHY">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__T_MAG">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__J_RJ45">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__R_BIAS_TD+">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__R_BIAS_TD-">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__R_BIAS_RD+">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__R_BIAS_RD-">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__R_BS1-4">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="IF-ETH-001__C_BS">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-ETH-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ETH-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ETH-001" target="NET__CHASSIS_GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ETH-001" target="NET__TD+">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ETH-001" target="NET__TD-">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ETH-001" target="NET__RD+">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ETH-001" target="NET__RD-">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-ETH-001" target="SRC__IEEE 802.3 Standard for Ethernet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-ETH-001" target="SRC__AN4757 – Hardware design guide for Ethernet PHYs">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__C_VM_BULK">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__C_VM_CER">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__C_VCC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__C_OUT1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__C_OUT2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__J_MOTOR1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="MOTOR-BDC-001__J_MOTOR2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="NET__VM">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="NET__M1_OUT1">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="NET__M1_OUT2">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="NET__M2_OUT1">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="NET__M2_OUT2">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="SRC__DRV8833 Dual H-Bridge Motor Driver Datasheet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="MOTOR-BDC-001" target="SRC__SLVA249 – Motor driver layout best practices">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="DISPLAY-OLED-001__DISP1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="DISPLAY-OLED-001__C_VCC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="DISPLAY-OLED-001__C_VCOMH">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="DISPLAY-OLED-001__C_VPP">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="DISPLAY-OLED-001__C_VBAT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="DISPLAY-OLED-001__R_SDA">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="DISPLAY-OLED-001__R_SCL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="NET__I2C_SDA">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="NET__I2C_SCL">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="NET__VCOMH">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="NET__VPP">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="DISPLAY-OLED-001" target="SRC__SSD1306 128x64 Dot Matrix OLED/PLED Segment/Common">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="AFE-TEMP-001" target="AFE-TEMP-001__U_AFE">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AFE-TEMP-001" target="AFE-TEMP-001__C_T_P">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AFE-TEMP-001" target="AFE-TEMP-001__C_T_N">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AFE-TEMP-001" target="AFE-TEMP-001__C_DIFF">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AFE-TEMP-001" target="AFE-TEMP-001__R_BIAS">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AFE-TEMP-001" target="AFE-TEMP-001__C_VCC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AFE-TEMP-001" target="AFE-TEMP-001__J_TC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AFE-TEMP-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AFE-TEMP-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AFE-TEMP-001" target="NET__T_PLUS">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AFE-TEMP-001" target="NET__T_MINUS">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AFE-TEMP-001" target="NET__SPI_SCK">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AFE-TEMP-001" target="NET__SPI_MISO">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AFE-TEMP-001" target="NET__CS_TC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AFE-TEMP-001" target="SRC__MAX31855 Cold-Junction-Compensated Thermocouple-to">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="AFE-TEMP-001" target="SRC__AN4759 – Thermocouple Measurement Circuit Design">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__U1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__C_IN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__R_VOL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__R_IN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__C_GAIN">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__C_BYPASS">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__C_VCC">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__C_VCC_HF">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__C_OUT">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__R_ZOBEL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__C_ZOBEL">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="AUDIO-AMP-001__SPK1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="NET__VCC_9V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="NET__AUDIO_IN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="NET__AMP_OUT">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="AUDIO-AMP-001" target="SRC__LM386 Low Voltage Audio Power Amplifier Datasheet">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="CLOCK-XTAL-001__Y1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="CLOCK-XTAL-001__C1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="CLOCK-XTAL-001__C2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="CLOCK-XTAL-001__R1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="NET__VCC">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="NET__OSC_IN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="NET__OSC_OUT">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="SRC__AN4990 – Hardware and PCB guidelines for STM32 cry">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="CLOCK-XTAL-001" target="SRC__AVR186 – Best Practices for the ATmega Crystal Osc">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="PROTECTION-TVS-001__D_TVS">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="PROTECTION-TVS-001__F1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="PROTECTION-TVS-001__C_BULK">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="PROTECTION-TVS-001__C_CER">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="NET__VIN_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="NET__VCC_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="SRC__AN1266 – Selecting TVS Diodes for Circuit Protecti">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="PROTECTION-TVS-001" target="SRC__SLVA064 – Transient Voltage Suppressor Diode Appli">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__U_USB">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__U_ESD">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__U_LDO">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__Q1">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__Q2">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__R_DTR">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__R_RTS">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__J_USB">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="IF-UART-001__C_VBUS">
+  <data key="d14">has_component</data>
+</edge>
+<edge source="IF-UART-001" target="NET__VBUS_5V">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__VCC_3V3">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__GND">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__USB_DP">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__USB_DN">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__UART_TX">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__UART_RX">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__DTR">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__RTS">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__EN_MCU">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="NET__GPIO0_MCU">
+  <data key="d14">uses_net</data>
+</edge>
+<edge source="IF-UART-001" target="SRC__CP2102N Single-Chip USB-to-UART Bridge">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="IF-UART-001" target="SRC__ESP32-DevKitC V4 Schematic">
+  <data key="d14">documented_in</data>
+</edge>
+<edge source="SUBCAT__Buck Converters" target="PWR-BUCK-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__LDOs" target="PWR-LDO-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Power Distribution" target="PWR-DECAP-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__USB-C" target="PWR-USBC-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Battery Charging" target="PWR-BATT-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Protection Circuits" target="PWR-RPP-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Boost Converters" target="PWR-BOOST-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Power Sequencing" target="PWR-PWRSEQ-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__ESP32" target="MCU-ESP32-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__ESP32" target="MCU-ESP32-002">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__ESP32" target="MCU-ESP32-003">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__STM32" target="MCU-STM32-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__RP2040" target="MCU-RP2040-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Debug Circuits" target="MCU-SWD-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__AVR" target="MCU-AVR-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Reset Circuits" target="MCU-RESET-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__BLE" target="WIRELESS-NRF52-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__RF Layout" target="WIRELESS-ANT-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Clock Circuits" target="WIRELESS-RTC-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__I2C" target="SENSOR-I2C-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__SPI" target="SENSOR-SPI-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Current Sensing" target="SENSOR-ADC-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Current Sensing" target="SENSOR-CURRENT-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__CAN" target="IF-CAN-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__USB" target="IF-ESD-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__RS485" target="IF-RS485-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Ethernet" target="IF-ETH-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__DC Motors" target="MOTOR-BDC-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__OLED" target="DISPLAY-OLED-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Analog Front Ends" target="AFE-TEMP-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Audio Amplifiers" target="AUDIO-AMP-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Crystal Oscillators" target="CLOCK-XTAL-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__Transient Protection" target="PROTECTION-TVS-001">
+  <data key="d14">contains</data>
+</edge>
+<edge source="SUBCAT__UART" target="IF-UART-001">
+  <data key="d14">contains</data>
+</edge>
+</graph></graphml>

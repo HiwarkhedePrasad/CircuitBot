@@ -1,0 +1,214 @@
+{
+  "PWR-BUCK-001": {
+    "name": "Synchronous Buck Converter 12V\u21923.3V 2A (TI TPS54360)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "PWR-LDO-001": {
+    "name": "Low-Dropout Linear Regulator 5V\u21923.3V 500mA (AMS1117-3.3)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "PWR-DECAP-001": {
+    "name": "IC Power Decoupling Pattern (100nF + 10uF per power pin)",
+    "status": "WARN",
+    "issues": [],
+    "warnings": [
+      "Optional field empty: reference_voltages"
+    ]
+  },
+  "PWR-USBC-001": {
+    "name": "USB-C UFP Sink with 5V Input to 3.3V LDO",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "PWR-BATT-001": {
+    "name": "Single-Cell LiPo Battery Charger (TP4056)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "PWR-RPP-001": {
+    "name": "Reverse Polarity Protection with P-Channel MOSFET",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "PWR-BOOST-001": {
+    "name": "Boost Converter 3.3V\u21925V 500mA (TI TPS61023)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "PWR-PWRSEQ-001": {
+    "name": "Multi-Rail Power Sequencing with EN Delay (RC)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-ESP32-001": {
+    "name": "ESP32 Boot/Strapping Pin Configuration",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-ESP32-002": {
+    "name": "ESP32 Crystal Oscillator Circuit (40MHz)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-ESP32-003": {
+    "name": "ESP32 Auto-Reset and Auto-Boot via DTR/RTS",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-STM32-001": {
+    "name": "STM32 Boot Mode Selection (BOOT0/BOOT1)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-RP2040-001": {
+    "name": "RP2040 Boot Circuit (BOOTSEL + 12MHz Crystal)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-SWD-001": {
+    "name": "ARM Cortex-M SWD Debug Header (2x5 0.05\")",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-AVR-001": {
+    "name": "AVR 6-pin ISP Programming Header",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MCU-RESET-001": {
+    "name": "Universal MCU Reset Circuit (RC Delay + Button + Supervisor)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "WIRELESS-NRF52-001": {
+    "name": "nRF52 DCDC Converter Configuration",
+    "status": "WARN",
+    "issues": [],
+    "warnings": [
+      "Optional field empty: optional_passives"
+    ]
+  },
+  "WIRELESS-ANT-001": {
+    "name": "RF Antenna Matching Network (PI Network)",
+    "status": "WARN",
+    "issues": [],
+    "warnings": [
+      "Optional field empty: power_rails"
+    ]
+  },
+  "WIRELESS-RTC-001": {
+    "name": "32.768kHz RTC Crystal Oscillator",
+    "status": "WARN",
+    "issues": [],
+    "warnings": [
+      "Optional field empty: optional_passives"
+    ]
+  },
+  "SENSOR-I2C-001": {
+    "name": "I2C Bus with Pullup Resistors (4.7k\u03a9)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "SENSOR-SPI-001": {
+    "name": "SPI Bus with Multiple Chip Selects",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "SENSOR-ADC-001": {
+    "name": "Voltage Divider for ADC Input",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "SENSOR-CURRENT-001": {
+    "name": "High-Side Current Sensing with Shunt + Difference Amplifier",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "IF-CAN-001": {
+    "name": "CAN Bus Termination (120\u03a9)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "IF-ESD-001": {
+    "name": "USB ESD Protection with TVS Diode Array",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "IF-RS485-001": {
+    "name": "RS485 Bus Termination and Fail-Safe Biasing",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "IF-ETH-001": {
+    "name": "Ethernet Magnetics and Bob Smith Termination",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "MOTOR-BDC-001": {
+    "name": "Brushed DC Motor Driver with H-Bridge (DRV8833)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "DISPLAY-OLED-001": {
+    "name": "SSD1306 OLED Display via I2C",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "AFE-TEMP-001": {
+    "name": "Thermocouple AFE with Cold Junction Compensation",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "AUDIO-AMP-001": {
+    "name": "Audio Power Amplifier (LM386)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "CLOCK-XTAL-001": {
+    "name": "Generic Crystal Oscillator Circuit (MCU HSE)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "PROTECTION-TVS-001": {
+    "name": "TVS Diode Protection for Power Inputs",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  },
+  "IF-UART-001": {
+    "name": "UART Auto-Program Circuit (Legacy ESP8266-style)",
+    "status": "PASS",
+    "issues": [],
+    "warnings": []
+  }
+}

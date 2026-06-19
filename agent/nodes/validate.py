@@ -3,12 +3,21 @@ import json
 from agent.prompts import VALIDATE_SYSTEM, VALIDATE_USER
 from agent.tools import search_components
 from agent.utils import (
-    _emit, _check_stage_contract, _stage_result, _call_llm, _clean_json, _ref_prefix_for,
+    _emit, _emit_activity, _check_stage_contract, _stage_result, _call_llm, _clean_json, _ref_prefix_for,
+    MAX_VALIDATION_RETRIES,
 )
+
+_CRITICAL_PATTERNS = [
+    ("infrared", "led", "Status LED is infrared — not visible to human eye"),
+    ("antenna", "resistor", "Antenna selected where resistor required"),
+    ("cpld", "capacitor", "CPLD selected where capacitor required"),
+    ("pd controller", "connector", "USB PD controller selected where USB-C connector required"),
+]
 
 
 def validate_node(state, config):
     _emit(config, "agent:thinking", {"message": "Validating component selections..."})
+    _emit_activity(config, "validate", "Validation", "start")
     contract = _check_stage_contract("validate", state, ["selected_components", "analysis", "prompt"])
     if contract:
         _emit(config, "agent:log", {"message": contract})
@@ -45,10 +54,35 @@ def validate_node(state, config):
     missing = result.get("missing_components", [])
     errors = [i for i in issues if i.get("severity") == "error"]
     warnings = [i for i in issues if i.get("severity") == "warning"]
+
+    for issue in issues:
+        msg = (issue.get("message", "") or "").lower()
+        for keyword, context, reason in _CRITICAL_PATTERNS:
+            if keyword in msg and context in msg:
+                detail = (f"Critical validation failure: {reason}\n"
+                          f"  Component: {issue.get('id_str', '?')}\n"
+                          f"  Detail: {issue.get('message', '')}\n"
+                          f"  Suggestion: {issue.get('suggestion', '')}")
+                rejected = list(state.get("rejected_ids", []))
+                if issue.get("id_str") and issue["id_str"] not in rejected:
+                    rejected.append(issue["id_str"])
+                _emit_activity(config, "validate", "Validation", "update", level="error", kind="validation", detail=detail)
+                _emit_activity(config, "validate", "Validation", "done")
+                return _stage_result(state, "validate", {
+                    "selected_components": comps,
+                    "validation_errors": [issue.get("message", "")],
+                    "error": detail,
+                    "rejected_ids": rejected,
+                })
+
     for issue in issues:
         _emit(config, "agent:log", {
             "message": f"  [{issue.get('severity', 'info').upper()}] {issue.get('message', '')}"
         })
+    for err in errors:
+        _emit_activity(config, "validate", "Validation", "update", level="error", kind="validation", detail=err.get("message", ""))
+    for w in warnings:
+        _emit_activity(config, "validate", "Validation", "update", level="warning", kind="validation", detail=w.get("message", ""))
     corrections = []
     if missing:
         _emit(config, "agent:thinking", {"message": f"Searching for {len(missing)} missing component(s)..."})
@@ -91,14 +125,27 @@ def validate_node(state, config):
             "message": f"  Corrected: added {len(corrections)} missing component(s)"
         })
     validation_errors = [e["message"] for e in errors]
+    rejected = list(state.get("rejected_ids", []))
+    for e in errors:
+        eid = e.get("id_str", "")
+        if eid and eid not in rejected:
+            rejected.append(eid)
     if errors:
         _emit(config, "agent:log", {
             "message": f"Validation found {len(errors)} error(s) — will retry selection"
         })
+    else:
+        _emit_activity(config, "validate", "Validation", "update", level="success", kind="validation", detail="Validation passed")
     _emit(config, "agent:log", {
         "message": f"Validation done: {len(comps)} components, {len(errors)} error(s), {len(warnings)} warning(s)"
     })
-    return _stage_result(state, "validate", {
+    _emit_activity(config, "validate", "Validation", "done")
+    result = {
         "selected_components": comps,
         "validation_errors": validation_errors,
-    })
+        "rejected_ids": rejected,
+    }
+    if errors and state.get("retry_count", 0) >= MAX_VALIDATION_RETRIES:
+        error_msgs = "; ".join(validation_errors[:3])
+        result["error"] = f"Validation failed after {MAX_VALIDATION_RETRIES} retries: {error_msgs}"
+    return _stage_result(state, "validate", result)

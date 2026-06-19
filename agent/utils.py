@@ -1,4 +1,6 @@
 import json
+import os
+import random
 import re
 import time
 import traceback
@@ -7,9 +9,17 @@ from typing import Any
 from agent.tools import llm_call, execute_tool, TOOL_DESCRIPTIONS
 
 
-MAX_LLM_RETRIES = 3
+MAX_LLM_RETRIES = 5
 MAX_VALIDATION_RETRIES = 2
 MAX_BATCH_PINS = 36
+
+# Global rate limiter — tracks last N call timestamps to avoid 429s
+_LLM_CALL_HISTORY: list[float] = []
+_LLM_CALL_HISTORY_MAX = 20
+_LLM_MIN_INTERVAL = 8.0       # minimum seconds between calls
+_LLM_WINDOW_SEC = 60.0        # sliding window for rate calculation
+_LLM_MAX_PER_WINDOW = 6       # max calls per window (free tier is ~10/min, be safe)
+_LAST_429_TIME: float = 0.0   # when we last hit a 429; enforce cooldown
 
 GND_NET_NAMES = {"GND", "GROUND", "VSS", "AGND", "DGND", "PGND", "GNDA", "GNDD", "EP", "EPAD", "0V"}
 POWER_NET_NAMES = {"VCC", "VDD", "VBAT", "VIN", "VBUS", "V+", "V-", "VSYS", "VOUT", "VEE", "PWR"}
@@ -29,6 +39,20 @@ def _emit(config, event, data):
         emit_fn(event, data)
 
 
+def _emit_activity(config, phase, title, status, level="info", kind="", detail=None):
+    payload = {
+        "runId": config["configurable"].get("run_id", ""),
+        "phase": phase,
+        "title": title,
+        "status": status,
+        "level": level,
+        "kind": kind,
+    }
+    if detail is not None:
+        payload["detail"] = detail
+    _emit(config, "agent:activity", payload)
+
+
 def _clean_json(text: str) -> str:
     text = text.strip()
     if not text:
@@ -37,16 +61,20 @@ def _clean_json(text: str) -> str:
     start = -1
     depth = 0
     in_str = False
-    for i, ch in enumerate(text):
+    i = 0
+    while i < len(text):
+        ch = text[i]
         if in_str:
             if ch == '\\':
-                i += 1
+                i += 2
                 continue
             if ch == '"':
                 in_str = False
+            i += 1
             continue
         if ch == '"':
             in_str = True
+            i += 1
             continue
         if ch in ('[', '{'):
             if start < 0:
@@ -56,6 +84,7 @@ def _clean_json(text: str) -> str:
             depth -= 1
             if depth == 0 and start >= 0:
                 return text[start:i + 1]
+        i += 1
     if start >= 0:
         return text[start:]
     for ch in ('[', '{'):
@@ -67,24 +96,82 @@ def _clean_json(text: str) -> str:
     return ''
 
 
-def _call_llm(system: str, user: str, stage: str = "", retries: int = MAX_LLM_RETRIES) -> str:
-    for attempt in range(retries):
+def _rate_limit() -> None:
+    """Block until we're within rate limits. Does NOT record the call — caller must call _record_call() on success."""
+    global _LLM_CALL_HISTORY, _LAST_429_TIME
+    now = time.time()
+
+    # 429 cooldown — if we hit a 429 recently, wait the full window
+    if _LAST_429_TIME > 0:
+        since_429 = now - _LAST_429_TIME
+        if since_429 < _LLM_WINDOW_SEC:
+            wait = _LLM_WINDOW_SEC - since_429 + random.uniform(0, 2)
+            print(f"  Rate limiter: 429 cooldown {wait:.1f}s (since_429={since_429:.0f}s)")
+            time.sleep(wait)
+            now = time.time()
+
+    # Purge old entries outside the window
+    cutoff = now - _LLM_WINDOW_SEC
+    _LLM_CALL_HISTORY = [t for t in _LLM_CALL_HISTORY if t > cutoff]
+
+    # Enforce min interval
+    if _LLM_CALL_HISTORY:
+        elapsed = now - _LLM_CALL_HISTORY[-1]
+        if elapsed < _LLM_MIN_INTERVAL:
+            wait = _LLM_MIN_INTERVAL - elapsed + random.uniform(0, 1)
+            print(f"  Rate limiter: waiting {wait:.1f}s (interval={_LLM_MIN_INTERVAL}s)")
+            time.sleep(wait)
+
+    # Enforce max calls per window
+    if len(_LLM_CALL_HISTORY) >= _LLM_MAX_PER_WINDOW:
+        oldest = _LLM_CALL_HISTORY[0]
+        wait = oldest + _LLM_WINDOW_SEC - time.time() + random.uniform(0, 0.5)
+        if wait > 0:
+            print(f"  Rate limiter: waiting {wait:.1f}s (window limit={_LLM_MAX_PER_WINDOW}/{_LLM_WINDOW_SEC}s)")
+            time.sleep(wait)
+
+
+def _record_call() -> None:
+    """Record a successful LLM call timestamp."""
+    global _LLM_CALL_HISTORY
+    cutoff = time.time() - _LLM_WINDOW_SEC
+    _LLM_CALL_HISTORY = [t for t in _LLM_CALL_HISTORY if t > cutoff]
+    _LLM_CALL_HISTORY.append(time.time())
+    if len(_LLM_CALL_HISTORY) > _LLM_CALL_HISTORY_MAX:
+        _LLM_CALL_HISTORY = _LLM_CALL_HISTORY[-_LLM_CALL_HISTORY_MAX:]
+
+
+def _retry_llm_call(system: str, user: str, stage: str = "") -> str:
+    global _LAST_429_TIME
+    for attempt in range(MAX_LLM_RETRIES):
         try:
-            return llm_call(system, user)
+            _rate_limit()
+            result = llm_call(system, user)
+            _record_call()
+            return result
         except Exception as e:
             prefix = f" ({stage})" if stage else ""
-            print(f"LLM call failed{prefix} (attempt {attempt + 1}/{retries}): {e}")
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
+            print(f"LLM call failed{prefix} (attempt {attempt + 1}/{MAX_LLM_RETRIES}): {e}")
+            is_429 = "429" in str(e) or "Too Many Requests" in str(e)
+            if is_429:
+                _LAST_429_TIME = time.time()
+            if attempt < MAX_LLM_RETRIES - 1:
+                delay = (60.0 if is_429 else 2 ** (attempt + 3)) + random.uniform(0, 4)
+                print(f"  Retrying in {delay:.1f}s...")
+                time.sleep(delay)
             else:
                 traceback.print_exc()
-    raise AgentLLMError(f"LLM call failed after {retries} retries{': ' + stage if stage else ''}")
+    raise AgentLLMError(f"LLM call failed after {MAX_LLM_RETRIES} retries{': ' + stage if stage else ''}")
 
 
-def _call_llm_with_tools(system: str, user: str, max_tool_rounds: int = 3) -> str:
-    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+def _call_llm(system: str, user: str, stage: str = "", retries: int = MAX_LLM_RETRIES) -> str:
+    return _retry_llm_call(system, user, stage)
+
+
+def _call_llm_with_tools(system: str, user: str, max_tool_rounds: int = 2) -> str:
+    conversation = user
     for _ in range(max_tool_rounds):
-        response = llm_call(system, user)
+        response = _retry_llm_call(system, conversation, stage="netlist")
         if not response:
             return ""
         try:
@@ -95,7 +182,7 @@ def _call_llm_with_tools(system: str, user: str, max_tool_rounds: int = 3) -> st
             tool_name = parsed["_tool"]
             tool_args = parsed.get("args", {})
             result = execute_tool(tool_name, **tool_args)
-            user += f"\n\nTool '{tool_name}' returned: {json.dumps(result, indent=2)}\nContinue with the result."
+            conversation += f"\n\nI called tool '{tool_name}' and got:\n{json.dumps(result, indent=2)}\n\nContinue with the netlist JSON array."
             continue
         return response
     return response
@@ -471,10 +558,14 @@ def _get_attr(node, name):
 
 
 def _route_after_validate(state) -> str:
+    if state.get("error"):
+        return "error_end"
     errors = state.get("validation_errors", [])
     retry_count = state.get("retry_count", 0)
     if errors and retry_count < MAX_VALIDATION_RETRIES:
         return "select"
+    if errors:
+        return "error_end"
     return "dispatch"
 
 

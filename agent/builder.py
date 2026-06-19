@@ -1,4 +1,4 @@
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, END
 
 from agent.state import AgentState
 from agent.nodes import (
@@ -6,6 +6,14 @@ from agent.nodes import (
     dispatch_node, netlist_node, layout_route_node,
 )
 from agent.utils import _route_after_validate
+
+
+def error_end_node(state, config):
+    msg = state.get("error", "Unknown error")
+    _emit_fn = config["configurable"].get("emit")
+    if _emit_fn:
+        _emit_fn("agent:error", {"message": msg})
+    return {}
 
 
 def build_graph() -> StateGraph:
@@ -18,6 +26,7 @@ def build_graph() -> StateGraph:
     builder.add_node("dispatch", dispatch_node)
     builder.add_node("netlist", netlist_node)
     builder.add_node("layout_route", layout_route_node)
+    builder.add_node("error_end", error_end_node)
 
     builder.set_entry_point("analyze")
     builder.add_edge("analyze", "research")
@@ -26,9 +35,11 @@ def build_graph() -> StateGraph:
     builder.add_conditional_edges("validate", _route_after_validate, {
         "select": "select",
         "dispatch": "dispatch",
+        "error_end": "error_end",
     })
     builder.add_edge("dispatch", "netlist")
     builder.add_edge("netlist", "layout_route")
+    builder.add_edge("error_end", END)
 
     return builder.compile()
 

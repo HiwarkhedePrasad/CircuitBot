@@ -398,44 +398,6 @@ class BackendLayoutEngine:
                     if self.matrix[n.y][n.x] != 0:
                         self.matrix[n.y][n.x] = TRACE_WEIGHT
 
-        # ── Post-route obstacle collision validation ──
-        offending = self._validate_obstacle_collisions(traces, margin_mm=1.27)
-        if offending:
-            print(f"  Post-route validation: {len(offending)} trace(s) through component bodies")
-            # Re-route offending traces (clear their cells, re-run routing without others blocked)
-            for idx in sorted(offending, reverse=True):
-                old = traces[idx]
-                # Un-mark its cells
-                cells = [
-                    (round(p['x'] / GRID_SIZE) + MATRIX_OFFSET,
-                     round(p['y'] / GRID_SIZE) + MATRIX_OFFSET)
-                    for p in old['path']
-                ]
-                for gx, gy in cells:
-                    if 0 <= gy < MATRIX_SIZE and 0 <= gx < MATRIX_SIZE:
-                        if self.matrix[gy][gx] == CELL_TRACE:
-                            self.matrix[gy][gx] = CELL_FREE
-                # Re-run A* with cleared matrix
-                src = pin_matrix.get(old['source'])
-                tgt = pin_matrix.get(old['target'])
-                if src and tgt:
-                    sx = round((src['x'] + comp_positions.get(old['source'].split(':')[0], (0, 0))[0]) / GRID_SIZE) + MATRIX_OFFSET
-                    sy = round((src['y'] + comp_positions.get(old['source'].split(':')[0], (0, 0))[1]) / GRID_SIZE) + MATRIX_OFFSET
-                    ex = round((tgt['x'] + comp_positions.get(old['target'].split(':')[0], (0, 0))[0]) / GRID_SIZE) + MATRIX_OFFSET
-                    ey = round((tgt['y'] + comp_positions.get(old['target'].split(':')[0], (0, 0))[1]) / GRID_SIZE) + MATRIX_OFFSET
-                    self.matrix[sy][sx] = CELL_FREE
-                    self.matrix[ey][ex] = CELL_FREE
-                    new_path = _weighted_astar(self.matrix, (sx, sy), (ex, ey), MATRIX_SIZE)
-                    if new_path:
-                        mm_path = [
-                            {'x': (x - MATRIX_OFFSET) * GRID_SIZE,
-                             'y': (y - MATRIX_OFFSET) * GRID_SIZE}
-                            for x, y in new_path
-                        ]
-                        traces[idx]['path'] = mm_path
-                        self._mark_trace_cells(new_path)
-                        print(f"    Re-routed offending trace {old['source']}->{old['target']}")
-
         return traces
 
     def check_and_fix_overlaps(self, traces: list, max_passes: int = 2):

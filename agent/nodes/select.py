@@ -5,13 +5,86 @@ from agent.prompts import SELECT_SYSTEM, SELECT_USER, DATASHEET_EXTEND_SYSTEM, D
 from agent.support_rules import get_supporting_components
 from agent.tools import search_components, fetch_footprint
 from agent.utils import (
-    _emit, _check_stage_contract, _stage_result, _call_llm, _clean_json,
+    _emit, _emit_activity, _check_stage_contract, _stage_result, _call_llm, _clean_json,
     _is_passive, _ref_prefix_for, MAX_VALIDATION_RETRIES,
 )
+
+_CATEGORY_FILTERS = {
+    "Bulk Capacitor": {
+        "reject": ["MCU", "CPLD", "FPGA", "DSP", "Antenna", "Connector", "Memory", "LED", "Sensor"],
+    },
+    "I2C Pull-up Resistors": {
+        "reject": ["MCU", "Sensor", "Antenna", "Connector", "CPLD", "Memory", "LED"],
+    },
+    "Status LED": {
+        "reject": ["CPLD", "FPGA", "MCU", "Memory", "Antenna", "Connector", "Sensor"],
+        "reject_keywords": ["infrared", "950nm", "940nm", "ir led", "ir emitter"],
+    },
+    "Status Indicator": {
+        "reject": ["CPLD", "FPGA", "MCU", "Memory", "Antenna", "Connector", "Sensor"],
+        "reject_keywords": ["infrared", "950nm", "940nm", "ir led", "ir emitter"],
+    },
+    "Crystal Oscillator": {
+        "allow": ["Crystal", "Oscillator"],
+        "reject": ["MCU", "CPLD", "Sensor", "Memory"],
+    },
+    "Decoupling Capacitors": {
+        "reject": ["MCU", "CPLD", "FPGA", "Antenna", "Connector", "LED", "Sensor", "Memory"],
+    },
+    "USB-C Power Input": {
+        "allow": ["Connector"],
+        "reject": ["Interface_USB"],
+    },
+    "Power Regulation": {
+        "allow": ["Regulator"],
+        "reject": ["MCU", "CPLD", "Sensor", "LED", "Antenna", "Display"],
+    },
+    "USB Interface": {
+        "allow": ["Connector"],
+        "reject": ["Interface_USB"],
+    },
+    "Passive Components": {
+        "reject": ["MCU", "CPLD", "FPGA", "DSP", "Antenna", "Connector", "Memory", "LED", "Sensor", "Regulator", "Display"],
+        "reject_keywords": ["ohmmeter", "ammeter", "voltmeter", "meter", "galvanometer"],
+    },
+}
+
+
+def _filter_by_category(subsystem_name: str, candidates: list[dict]) -> list[dict]:
+    rules = _CATEGORY_FILTERS.get(subsystem_name)
+    if not rules:
+        return candidates
+    kept = []
+    reject_keywords = rules.get("reject_keywords", [])
+    for c in candidates:
+        cat = (c.get("category") or c["id_str"].split(":")[0]).upper()
+        cid = c["id_str"]
+        allow = rules.get("allow")
+        reject = rules.get("reject", [])
+        if allow and not any(a.upper() in cat for a in allow):
+            print(f"  Filtered out [{subsystem_name}]: {cid} (category={cat})")
+            continue
+        if reject and any(r.upper() in cat for r in reject):
+            print(f"  Filtered out [{subsystem_name}]: {cid} (category={cat})")
+            continue
+        if reject_keywords:
+            text = (c.get("description") or c.get("text") or "").lower()
+            matched_kw = None
+            for kw in reject_keywords:
+                if kw in text:
+                    matched_kw = kw
+                    break
+            if matched_kw:
+                print(f"  Filtered out [{subsystem_name}]: {cid} (keyword={matched_kw})")
+                continue
+        kept.append(c)
+    print(f"  Category filter [{subsystem_name}]: {len(kept)}/{len(candidates)} kept")
+    return kept
 
 
 def select_node(state, config):
     _emit(config, "agent:thinking", {"message": "Selecting best components..."})
+    _emit_activity(config, "select", "Component Selection", "start")
     contract = _check_stage_contract("select", state, ["research_results", "prompt"])
     if contract:
         _emit(config, "agent:log", {"message": contract})
@@ -23,32 +96,33 @@ def select_node(state, config):
         _emit(config, "agent:log", {"message": "No research results to select from."})
         return _stage_result(state, "select", {"selected_components": []})
 
-    _emit(config, "agent:thinking", {"message": "Fetching datasheets for top candidates..."})
+    filtered_research = []
     for sub in research:
-        for r in sub.get("results", [])[:2]:
-            url = r.get("datasheet", "")
-            if url:
-                snippet = fetch_datasheet_text(url, offset=0, length=500)
-                r["datasheet_snippet"] = snippet
-                if snippet:
-                    _emit(config, "agent:log", {
-                        "message": f"  Fetched datasheet ({len(snippet)} chars) for {r['id_str']}"
-                    })
-            else:
-                r["datasheet_snippet"] = ""
+        fsub = sub.copy()
+        fsub["results"] = _filter_by_category(sub.get("subsystem", ""), sub.get("results", []))
+        filtered_research.append(fsub)
 
-    results_json = json.dumps(research, indent=2)
+    rejected_ids = set(state.get("rejected_ids", []))
+    if rejected_ids:
+        for sub in filtered_research:
+            before = len(sub["results"])
+            sub["results"] = [r for r in sub["results"] if r["id_str"] not in rejected_ids]
+            dropped = before - len(sub["results"])
+            if dropped:
+                _emit(config, "agent:log", {
+                    "message": f"  Rejected {dropped} previously-failed component(s) for '{sub.get('subsystem', '')}'"
+                })
+
+    results_json = json.dumps(filtered_research, indent=2)
     if len(results_json) > 8000:
         truncated = []
-        for sub in research:
+        for sub in filtered_research:
             tsub = sub.copy()
             tsub["results"] = []
             for r in sub.get("results", []):
                 tr = r.copy()
                 if len(tr.get("text", "")) > 100:
                     tr["text"] = tr["text"][:97] + "..."
-                if len(tr.get("datasheet_snippet", "")) > 200:
-                    tr["datasheet_snippet"] = tr["datasheet_snippet"][:197] + "..."
                 tsub["results"].append(tr)
             truncated.append(tsub)
         results_json = json.dumps(truncated, indent=2)
@@ -128,9 +202,23 @@ def select_node(state, config):
                     "justification": "Fallback: first available component for subsystem",
                     "datasheet_text": best.get("datasheet_snippet", ""),
                 })
+        if not selected:
+            try:
+                broad = search_components(state.get("prompt", "electronic component"), k=5)
+                for i, r in enumerate(broad):
+                    selected.append({
+                        "id_str": r["id_str"],
+                        "ref_des": f"U{i+1}",
+                        "category": r["id_str"].split(":")[0] if ":" in r["id_str"] else "General",
+                        "description": r.get("text", ""),
+                        "justification": "Broad-search emergency fallback",
+                        "datasheet_text": "",
+                    })
+            except Exception:
+                pass
     else:
         valid_ids = set()
-        for sub in research:
+        for sub in filtered_research:
             for r in sub.get("results", []):
                 valid_ids.add(r["id_str"])
         filtered = []
@@ -142,15 +230,31 @@ def select_node(state, config):
                 for sub in research:
                     results = sub.get("results", [])
                     if results:
+                        best = results[0]
                         filtered.append({
-                            "id_str": results[0]["id_str"],
+                            "id_str": best["id_str"],
                             "ref_des": s["ref_des"],
-                            "category": results[0]["id_str"].split(":")[0] if ":" in results[0]["id_str"] else "General",
-                            "description": results[0].get("text", ""),
+                            "category": best["id_str"].split(":")[0] if ":" in best["id_str"] else "General",
+                            "description": best.get("text", ""),
                             "justification": s.get("justification", f"Fallback for rejected {s['id_str']}"),
-                            "datasheet_text": results[0].get("datasheet_snippet", ""),
+                            "datasheet_text": best.get("datasheet_snippet", ""),
                         })
                         break
+                else:
+                    try:
+                        broad = search_components(s.get("description", s["id_str"]), k=3)
+                        if broad:
+                            best = broad[0]
+                            filtered.append({
+                                "id_str": best["id_str"],
+                                "ref_des": s["ref_des"],
+                                "category": best["id_str"].split(":")[0] if ":" in best["id_str"] else "General",
+                                "description": best.get("text", ""),
+                                "justification": f"Broad-search fallback for {s['id_str']}",
+                                "datasheet_text": best.get("datasheet_snippet", ""),
+                            })
+                    except Exception:
+                        pass
         selected = filtered
 
     seen_ids = set()
@@ -190,12 +294,43 @@ def select_node(state, config):
         deduped.append(s)
     selected = deduped
 
+    _emit(config, "agent:thinking", {"message": "Fetching datasheets for selected components..."})
+    for s in selected:
+        id_str = s["id_str"]
+        if s.get("datasheet_text"):
+            continue
+        url = ""
+        for sub in research:
+            for r in sub.get("results", []):
+                if r["id_str"] == id_str:
+                    url = r.get("datasheet", "")
+                    break
+            if url:
+                break
+        if url:
+            snippet = fetch_datasheet_text(url, offset=0, length=500)
+            if snippet:
+                s["datasheet_text"] = snippet
+                _emit(config, "agent:log", {
+                    "message": f"  Fetched datasheet ({len(snippet)} chars) for {s['ref_des']} ({id_str})"
+                })
+
     for s in selected:
         id_str = s["id_str"]
         cat = (s.get("category", "") or "").upper()
         desc = (s.get("description", "") or "").upper()
-        if cat.startswith("INTERFACE_USB") or "FUSB" in id_str.upper():
-            query = "USB-C connector" if "USB-C" in desc or "TYPE-C" in desc else "USB connector"
+        needs_usb_swap = (
+            cat.startswith("INTERFACE_USB")
+            or "FUSB" in id_str.upper()
+            or not (cat.startswith("CONNECTOR") and "USB" in cat)
+        )
+        for sub in filtered_research:
+            sname = sub.get("subsystem", "").upper()
+            if "USB" in sname and id_str in {r["id_str"] for r in sub.get("results", [])}:
+                needs_usb_swap = True
+                break
+        if needs_usb_swap:
+            query = "USB-C connector" if ("USB-C" in desc or "TYPE-C" in desc) else "USB connector"
             try:
                 for r in search_components(query, k=6):
                     r_cat = (r.get("category", "") or "").upper()
@@ -205,7 +340,7 @@ def select_node(state, config):
                         s["category"] = r.get("category", s["category"])
                         s["description"] = r.get("text", s.get("description", ""))
                         _emit(config, "agent:log", {
-                            "message": f"  Swapped {old} -> {s['id_str']} (real connector)"
+                            "message": f"  Swapped {old} -> {s['id_str']} (real USB connector)"
                         })
                         break
             except Exception as e:
@@ -313,6 +448,9 @@ def select_node(state, config):
         "message": f"Selected {len(selected)} components: " +
                    ", ".join(f'{s["ref_des"]}={s["id_str"].split(":")[-1][:20]}' for s in selected)
     })
+    part_names = [f'{s["ref_des"]}={s["id_str"].split(":")[-1]}' for s in selected if s.get("id_str")]
+    _emit_activity(config, "select", "Component Selection", "update", level="success", kind="selection", detail=part_names)
+    _emit_activity(config, "select", "Component Selection", "done")
     return _stage_result(state, "select", {
         "selected_components": selected,
         "retry_count": retry_count + 1,

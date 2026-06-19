@@ -13,6 +13,8 @@ from pathlib import Path
 
 from kicad_rag.constants import FOOTPRINTS_ROOT, UTILS_ROOT
 
+from pcb_design.geometry import DEFAULT_CLEARANCE
+
 GRID = 1.27
 
 
@@ -217,6 +219,14 @@ def _simplify_path(points: list) -> list:
 
 
 def generate_kicad_pcb(design: dict) -> str:
+    # If board_model is present, use BoardModel export instead
+    board_model = design.get("board_model")
+    if board_model:
+        try:
+            return _generate_from_board_model(board_model)
+        except Exception as e:
+            print(f"BoardModel export failed, falling back: {e}")
+
     comps = design.get("selected_components", [])
     placements = {p["ref_des"]: p for p in design.get("component_placements", [])}
     wires = design.get("wire_paths", [])
@@ -304,6 +314,115 @@ def generate_kicad_pcb(design: dict) -> str:
                 f" (width 0.254) (layer \"F.Cu\")"
                 f" (net {nid}))"
             )
+
+    out.append(")")
+    return "\n".join(out) + "\n"
+
+
+def _generate_from_board_model(board_model: dict) -> str:
+    """Export from BoardModel dict (produced by pcb_design.board_model.BoardModel.to_dict())."""
+    from pcb_design.board_model import BoardModel as BM
+    model = BM.from_dict(board_model)
+
+    layers = [
+        (0, "F.Cu", "signal"),
+        (31, "B.Cu", "signal"),
+        (32, "B.SilkS", "user"),
+        (33, "B.Mask", "user"),
+        (34, "F.Paste", "user"),
+        (35, "F.Mask", "user"),
+        (36, "F.SilkS", "user"),
+        (37, "Edge.Cuts", "user"),
+    ]
+
+    # Build net index
+    net_index = {"": 0}
+    for net in model.nets:
+        name = net.get("name", "") or net.get("net", "")
+        if name and name not in net_index:
+            net_index[name] = len(net_index)
+
+    out = []
+    out.append("(kicad_pcb (version 20260206) (generator \"circuitbot\") (generator_version \"1.0\")")
+
+    out.append("  (layers")
+    for num, name, ltype in layers:
+        out.append(f"    ({num} {_q(name)} {ltype})")
+    out.append("  )")
+
+    out.append("  (setup")
+    out.append("    (stackup")
+    out.append("      (layer \"F.Cu\" (type \"copper\") (thickness 0.035))")
+    out.append("      (layer \"B.Cu\" (type \"copper\") (thickness 0.035))")
+    out.append("    )")
+    out.append("  )")
+
+    for net_name, nid in sorted(net_index.items(), key=lambda kv: kv[1]):
+        out.append(f"  (net {nid} {_q(net_name)})")
+
+    for comp in model.components:
+        fp_str = comp.footprint
+        if not fp_str:
+            continue
+        x = _snap(comp.x)
+        y = _snap(comp.y)
+        ref = comp.ref
+        value = comp.value or ref
+        fp_sexpr = _embed_footprint(fp_str, ref, value, x, y, comp.rotation)
+        for line in fp_sexpr.strip().split("\n"):
+            out.append(f"  {line}")
+
+    for trace in model.traces:
+        pts = [(p[0], p[1]) for p in trace.path] if isinstance(trace.path[0], tuple) else [
+            (p["x"], p["y"]) for p in trace.path
+        ]
+        pts_simple = _simplify_path([{"x": p[0], "y": p[1]} for p in pts])
+        if len(pts_simple) < 2:
+            continue
+        nid = net_index.get(trace.net, 0)
+        for i in range(len(pts_simple) - 1):
+            x1 = _snap(pts_simple[i]["x"])
+            y1 = _snap(pts_simple[i]["y"])
+            x2 = _snap(pts_simple[i + 1]["x"])
+            y2 = _snap(pts_simple[i + 1]["y"])
+            if x1 == x2 and y1 == y2:
+                continue
+            out.append(
+                f"  (segment (start {_fmt(x1)} {_fmt(y1)})"
+                f" (end {_fmt(x2)} {_fmt(y2)})"
+                f" (width {_fmt(trace.width)}) (layer {_q(trace.layer)})"
+                f" (net {nid}))"
+            )
+
+    for via in model.vias:
+        out.append(
+            f"  (via (at {_fmt(via.x)} {_fmt(via.y)})"
+            f" (drill {_fmt(via.drill)})"
+            f" (size {_fmt(via.diameter)})"
+            f" (layers {_q(via.layers[0])} {_q(via.layers[1])})"
+            f" (net {net_index.get(via.net, 0)}))"
+        )
+
+    for zone in model.zones:
+        if zone.polygon is None or zone.polygon.is_empty:
+            continue
+        nid = net_index.get(zone.net, 0)
+        coords = list(zone.polygon.exterior.coords) if zone.polygon.exterior else []
+        if len(coords) < 3:
+            continue
+        out.append(f"  (zone (net {nid}) (net_name {_q(zone.net)}) (layer {_q(zone.layer)})")
+        out.append(f"    (priority {zone.priority})")
+        out.append(f"    (hatch edge 0.5)")
+        out.append(f"    (connect_pads (clearance {_fmt(DEFAULT_CLEARANCE)}))")
+        out.append(f"    (min_thickness {_fmt(DEFAULT_CLEARANCE)})")
+        out.append(f"    (fill yes (arc_segments 32) (thermal_gap 0.254) (thermal_bridge_width 0.254))")
+        out.append(f"    (polygon")
+        out.append(f"      (pts")
+        for cx, cy in coords:
+            out.append(f"        (xy {_fmt(cx)} {_fmt(cy)})")
+        out.append(f"      )")
+        out.append(f"    )")
+        out.append(f"  )")
 
     out.append(")")
     return "\n".join(out) + "\n"

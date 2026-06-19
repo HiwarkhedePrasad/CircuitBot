@@ -99,6 +99,18 @@ RULES: list[Rule] = [
             {"search_query": "5.1k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "5.1kΩ USB-C CC pull-down", "count": 2},
         ],
     ),
+    # ── I²C devices: pull-up resistors ──
+    (
+        lambda c: (
+            "I2C" in _id(c) or "SDA" in _id(c) or "SCL" in _id(c)
+            or any(kw in ((c.get("description", "") or "") + (c.get("text", "") or "")).upper()
+                   for kw in ["I2C", "SDA ", "SCL ", "TWI", "I²C"])
+        ),
+        [
+            {"search_query": "4.7k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "4.7kΩ I²C SDA pull-up resistor", "count": 1},
+            {"search_query": "4.7k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "4.7kΩ I²C SCL pull-up resistor", "count": 1},
+        ],
+    ),
     # ── General connector (audio jacks, headers, etc.) ──
     (
         lambda c: _has_lib(c, "Connector"),

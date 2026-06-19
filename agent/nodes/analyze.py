@@ -2,7 +2,7 @@ import json
 import re
 
 from agent.prompts import ANALYZE_SYSTEM, ANALYZE_USER
-from agent.utils import _emit, _check_stage_contract, _stage_result, _call_llm, _clean_json
+from agent.utils import _emit, _emit_activity, _check_stage_contract, _stage_result, _call_llm, _clean_json
 
 
 _SUBSYSTEM_KEYWORDS = [
@@ -32,24 +32,51 @@ def _fallback_analysis(prompt: str) -> list:
                 analysis.append({
                     "subsystem": subsystem,
                     "function": f"{subsystem} for {prompt[:60].strip()}...",
+                    "bus": _detect_bus(subsystem, ""),
                     "example_components": examples[:3],
                 })
     if not analysis:
         analysis.append({
             "subsystem": "Microcontroller",
             "function": "Main controller",
+            "bus": "any",
             "example_components": ["ESP32-C3", "RP2040", "STM32G030"],
         })
         analysis.append({
             "subsystem": "Sensor",
             "function": "Input sensing",
+            "bus": "I2C",
             "example_components": ["DS18B20", "BME280", "TMP117"],
         })
     return analysis
 
 
+def _detect_bus(subsystem: str, function: str) -> str:
+    bus_map = {
+        "i2c": "I2C", "sda": "I2C", "scl": "I2C",
+        "spi": "SPI", "mosi": "SPI", "miso": "SPI",
+        "1-wire": "1-Wire", "onewire": "1-Wire", "one wire": "1-Wire",
+        "uart": "UART", "serial": "UART", "tx": "UART", "rx": "UART",
+        "usb": "USB", "i2s": "I2S", "can": "CAN",
+    }
+    text = (subsystem + " " + function).lower()
+    for keyword, bus in bus_map.items():
+        if keyword in text:
+            return bus
+    # Default by subsystem type
+    sub_lower = subsystem.lower()
+    if "display" in sub_lower or "oled" in sub_lower:
+        return "I2C"
+    if "sensor" in sub_lower or "temperature" in sub_lower or "humidity" in sub_lower:
+        return "I2C"
+    if "microcontroller" in sub_lower or "mcu" in sub_lower:
+        return "any"
+    return "any"
+
+
 def analyze_node(state, config):
     _emit(config, "agent:thinking", {"message": "Analyzing your design request..."})
+    _emit_activity(config, "analyze", "Analyze Design", "start")
     contract = _check_stage_contract("analyze", state, ["prompt"])
     if contract:
         _emit(config, "agent:log", {"message": contract})
@@ -65,10 +92,33 @@ def analyze_node(state, config):
     except json.JSONDecodeError:
         print(f"Failed to parse analysis JSON: {text[:200]}")
         analysis = []
+    def _normalize(items):
+        out = []
+        if isinstance(items, dict):
+            for v in items.values():
+                out.extend(_normalize(v))
+        elif isinstance(items, list):
+            for a in items:
+                if isinstance(a, dict):
+                    a.setdefault("bus", _detect_bus(a.get("subsystem", ""), a.get("function", "")))
+                    out.append(a)
+                elif isinstance(a, str):
+                    out.append({
+                        "subsystem": a,
+                        "function": f"{a} for {state['prompt'][:60].strip()}...",
+                        "bus": _detect_bus(a, ""),
+                        "example_components": [],
+                    })
+        return out
+
     if not analysis:
         analysis = _fallback_analysis(state["prompt"])
+    else:
+        analysis = _normalize(analysis) or _fallback_analysis(state["prompt"])
+    subsystems = [a.get("subsystem", "?") for a in analysis]
     _emit(config, "agent:log", {
-        "message": f"Identified {len(analysis)} subsystems: " +
-                   ", ".join(a.get("subsystem", "?") for a in analysis)
+        "message": f"Identified {len(analysis)} subsystems: " + ", ".join(subsystems)
     })
+    _emit_activity(config, "analyze", "Analyze Design", "update", kind="detection", detail=[f"Detected {s}" for s in subsystems])
+    _emit_activity(config, "analyze", "Analyze Design", "done")
     return _stage_result(state, "analyze", {"analysis": analysis})

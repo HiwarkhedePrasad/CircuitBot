@@ -55,4 +55,5 @@ class AgentState(TypedDict, total=False):
     error: Optional[str]
     retry_count: int
     validation_errors: List[dict]
+    rejected_ids: List[str]
     _stage: str

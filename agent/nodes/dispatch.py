@@ -23,6 +23,7 @@ def dispatch_node(state, config):
                         ops = _parse_sexpr_to_ops(sexpr, r["id_str"].split(":")[0])
                         if ops:
                             id_str = r["id_str"]
+                            comp["id_str"] = id_str
                             break
                     except Exception:
                         continue
