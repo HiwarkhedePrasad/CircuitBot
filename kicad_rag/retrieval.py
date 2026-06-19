@@ -69,20 +69,31 @@ def bm25_search(query: str, k: int = FANOUT) -> list[Tuple[int, float]]:
 
 # ── Dense (TurboVec) ───────────────────────────────────────────────────────
 
+_embedding_model = None
+_turbovec_index = None
+
+
+def _get_dense_resources():
+    """Lazy-load and cache the embedding model + TurboVec index at module level."""
+    global _embedding_model, _turbovec_index
+    if _embedding_model is None:
+        from fastembed import TextEmbedding
+        _embedding_model = TextEmbedding(model_name=EMBED_MODEL)
+    if _turbovec_index is None:
+        from turbovec import IdMapIndex
+        from kicad_rag.constants import INDEX_PATH
+        _turbovec_index = IdMapIndex.load(str(INDEX_PATH))
+    return _embedding_model, _turbovec_index
+
 
 def dense_search(query: str, k: int = FANOUT) -> list[Tuple[int, float]]:
     """Return ``[(id_int, cosine_score)]`` from the quantised TurboVec index."""
-    from fastembed import TextEmbedding
-    from turbovec import IdMapIndex
+    model, idx = _get_dense_resources()
 
-    from kicad_rag.constants import INDEX_PATH
-
-    model = TextEmbedding(model_name=EMBED_MODEL)
     qvec = np.asarray(next(model.embed([query])), dtype=np.float32)[None, :]
     if not qvec.flags["C_CONTIGUOUS"]:
         qvec = np.ascontiguousarray(qvec)
 
-    idx = IdMapIndex.load(str(INDEX_PATH))
     scores, ids = idx.search(qvec, k=k)
     return [(int(i), float(s)) for i, s in zip(ids[0], scores[0])]
 

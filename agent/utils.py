@@ -16,9 +16,9 @@ MAX_BATCH_PINS = 36
 # Global rate limiter — tracks last N call timestamps to avoid 429s
 _LLM_CALL_HISTORY: list[float] = []
 _LLM_CALL_HISTORY_MAX = 20
-_LLM_MIN_INTERVAL = 8.0       # minimum seconds between calls
+_LLM_MIN_INTERVAL = 0.0       # local endpoint — no rate limit
 _LLM_WINDOW_SEC = 60.0        # sliding window for rate calculation
-_LLM_MAX_PER_WINDOW = 6       # max calls per window (free tier is ~10/min, be safe)
+_LLM_MAX_PER_WINDOW = 999     # local endpoint — no rate limit
 _LAST_429_TIME: float = 0.0   # when we last hit a 429; enforce cooldown
 
 GND_NET_NAMES = {"GND", "GROUND", "VSS", "AGND", "DGND", "PGND", "GNDA", "GNDD", "EP", "EPAD", "0V"}

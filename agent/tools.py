@@ -8,7 +8,7 @@ from kicad_rag.client import KicadRAG
 dotenv_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path, override=True)
 
-rag = KicadRAG(mode="bm25")
+rag = KicadRAG(mode="hybrid")
 
 # ── Tool Registry ────────────────────────────────────────────────────────────
 
