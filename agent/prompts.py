@@ -54,6 +54,11 @@ CRITICAL RULES:
 4. Each component should serve ONE distinct function from the analyzed subsystems.
 5. If the datasheet_snippet is provided, you MUST use it to validate suitability — check
    voltage ratings, interface types, package, and feature match.
+6. MODULE OVERRIDES: If you select a development board or module (e.g., WEMOS,
+   NodeMCU, ESP32 dev board) that already includes built-in power regulation or
+   USB connectors, you MUST leave the "id_str" for the redundant subsystems
+   (Power Regulation, USB Interface) as "SKIPPED". Do not add redundant external
+   regulators or connectors for subsystems that are integrated into the module.
 
 Rules:
 - Pick the most appropriate part based on the description AND datasheet match
@@ -131,6 +136,11 @@ check each component for correctness:
    - Sensors should be from "Sensor_*" library
    - Connectors should be from "Connector_*" library
 
+4. MODULE AWARENESS: If a development board/module is used (e.g., Wemos, ESP32
+   dev board), do NOT flag missing USB connectors or voltage regulators — they
+   are integrated into the module. "RF_Module" is a perfectly valid library for
+   ESP32/wireless microcontrollers. Do not flag it as an error.
+
 Output ONLY a JSON object with keys:
 "valid": true/false,
 "issues": [
@@ -145,7 +155,8 @@ Output ONLY a JSON object with keys:
     {
         "subsystem": "what subsystem needs it",
         "description": "what to search for",
-        "suggested_query": "search term for finding a suitable part"
+        "suggested_query": "search term for finding a suitable part",
+        "library_filter": "restrict search to this KiCad library (e.g. 'Device' for passives/LEDs, 'Connector' for USB)"
     }
 ]
 

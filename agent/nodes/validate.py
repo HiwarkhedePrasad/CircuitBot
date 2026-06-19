@@ -89,7 +89,8 @@ def validate_node(state, config):
         for mc in missing:
             query = mc.get("suggested_query", mc.get("description", ""))
             try:
-                results = search_components(query, k=5)
+                lib_filter = mc.get("library_filter") or None
+                results = search_components(query, k=5, library_filter=lib_filter)
                 if results:
                     best = results[0]
                     ref_prefix = _ref_prefix_for(best["id_str"], best["id_str"].split(":")[0])

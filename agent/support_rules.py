@@ -51,7 +51,7 @@ RULES: list[Rule] = [
     ),
     # ── Microcontrollers / MCU modules: decoupling caps ──
     (
-        lambda c: _has_lib(c, "MCU_", "Module_") or "MCU" in _id(c) or "ESP32" in _id(c) or "RP2040" in _id(c) or "STM32" in _id(c),
+        lambda c: (_has_lib(c, "MCU_", "Module_") or "MCU" in _id(c) or "ESP32" in _id(c) or "RP2040" in _id(c) or "STM32" in _id(c)) and not any(dev in _id(c) for dev in ["WEMOS", "NODEMCU", "DEVKIT", "MINI"]),
         [
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "0.1µF decoupling cap for MCU", "count": 2},
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "10µF bulk decoupling cap for MCU", "count": 1},
