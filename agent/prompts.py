@@ -37,6 +37,16 @@ you MUST include the EXACT KiCad symbol name as one of the example_components en
 - For barrel jacks: include "Barrel_Jack"
 - For audio jacks: include "Audio_Jack"
 
+COMMON COMPONENT CHEAT SHEET:
+Use EXACTLY these KiCad symbols for generic supporting parts:
+- Resistors: "Device:R_Small"
+- Capacitors: "Device:C_Small"
+- Generic LEDs: "Device:LED"
+- Inductors: "Device:L_Small"
+- USB-C Connectors: "Connector_USB:USB_C_Receptacle_USB2.0"
+- Diodes: "Device:D_Small"
+- 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
+
 Be specific, practical, and electrically complete."""
 
 ANALYZE_USER = """Design request: {prompt}
@@ -106,6 +116,7 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - Inductors: "Device:L_Small"
 - USB-C Connectors: "Connector_USB:USB_C_Receptacle_USB2.0"
 - Diodes: "Device:D_Small"
+- 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
 
 Output ONLY a JSON object with keys:
 "valid": true/false,

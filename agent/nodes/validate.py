@@ -10,6 +10,7 @@ from agent.utils import (
 _KNOWN_SYMBOLS = frozenset([
     "Device:R_Small", "Device:C_Small", "Device:LED", "Device:L_Small",
     "Device:D_Small", "Connector_USB:USB_C_Receptacle_USB2.0",
+    "Regulator_Linear:AMS1117-3.3",
 ])
 
 _CRITICAL_PATTERNS = [

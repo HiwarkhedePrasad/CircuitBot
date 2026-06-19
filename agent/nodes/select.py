@@ -34,6 +34,7 @@ def select_node(state, config):
 
     selected = []
     existing_ids = {c["id_str"] for c in state.get("selected_components", [])}
+    research.sort(key=lambda s: 0 if any(k in s.get('subsystem', '').lower() for k in ['mcu', 'processing', 'microcontroller', 'core']) else 1)
     _emit(config, "agent:thinking", {"message": f"Scoring candidates across {len(research)} subsystem(s)..."})
     for sub in research:
         candidates = sub.get("results", [])
