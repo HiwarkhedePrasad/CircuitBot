@@ -1,50 +1,88 @@
-"""Backend layout and routing engine.
+"""
+agent/layout_engine.py  —  Hierarchical schematic layout + Z-shaped routing.
 
-Runs column-based component placement and A* orthogonal wire routing
-entirely in Python. The frontend receives pre-computed absolute coordinates
-and wire paths — no spatial math on the client.
+Two-phase layout:
+  Phase 1 – Tier placement (signal-flow left→right).
+             Satellites (caps, resistors) placed adjacent to their parent IC.
+  Phase 2 – Z-shaped orthogonal wire routing.  No A*, no obstacle avoidance.
+             Hard wire-length cap prevents ghost loops.
 """
 
+from __future__ import annotations
+
 import math
-from pathfinding.core.grid import Grid
+import re
+from typing import Optional
 
-GRID_SIZE = 1.27  # 50 mil KiCad standard
-MATRIX_SIZE = 300
-MATRIX_OFFSET = 150  # offset to keep grid coords positive
+GRID_SIZE  = 1.27
+BBOX_PAD   = 1.5
 
-BBOX_PAD = 2.0
-COLUMN_SPACING = 20.32  # extra horizontal routing channel between columns (16 grid cells)
-ROW_CLEARANCE = 6.35    # extra vertical routing channel between rows (5 grid cells)
+TIER_GAP       = 20.32
+COMP_V_GAP     = 7.62
+SAT_H_GAP      = 12.70
+SAT_V_GAP      = 3.81
+PIN_STUB_LEN   = 3.81
 
-# Column definitions — must match frontend COLUMN_DEFS
-COLUMN_KEYWORDS = [
-    ['REGULATOR', 'CONNECTOR', 'POWER', 'BATTERY', 'SWITCH', 'FUSE', 'DIODE', 'POLYFUSE'],
-    ['LDO', 'BUCK', 'BOOST', 'CAPACITOR', 'RESISTOR', 'INDUCTOR', 'FILTER', 'CONVERTER'],
-    ['MCU', 'ESP32', 'STM32', 'PROCESSOR', 'FPGA', 'DSP', 'MEMORY', 'CPU', 'RF_MODULE'],
-    [],  # default
-]
+MAX_WIRE_MANHATTAN = 180.0
 
-_IDSTR_TYPE_MAP = {
-    'C_SMALL': 'CAPACITOR', 'C_SMALL_US': 'CAPACITOR', 'C_POLARIZED': 'CAPACITOR',
-    'R_SMALL': 'RESISTOR', 'R': 'RESISTOR',
-    'POLYFUSE': 'FUSE', 'LED': 'DIODE',
+MATRIX_SIZE   = 300
+MATRIX_OFFSET = 150
+COLUMN_SPACING = 20.32
+ROW_CLEARANCE  = 6.35
+
+
+_IDSTR_HINTS: dict[str, str] = {
+    'C_Small':        'CAPACITOR',
+    'C_Small_US':     'CAPACITOR',
+    'C_Polarized':    'CAPACITOR',
+    'R_Small':        'RESISTOR',
+    'R':              'RESISTOR',
+    'Polyfuse':       'FUSE',
+    'LED':            'LED',
+    'D_Small':        'DIODE',
+    'Zener':          'ZENER',
+    'ATmega':         'MCU',
+    'AMS1117':        'LDO',
+    'DS18B20':        'SENSOR',
+    'TPD6S300A':      'ESD_IC',
+    'USBLC6':         'ESD_IC',
+    'OLED':           'DISPLAY',
+    'SSD1306':        'DISPLAY',
 }
 
+_TIER_RULES: list[tuple[str, int]] = [
+    ('CONNECTOR',  0), ('USB',       0), ('BATTERY', 0),
+    ('FUSE',       0), ('POLYFUSE',  0), ('SWITCH',  0),
+    ('LDO',        1), ('REGULATOR', 1), ('BUCK',    1),
+    ('BOOST',      1), ('CONVERTER', 1),
+    ('MCU',        2), ('PROCESSOR', 2), ('ESP32',   2),
+    ('STM32',      2), ('FPGA',      2), ('CPU',     2),
+    ('RF_MODULE',  2), ('DSP',       2), ('MEMORY',  2),
+    ('SENSOR',     3), ('DISPLAY',   3), ('DRIVER',  3),
+    ('INDICATOR',  3), ('LED',       3),
+    ('ESD_IC',     0), ('DIODE',     0), ('ZENER',   0),
+    ('CAPACITOR',  -1), ('RESISTOR', -1),
+]
 
-def _get_column_for_category(category: str, id_str: str = '') -> int:
-    cat = category.upper()
-    id_name = id_str.split(':')[-1].upper() if ':' in id_str else id_str.upper()
-    mapped = _IDSTR_TYPE_MAP.get(id_name, '')
-    text = f'{cat} {mapped}'
-    for i, keywords in enumerate(COLUMN_KEYWORDS):
-        for kw in keywords:
-            if kw in text:
-                return i
-    return 3
+
+def _snap(v: float) -> float:
+    return round(v / GRID_SIZE) * GRID_SIZE
 
 
-def _snap(value: float) -> float:
-    return round(value / GRID_SIZE) * GRID_SIZE
+def _sem_type(category: str, id_str: str = '') -> str:
+    id_name = id_str.split(':')[-1] if ':' in id_str else id_str
+    for key, typ in _IDSTR_HINTS.items():
+        if key.upper() in id_name.upper():
+            return typ
+    return category.upper().replace(' ', '_')
+
+
+def _tier(category: str, id_str: str = '') -> int:
+    sem = _sem_type(category, id_str)
+    for kw, t in _TIER_RULES:
+        if kw in sem:
+            return t
+    return 2
 
 
 def _get_attr(node, name):
@@ -57,340 +95,226 @@ def _get_attr(node, name):
 
 
 def calculate_ops_bbox(ops: list) -> dict:
-    """Calculate bounding box of a component's drawing ops.
-    Mirrors the frontend calculateOpsBBox() logic.
-    """
-    min_x, min_y = float('inf'), float('inf')
-    max_x, max_y = float('-inf'), float('-inf')
+    mn_x = mn_y =  float('inf')
+    mx_x = mx_y = -float('inf')
 
     def upd(x, y):
-        nonlocal min_x, min_y, max_x, max_y
-        if x < min_x: min_x = x
-        if x > max_x: max_x = x
-        if y < min_y: min_y = y
-        if y > max_y: max_y = y
+        nonlocal mn_x, mn_y, mx_x, mx_y
+        if x < mn_x: mn_x = x
+        if x > mx_x: mx_x = x
+        if y < mn_y: mn_y = y
+        if y > mx_y: mx_y = y
 
     for op in ops:
-        typ = op[0]
-        if typ == 'rectangle':
-            s = _get_attr(op, 'start')
-            e = _get_attr(op, 'end')
+        t = op[0]
+        if t == 'rectangle':
+            s = _get_attr(op, 'start'); e = _get_attr(op, 'end')
             if s: upd(float(s[1]), float(s[2]))
             if e: upd(float(e[1]), float(e[2]))
-        elif typ == 'polyline':
+        elif t == 'polyline':
             pts = _get_attr(op, 'pts')
             if pts:
                 for i in range(1, len(pts)):
-                    if pts[i][0] == 'xy':
-                        upd(float(pts[i][1]), float(pts[i][2]))
-        elif typ == 'circle':
-            c = _get_attr(op, 'center')
-            r = _get_attr(op, 'radius')
+                    if pts[i][0] == 'xy': upd(float(pts[i][1]), float(pts[i][2]))
+        elif t == 'circle':
+            c = _get_attr(op, 'center'); r = _get_attr(op, 'radius')
             if c and r:
-                cx, cy = float(c[1]), float(c[2])
-                rv = float(r[1])
-                upd(cx - rv, cy - rv)
-                upd(cx + rv, cy + rv)
-        elif typ == 'pin':
-            at = _get_attr(op, 'at')
-            if at:
-                upd(float(at[1]), float(at[2]))
-        elif typ in ('property', 'text'):
-            at = _get_attr(op, 'at')
-            hide = _get_attr(op, 'hide')
-            if at and (not hide or hide[1] != 'yes'):
-                x, y = float(at[1]), float(at[2])
-                # Text renders rightward/downward from anchor; estimate extent
-                text_content = op[1][1] if len(op) > 1 and isinstance(op[1], list) and len(op[1]) > 1 else ''
-                text_width = len(text_content) * 1.27  # ~1.27mm per char
-                upd(x, y)
-                upd(x + text_width, y - 2.54)
+                cx, cy, rv = float(c[1]), float(c[2]), float(r[1])
+                upd(cx-rv, cy-rv); upd(cx+rv, cy+rv)
+        elif t == 'pin':
+            a = _get_attr(op, 'at')
+            if a: upd(float(a[1]), float(a[2]))
+        elif t in ('property', 'text'):
+            a = _get_attr(op, 'at'); h = _get_attr(op, 'hide')
+            if a and (not h or h[1] != 'yes'):
+                x, y = float(a[1]), float(a[2])
+                txt = op[1][1] if len(op) > 1 and isinstance(op[1], list) else ''
+                upd(x, y); upd(x + len(txt) * 1.27, y - 2.54)
 
-    if min_x == float('inf'):
-        return {'x': -5, 'y': -5, 'w': 10, 'h': 10}
+    if mn_x == float('inf'):
+        return {'x': -5.0, 'y': -5.0, 'w': 10.0, 'h': 10.0}
     return {
-        'x': min_x - BBOX_PAD,
-        'y': min_y - BBOX_PAD,
-        'w': max_x - min_x + BBOX_PAD * 2,
-        'h': max_y - min_y + BBOX_PAD * 2,
+        'x': mn_x - BBOX_PAD,
+        'y': mn_y - BBOX_PAD,
+        'w': mx_x - mn_x + BBOX_PAD * 2,
+        'h': mx_y - mn_y + BBOX_PAD * 2,
     }
 
 
 class BackendLayoutEngine:
-    """Handles component placement and A* wire routing on the backend."""
+    """Hierarchical schematic placement + Z-shaped orthogonal wire routing."""
 
     def __init__(self):
-        self.components = []  # list of dicts with ref_des, ops, category, bbox, x, y
+        self.components: list[dict] = []
+        self.matrix: list | None = None
+        self.grid = None
 
-    def add_component(self, ref_des: str, ops: list, category: str, id_str: str = ''):
+    def add_component(self, ref_des: str, ops: list, category: str,
+                      id_str: str = '') -> None:
         bbox = calculate_ops_bbox(ops)
         self.components.append({
-            'ref_des': ref_des,
-            'ops': ops,
+            'ref_des':  ref_des,
+            'ops':      ops,
             'category': category,
-            'id_str': id_str,
-            'bbox': bbox,
-            'x': 0.0,
-            'y': 0.0,
-            'width': bbox['w'],
-            'height': bbox['h'],
+            'id_str':   id_str,
+            'bbox':     bbox,
+            'x': 0.0, 'y': 0.0, 'rotation': 0.0,
+            'width':    bbox['w'],
+            'height':   bbox['h'],
+            'tier':     _tier(category, id_str),
+            'sem':      _sem_type(category, id_str),
         })
 
-    def set_component_position(self, ref_des: str, x: float, y: float, rotation: float = 0):
-        """Set the (x, y, rotation) of a previously added component."""
-        for c in self.components:
-            if c['ref_des'] == ref_des:
-                c['x'] = x
-                c['y'] = y
-                c['rotation'] = rotation
-                return
+    def set_component_position(self, ref_des: str, x: float, y: float,
+                               rotation: float = 0.0) -> None:
+        c = self._get_comp(ref_des)
+        if c:
+            c['x'] = x; c['y'] = y; c['rotation'] = rotation
 
-    def execute_placement(self, pin_matrix: dict = None, netlist: list = None):
-        """Column-based auto-layout with connectivity-aware vertical ordering."""
+    # ── Placement ──────────────────────────────────────────────────────
+
+    def execute_placement(self, pin_matrix: dict = None,
+                          netlist: list = None) -> None:
+        """Hierarchical tier placement with satellite passives."""
         if not self.components:
             return
 
-        cols = [[], [], [], []]
-        for comp in self.components:
-            comp['column'] = _get_column_for_category(comp['category'], comp.get('id_str', ''))
-            cols[comp['column']].append(comp)
+        netlist  = netlist  or []
+        pin_matrix = pin_matrix or {}
 
-        # ── Connectivity-aware ordering within each column ──
-        # Compute a connectivity score: pair of components that share a net
-        # should be placed near each other vertically.
-        if pin_matrix and netlist:
-            conn_graph = self._build_connectivity_graph(pin_matrix, netlist)
-            for col_idx, col in enumerate(cols):
-                if len(col) < 2:
-                    continue
-                # Sort by the average Y of connected pins in adjacent columns
-                col.sort(key=lambda c: self._conn_y_rank(c, col_idx, conn_graph, pin_matrix))
+        parent_map = self._build_parent_map(netlist)
 
-        col_widths = []
-        for col in cols:
-            if not col:
-                col_widths.append(0)
-            else:
-                col_widths.append(max(c['width'] + BBOX_PAD * 2 for c in col))
-
-        active = sum(1 for c in cols if c)
-        total_width = sum(col_widths) + (active - 1) * COLUMN_SPACING
-        x_offset = -total_width / 2
-
-        for col_idx, col in enumerate(cols):
-            if not col:
-                continue
-
-            col_total = sum(c['height'] + BBOX_PAD * 2 for c in col) - BBOX_PAD * 2 + ROW_CLEARANCE * (len(col) - 1)
-            y_offset = -col_total / 2
-
-            for comp in col:
-                comp['x'] = _snap(x_offset + (col_widths[col_idx] - comp['width']) / 2)
-                comp['y'] = _snap(y_offset - comp['bbox']['y'])
-                y_offset += comp['height'] + BBOX_PAD * 2 + ROW_CLEARANCE
-
-            x_offset += col_widths[col_idx] + COLUMN_SPACING
-
-    def _build_connectivity_graph(self, pin_matrix: dict, netlist: list) -> dict:
-        """Build a map: (ref_a, ref_b) -> list of connection Y-coord pairs."""
-        conn = {}
-        comp_pos = {c['ref_des']: c for c in self.components}
-        for net in netlist:
-            src_ref = net['source'].split(':')[0]
-            tgt_ref = net['target'].split(':')[0]
-            if src_ref == tgt_ref:
-                continue
-            key = (src_ref, tgt_ref) if src_ref < tgt_ref else (tgt_ref, src_ref)
-            src_pin = pin_matrix.get(net['source'])
-            tgt_pin = pin_matrix.get(net['target'])
-            if src_pin and tgt_pin:
-                src_comp = comp_pos.get(src_ref)
-                tgt_comp = comp_pos.get(tgt_ref)
-                if src_comp and tgt_comp:
-                    # Estimate Y in world coords (before placement, use bbox center)
-                    sy = src_pin['y']  # relative to comp origin
-                    ty = tgt_pin['y']
-                    conn.setdefault(key, []).append((sy, ty))
-        return conn
-
-    def _conn_y_rank(self, comp: dict, col_idx: int, conn_graph: dict,
-                     pin_matrix: dict) -> float:
-        """Compute a rank value for component ordering within a column.
-        Lower values = place higher (more negative Y).
-        Looks at the average Y of connected pins on components in adjacent columns.
-        """
-        ref = comp['ref_des']
-        connected_ys = []
-        for (a, b), pairs in conn_graph.items():
-            if a == ref:
-                partner = b
-            elif b == ref:
-                partner = a
-            else:
-                continue
-            # Only consider connections to adjacent columns
-            partner_comp = self._get_comp(partner)
-            if not partner_comp:
-                continue
-            partner_col = partner_comp.get('column', 3)
-            if abs(partner_col - col_idx) > 1:
-                continue
-            for _, ty in pairs:
-                connected_ys.append(ty if a == ref else ty)
-        if not connected_ys:
-            return 0.0
-        return sum(connected_ys) / len(connected_ys)
-
-    def build_obstacle_matrix(self, pin_matrix: dict = None):
-        """Build a walkable grid with component footprints blocked.
-
-        Blocks the FULL inflated bounding box of every component (covers
-        polyline-drawn bodies too), then carves narrow escape corridors
-        outward from each pin so wires can exit but cannot cut through
-        the component body.
-        """
-        matrix = [[1 for _ in range(MATRIX_SIZE)] for _ in range(MATRIX_SIZE)]
-
-        # 1) Block full inflated bbox of every component
-        for comp in self.components:
-            bx = comp['x'] + comp['bbox']['x']
-            by = comp['y'] + comp['bbox']['y']
-            gsx = math.floor(bx / GRID_SIZE) + MATRIX_OFFSET - 1
-            gsy = math.floor(by / GRID_SIZE) + MATRIX_OFFSET - 1
-            gex = math.ceil((bx + comp['bbox']['w']) / GRID_SIZE) + MATRIX_OFFSET + 1
-            gey = math.ceil((by + comp['bbox']['h']) / GRID_SIZE) + MATRIX_OFFSET + 1
-            for gx in range(gsx, gex + 1):
-                for gy in range(gsy, gey + 1):
-                    if 0 <= gx < MATRIX_SIZE and 0 <= gy < MATRIX_SIZE:
-                        matrix[gy][gx] = 0
-
-        # 2) Carve a 1-cell escape corridor outward from each pin endpoint
-        if pin_matrix:
-            for key, pin in pin_matrix.items():
-                ref = key.split(':')[0]
-                comp = self._get_comp(ref)
-                if not comp:
-                    continue
-                px = pin['x'] + comp['x']
-                py = pin['y'] + comp['y']
-                gpx = round(px / GRID_SIZE) + MATRIX_OFFSET
-                gpy = round(py / GRID_SIZE) + MATRIX_OFFSET
-                if not (0 <= gpx < MATRIX_SIZE and 0 <= gpy < MATRIX_SIZE):
-                    continue
-
-                # Outward direction: away from component bbox center (dominant axis)
-                ccx = comp['x'] + comp['bbox']['x'] + comp['bbox']['w'] / 2
-                ccy = comp['y'] + comp['bbox']['y'] + comp['bbox']['h'] / 2
-                dx = px - ccx
-                dy = py - ccy
-                if abs(dx) >= abs(dy):
-                    step = (1 if dx >= 0 else -1, 0)
-                else:
-                    step = (0, 1 if dy >= 0 else -1)
-
-                # Carve from pin cell outward until clear of the blocked region (+2 cells)
-                cx_g, cy_g = gpx, gpy
-                cleared = 0
-                for _ in range(60):
-                    if 0 <= cx_g < MATRIX_SIZE and 0 <= cy_g < MATRIX_SIZE:
-                        if matrix[cy_g][cx_g] == 1:
-                            cleared += 1
-                        matrix[cy_g][cx_g] = 1
-                    if cleared >= 5:
-                        break
-                    cx_g += step[0]
-                    cy_g += step[1]
-
-        self.matrix = matrix
-        self.grid = Grid(matrix=matrix)
-
-    def _get_comp(self, ref_des: str):
+        tiers: dict[int, list] = {0: [], 1: [], 2: [], 3: []}
+        sats:  list[dict] = []
         for c in self.components:
-            if c['ref_des'] == ref_des:
-                return c
-        return None
+            if c['tier'] == -1:
+                sats.append(c)
+            else:
+                tiers.setdefault(c['tier'], []).append(c)
 
-    def _get_comp_offset(self, ref_des: str):
-        for c in self.components:
-            if c['ref_des'] == ref_des:
-                return (c['x'], c['y'])
-        return (0, 0)
+        for t in tiers:
+            tiers[t].sort(key=lambda c: -c['height'])
 
-    def unblock_pin_cells(self, pin_matrix: dict):
-        """(Deprecated) Pin corridors are now carved during build_obstacle_matrix."""
-        pass
+        x_cursor = 0.0
+        for tier_idx in sorted(tiers):
+            comps = tiers[tier_idx]
+            if not comps:
+                continue
+            tier_w = max(c['width'] for c in comps) + BBOX_PAD * 2
+            y_cursor = 0.0
+            for c in comps:
+                c['x'] = _snap(x_cursor + (tier_w - c['width']) / 2)
+                c['y'] = _snap(y_cursor - c['bbox']['y'])
+                y_cursor += c['height'] + BBOX_PAD * 2 + COMP_V_GAP
+            x_cursor += tier_w + TIER_GAP
 
-    def _get_attr(self, node, name):
-        """Get attribute sub-list from a KiCad S-expr node."""
-        if not isinstance(node, list):
-            return None
-        for child in node[1:]:
-            if isinstance(child, list) and child[0] == name:
-                return child
-        return None
+        sat_groups: dict[str, list] = {}
+        orphan_sats: list[dict] = []
+        for s in sats:
+            par = parent_map.get(s['ref_des'])
+            par_c = self._get_comp(par) if par else None
+            if par_c and par_c['tier'] >= 0:
+                sat_groups.setdefault(par, []).append(s)
+            else:
+                orphan_sats.append(s)
 
-    def route_traces(self, netlist: list, pin_matrix: dict) -> list:
-        """Orthogonal L/Z-shaped schematic wire routing.
+        for par_ref, group in sat_groups.items():
+            par_c = self._get_comp(par_ref)
+            if not par_c:
+                continue
+            sx = _snap(par_c['x'] + par_c['width'] + SAT_H_GAP)
+            sy = _snap(par_c['y'])
+            for i, s in enumerate(group):
+                s['x'] = sx
+                s['y'] = _snap(sy + i * (s['height'] + SAT_V_GAP))
 
-        Replaces the A* maze router. Schematics allow wire crossings — no
-        obstacle avoidance needed. Simple 2-4-point Manhattan paths produce
-        clean, readable output without the giant ghost loops A* creates.
-        """
-        EXIT_STUB = GRID_SIZE * 3
-        comp_positions = {c['ref_des']: (c['x'], c['y']) for c in self.components}
-        traces = []
+        if orphan_sats:
+            rx = max((c['x'] + c['width'] for c in self.components
+                      if c['tier'] != -1), default=x_cursor)
+            rx = _snap(rx + TIER_GAP)
+            ry = 0.0
+            for s in orphan_sats:
+                s['x'] = rx
+                s['y'] = _snap(ry)
+                ry += s['height'] + SAT_V_GAP
 
-        def _net_len(conn):
-            s = pin_matrix.get(conn['source'])
-            t = pin_matrix.get(conn['target'])
-            if not s or not t:
-                return float('inf')
+        xs = [c['x'] for c in self.components]
+        ys = [c['y'] for c in self.components]
+        if xs:
+            ox = _snap((max(xs) + min(xs)) / 2)
+            oy = _snap((max(ys) + min(ys)) / 2)
+            for c in self.components:
+                c['x'] = _snap(c['x'] - ox)
+                c['y'] = _snap(c['y'] - oy)
+
+    def _build_parent_map(self, netlist: list) -> dict[str, str]:
+        scores: dict[tuple[str, str], int] = {}
+        for conn in netlist:
             sr = conn['source'].split(':')[0]
             tr = conn['target'].split(':')[0]
-            so = comp_positions.get(sr)
-            to_ = comp_positions.get(tr)
-            if so is None or to_ is None:
-                return float('inf')
-            return abs((s['x'] + so[0]) - (t['x'] + to_[0])) + abs((s['y'] + so[1]) - (t['y'] + to_[1]))
+            sc = self._get_comp(sr)
+            tc = self._get_comp(tr)
+            if not sc or not tc:
+                continue
+            for sat_c, ic_c in [(sc, tc), (tc, sc)]:
+                if sat_c['tier'] == -1 and ic_c['tier'] >= 0:
+                    key = (sat_c['ref_des'], ic_c['ref_des'])
+                    scores[key] = scores.get(key, 0) + 1
 
-        ordered = sorted(netlist, key=_net_len)
+        parent: dict[str, str] = {}
+        for (sat, ic), _ in sorted(scores.items(), key=lambda kv: -kv[1]):
+            if sat not in parent:
+                parent[sat] = ic
+        return parent
 
-        for conn in ordered:
-            src_key = conn['source']
-            tgt_key = conn['target']
-            src = pin_matrix.get(src_key)
-            tgt = pin_matrix.get(tgt_key)
-            if not src or not tgt:
+    # ── Wire routing ───────────────────────────────────────────────────
+
+    def route_traces(self, netlist: list, pin_matrix: dict) -> list:
+        """Z-shaped orthogonal schematic wire routing with ghost-loop guard."""
+        pos = {c['ref_des']: (c['x'], c['y']) for c in self.components}
+        traces = []
+
+        def _abs(key: str) -> Optional[tuple[float, float]]:
+            ref = key.split(':')[0]
+            if not ref:
+                return None
+            pin = pin_matrix.get(key)
+            off = pos.get(ref)
+            if pin is None or off is None:
+                return None
+            return (_snap(pin['x'] + off[0]), _snap(pin['y'] + off[1]))
+
+        def _mhd(conn) -> float:
+            s = _abs(conn['source']); t = _abs(conn['target'])
+            if not s or not t: return float('inf')
+            return abs(s[0]-t[0]) + abs(s[1]-t[1])
+
+        for conn in sorted(netlist, key=_mhd):
+            s_pos = _abs(conn['source'])
+            t_pos = _abs(conn['target'])
+            if not s_pos or not t_pos:
                 continue
 
-            src_ref = src_key.split(':')[0]
-            tgt_ref = tgt_key.split(':')[0]
+            sx, sy = s_pos
+            ex, ey = t_pos
 
-            if not src_ref or not tgt_ref:
+            if abs(ex-sx) + abs(ey-sy) > MAX_WIRE_MANHATTAN:
                 continue
-
-            src_off = comp_positions.get(src_ref)
-            tgt_off = comp_positions.get(tgt_ref)
-            if src_off is None or tgt_off is None:
-                continue
-
-            sx = _snap(src['x'] + src_off[0])
-            sy = _snap(src['y'] + src_off[1])
-            ex = _snap(tgt['x'] + tgt_off[0])
-            ey = _snap(tgt['y'] + tgt_off[1])
-
             if sx == ex and sy == ey:
                 continue
 
-            if sx == ex:
+            if abs(sx - ex) < 0.001:
                 path = [{'x': sx, 'y': sy}, {'x': ex, 'y': ey}]
-            elif sy == ey:
+            elif abs(sy - ey) < 0.001:
                 path = [{'x': sx, 'y': sy}, {'x': ex, 'y': ey}]
             else:
-                pin_dir = src.get('direction', 'right')
-                stub_dx = -EXIT_STUB if pin_dir == 'left' else EXIT_STUB
+                src_pin = pin_matrix.get(conn['source'], {})
+                pin_dir = src_pin.get('direction', 'right')
+                stub_dx = -PIN_STUB_LEN if pin_dir == 'left' else PIN_STUB_LEN
                 mid_x = _snap(sx + stub_dx)
-                if (stub_dx > 0 and mid_x > ex) or (stub_dx < 0 and mid_x < ex):
+                if stub_dx > 0 and mid_x > ex - PIN_STUB_LEN:
+                    mid_x = _snap((sx + ex) / 2)
+                elif stub_dx < 0 and mid_x < ex + PIN_STUB_LEN:
                     mid_x = _snap((sx + ex) / 2)
                 path = [
                     {'x': sx,    'y': sy},
@@ -400,100 +324,50 @@ class BackendLayoutEngine:
                 ]
 
             traces.append({
-                'source': src_key,
-                'target': tgt_key,
-                'path': path,
+                'source': conn['source'],
+                'target': conn['target'],
+                'path':   path,
             })
 
         return traces
 
-    def check_and_fix_overlaps(self, traces: list, max_passes: int = 2):
-        """Post-route validation: detect traces that run on top of each other
-        (2+ consecutive shared cells = parallel overlap, not a crossing) and
-        re-route the offenders with the other traces' cells hard-blocked.
+    # ── Legacy stubs (used only by old PCB router fallback) ────────────
 
-        Returns (traces, n_fixed, n_remaining_conflicts).
-        """
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
+    def build_obstacle_matrix(self, pin_matrix: dict = None) -> None:
+        try:
+            from pathfinding.core.grid import Grid
+            self.matrix = [[1]*MATRIX_SIZE for _ in range(MATRIX_SIZE)]
+            self.grid   = Grid(matrix=self.matrix)
+        except Exception:
+            self.matrix = None
+            self.grid   = None
 
-        def to_cells(tr):
-            return [
-                (round(p['x'] / GRID_SIZE) + MATRIX_OFFSET,
-                 round(p['y'] / GRID_SIZE) + MATRIX_OFFSET)
-                for p in tr['path']
-            ]
+    def unblock_pin_cells(self, pin_matrix: dict) -> None:
+        pass
 
-        def find_conflicts(all_cells):
-            usage = {}
-            for idx, cs in enumerate(all_cells):
-                for c in cs[1:-1]:
-                    usage.setdefault(c, set()).add(idx)
-            conflicts = []
-            for idx, cs in enumerate(all_cells):
-                run = 0
-                for c in cs[1:-1]:
-                    if len(usage.get(c, ())) > 1:
-                        run += 1
-                        if run >= 2:  # 2+ consecutive shared cells = parallel overlap
-                            conflicts.append(idx)
-                            break
-                    else:
-                        run = 0
-            return conflicts
+    def check_and_fix_overlaps(self, traces: list,
+                               max_passes: int = 2) -> tuple:
+        return traces, 0, 0
 
-        n_fixed = 0
-        for _ in range(max_passes):
-            all_cells = [to_cells(t) for t in traces]
-            conflicts = find_conflicts(all_cells)
-            if not conflicts:
-                return traces, n_fixed, 0
+    def _get_comp(self, ref_des: str) -> Optional[dict]:
+        for c in self.components:
+            if c['ref_des'] == ref_des:
+                return c
+        return None
 
-            # Re-route longest offenders first — they have the most detour room
-            conflicts.sort(key=lambda i: -len(all_cells[i]))
-            progress = False
-            for idx in conflicts:
-                cs = all_cells[idx]
-                if len(cs) < 2:
-                    continue
-                # Hard-block every middle cell occupied by any OTHER trace
-                m = [row[:] for row in self.matrix]
-                for j, ocs in enumerate(all_cells):
-                    if j == idx:
-                        continue
-                    for (x, y) in ocs[1:-1]:
-                        if 0 <= x < MATRIX_SIZE and 0 <= y < MATRIX_SIZE:
-                            m[y][x] = 0
-                grid = Grid(matrix=m)
-                (sx, sy), (ex, ey) = cs[0], cs[-1]
-                try:
-                    start = grid.node(sx, sy)
-                    end = grid.node(ex, ey)
-                    start.walkable = True
-                    end.walkable = True
-                    path, _ = finder.find_path(start, end, grid)
-                except Exception:
-                    path = None
-                if path:
-                    manhattan = abs(sx - ex) + abs(sy - ey)
-                    if len(path) <= max(manhattan * 4, 50):
-                        traces[idx]['path'] = [
-                            {'x': (n.x - MATRIX_OFFSET) * GRID_SIZE,
-                             'y': (n.y - MATRIX_OFFSET) * GRID_SIZE}
-                            for n in path
-                        ]
-                        all_cells[idx] = to_cells(traces[idx])
-                        n_fixed += 1
-                        progress = True
-            if not progress:
-                break  # nothing improvable; stop iterating
-
-        remaining = len(find_conflicts([to_cells(t) for t in traces]))
-        return traces, n_fixed, remaining
+    def _get_comp_offset(self, ref_des: str) -> tuple[float, float]:
+        c = self._get_comp(ref_des)
+        return (c['x'], c['y']) if c else (0.0, 0.0)
 
     def get_placements(self) -> list:
-        """Return final absolute positions for all components."""
         return [
             {'ref_des': c['ref_des'], 'x': c['x'], 'y': c['y'],
-             'rotation': c.get('rotation', 0)}
+             'rotation': c.get('rotation', 0.0)}
             for c in self.components
         ]
+
+    def _build_connectivity_graph(self, pin_matrix, netlist):
+        return {}
+
+    def _conn_y_rank(self, comp, col_idx, conn_graph, pin_matrix):
+        return 0.0

@@ -42,10 +42,13 @@ def layout_route_node(state, config):
         _emit(config, "agent:done", {"message": "No components could be placed."})
         return {}
 
-    # ── 2a. Schematic layout — column-based, drives frontend rendering ──
+    # ── 2a. Schematic layout — tier-based, drives frontend rendering ──
     engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
 
-    # ── 2b. PCB layout — compact, for routability and board export ──
+    # ── 2b. Schematic wire routing — Z-shaped orthogonal paths, no A* ──
+    sch_traces = engine.route_traces(netlist, pin_matrix)
+
+    # ── 2c. PCB layout — compact, for routability and board export ──
     pcb_placements = place_components(comps, netlist)
     pcb_pos = {p["ref_des"]: (p["x"], p["y"], p.get("rotation", 0)) for p in pcb_placements}
 
@@ -170,10 +173,7 @@ def layout_route_node(state, config):
     board_dict = model.to_dict()
     _emit(config, "agent:layout_ready", {
         "placements": placements,
-        "traces": [
-            {"source": t.net, "path": [{"x": p[0], "y": p[1]} for p in t.path]}
-            for t in model.traces
-        ],
+        "traces": sch_traces,
         "power_labels": power_labels,
         "netlist": netlist,
         "power_pins": power_pins,
@@ -186,10 +186,7 @@ def layout_route_node(state, config):
     _emit_activity(config, "layout", "PCB Layout", "done")
     return {
         "component_placements": placements,
-        "wire_paths": [
-            {"source": t.net, "path": [{"x": p[0], "y": p[1]} for p in t.path]}
-            for t in model.traces
-        ],
+        "wire_paths": sch_traces,
         "power_labels": power_labels,
         "board_model": board_dict,
         "_board_model": board_dict,
