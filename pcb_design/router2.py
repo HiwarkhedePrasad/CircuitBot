@@ -23,7 +23,7 @@ from pcb_design.geometry import (
 GRID_RESOLUTION = 0.254       # 10 mil
 VIA_COST = 50
 TRACE_WEIGHT = 12
-MAX_PATH_MULTIPLIER = 4
+MAX_PATH_MULTIPLIER = 8
 BOARD_MARGIN_MM = 5.0
 
 
@@ -88,6 +88,8 @@ def route_nets(model: BoardModel,
 
     power_nets = {"VCC", "VDD", "VBAT", "VIN", "VBUS", "VSYS", "VOUT", "+5V", "+3.3V", "3.3V", "5V"}
 
+    comp_positions = {c.ref: (c.x, c.y) for c in model.components}
+
     def _abs_pos(pin_key: str) -> Optional[tuple[float, float]]:
         pin = pin_matrix.get(pin_key)
         if not pin:
@@ -138,7 +140,7 @@ def route_nets(model: BoardModel,
         for poly, clr in comp_pad_polys:
             if poly is None:
                 continue
-            buf = poly.buffer(clr, join_style=2)
+            buf = poly.buffer(clr + GRID_RESOLUTION * 0.5, join_style=2)
             if buf is None or buf.is_empty:
                 continue
             bounds = buf.bounds
@@ -159,7 +161,7 @@ def route_nets(model: BoardModel,
         for t in existing_routes:
             if t.layer != layer:
                 continue
-            buf = trace_buffer(t.path, t.width + clearance * 2)
+            buf = trace_buffer(t.path, t.width + clearance * 2 + GRID_RESOLUTION)
             if buf is None:
                 continue
             bounds = buf.bounds
@@ -208,7 +210,7 @@ def route_nets(model: BoardModel,
         if len(path) > max(int(manhattan * MAX_PATH_MULTIPLIER), 30):
             return None
 
-        mm_path = [(_mm(p[0] + grid_ox), _mm(p[1] + grid_oy)) for p in path]
+        mm_path = [(_mm(p.x + grid_ox), _mm(p.y + grid_oy)) for p in path]
         return BoardTrace(net=net_name, layer=layer, width=width, path=mm_path)
 
     # Sort nets by Manhattan distance (shortest first)
@@ -270,7 +272,7 @@ def drc2(model: BoardModel, drc: Optional[DRCConfig] = None) -> list[dict]:
             poly = pad_polygon(
                 comp.x + pad.x, comp.y + pad.y,
                 pad.width, pad.height, pad.shape,
-                comp.rotation + (pad.rotation, 0),
+                comp.rotation + (pad.rotation or 0),
             )
             if poly is not None:
                 pad_polys.setdefault(comp.ref, []).append((pad.number, poly))

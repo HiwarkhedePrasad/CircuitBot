@@ -11,6 +11,12 @@ _KNOWN_SYMBOLS = frozenset([
     "Device:R_Small", "Device:C_Small", "Device:LED", "Device:L_Small",
     "Device:D_Small", "Connector_USB:USB_C_Receptacle_USB2.0",
     "Regulator_Linear:AMS1117-3.3",
+    "Connector_USB:TPD6S300A",
+    "Sensor_Temperature:TMP117xxYBG",
+    "Sensor_Temperature:DS18B20",
+    "Device:Crystal",
+    "Connector:AVR-ISP-6",
+    "Device:Polyfuse",
 ])
 
 _CRITICAL_PATTERNS = [
@@ -58,6 +64,36 @@ def validate_node(state, config):
         result = {"valid": True, "issues": []}
     issues = result.get("issues", [])
     missing = result.get("missing_components", [])
+    errors = [i for i in issues if i.get("severity") == "error"]
+    warnings = [i for i in issues if i.get("severity") == "warning"]
+
+    # Auto-correct library prefix mismatches in-place
+    fixed_issues = []
+    for issue in issues:
+        msg = (issue.get("message", "") or "").lower()
+        if "library prefix" in msg and issue.get("id_str"):
+            bad_id = issue["id_str"]
+            corrected = None
+            suggestion = issue.get("suggestion", "") or ""
+            if "use" in suggestion.lower() and ":" in suggestion:
+                parts = suggestion.split("Use", 1)
+                if len(parts) > 1:
+                    corrected = parts[1].split("instead")[0].strip().rstrip(".")
+            elif "should be" in msg:
+                prefix = msg.split("should be")[-1].strip().strip("'\"")
+                name = bad_id.split(":")[-1]
+                corrected = f"{prefix}:{name}"
+            if corrected and ":" in corrected:
+                for comp in comps:
+                    if comp.get("id_str") == bad_id and comp.get("id_str") != corrected:
+                        comp["id_str"] = corrected
+                        _emit(config, "agent:log", {
+                            "message": f"  Auto-corrected {bad_id} -> {corrected}"
+                        })
+                        break
+            continue
+        fixed_issues.append(issue)
+    issues = fixed_issues
     errors = [i for i in issues if i.get("severity") == "error"]
     warnings = [i for i in issues if i.get("severity") == "warning"]
 
@@ -124,6 +160,7 @@ def validate_node(state, config):
                         "pads": best.get("pads", []),
                         "justification": f"Auto-added by validator: {mc.get('description', query)}",
                         "datasheet_text": "",
+                        "subsystem": mc.get("subsystem", ""),
                     })
                     _emit(config, "agent:log", {
                         "message": f"  Added missing {ref} ({best['id_str']}) for: {mc.get('description', query)}"

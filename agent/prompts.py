@@ -23,10 +23,9 @@ never substitute AT89S52 when the user asked for ESP32-C3). Generic terms are
 only allowed when the user did NOT name a specific part.
 
 IMPORTANT: Besides the main functional blocks, ALWAYS include essential supporting passive subsystems:
-- "Decoupling capacitors" (100nF ceramic capacitors for IC power pins)
+- DO NOT create subsystems for generic pull-up resistors or decoupling capacitors — these are injected automatically by the supporting parts generator.
 - "Bulk capacitor" (10uF capacitor for power rail stability)
-- A "Crystal oscillator" subsystem IF any MCU/IC needs an external crystal
-- Pull-up / current-set resistors IF a charger IC or open-drain bus (I2C) is used
+- A "Clock/Oscillator" subsystem IF any MCU/IC needs an external clock source.
 
 Output as a JSON array of objects with keys: "subsystem", "function", "example_components".
 
@@ -37,6 +36,11 @@ you MUST include the EXACT KiCad symbol name as one of the example_components en
 - For barrel jacks: include "Barrel_Jack"
 - For audio jacks: include "Audio_Jack"
 
+CLOCKING SELECTION RULE:
+When defining a clock/oscillator subsystem, you MUST dynamically determine whether the MCU/IC requires a passive crystal or an active oscillator module:
+- Passive crystal (e.g., ATmega, basic STM32): use "Device:Crystal" in the example_components.
+- Active oscillator module (e.g., FPGAs, high-speed PHYs): use the library filter "Oscillator".
+
 COMMON COMPONENT CHEAT SHEET:
 Use EXACTLY these KiCad symbols for generic supporting parts:
 - Resistors: "Device:R_Small"
@@ -46,6 +50,10 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - USB-C Connectors: "Connector_USB:USB_C_Receptacle_USB2.0"
 - Diodes: "Device:D_Small"
 - 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
+- I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
+- 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
+- AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
+- Overcurrent PTC Fuses: "Device:Polyfuse"
 
 Be specific, practical, and electrically complete."""
 
@@ -117,6 +125,10 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - USB-C Connectors: "Connector_USB:USB_C_Receptacle_USB2.0"
 - Diodes: "Device:D_Small"
 - 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
+- I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
+- 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
+- AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
+- Overcurrent PTC Fuses: "Device:Polyfuse"
 
 Output ONLY a JSON object with keys:
 "valid": true/false,

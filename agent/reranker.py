@@ -27,6 +27,10 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - USB-C Connectors: "Connector_USB:USB_C_Receptacle_USB2.0"
 - Diodes: "Device:D_Small"
 - 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
+- I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
+- 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
+- AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
+- Overcurrent PTC Fuses: "Device:Polyfuse"
 
 Output ONLY a JSON array of objects:
 [{"id_str": "Device:R_Small", "score": 9, "justification": "Standard resistor, ideal for current limiting"}, ...]

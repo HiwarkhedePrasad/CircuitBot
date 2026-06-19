@@ -92,17 +92,19 @@ RULES: list[Rule] = [
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "18pF crystal load cap", "count": 2},
         ],
     ),
-    # ── USB connector (USB-C): CC resistors ──
+    # ── USB connector (USB-C): CC resistors + ESD protection ──
     (
         lambda c: _has_lib(c, "Connector") and "USB" in _id(c) and ("TYPE-C" in _id(c) or "USB_C" in _id(c)),
         [
             {"search_query": "5.1k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "5.1kΩ USB-C CC pull-down", "count": 2},
+            {"search_query": "USB ESD protection", "preferred_id_str": "Connector_USB:TPD6S300A", "library_filter": "Connector_USB", "ref_des_prefix": "U", "description": "TPD6S300A USB-C ESD protection", "count": 1},
         ],
     ),
     # ── I²C devices: pull-up resistors ──
     (
         lambda c: (
             "I2C" in _id(c) or "SDA" in _id(c) or "SCL" in _id(c)
+            or _has_lib(c, "Sensor")
             or any(kw in ((c.get("description", "") or "") + (c.get("text", "") or "")).upper()
                    for kw in ["I2C", "SDA ", "SCL ", "TWI", "I²C"])
         ),

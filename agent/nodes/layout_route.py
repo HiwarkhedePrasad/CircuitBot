@@ -37,21 +37,17 @@ def layout_route_node(state, config):
         ops = comp_ops.get(ref_des)
         if not ops:
             continue
-        engine.add_component(ref_des, ops, comp["category"])
+        engine.add_component(ref_des, ops, comp["category"], comp.get("id_str", ""))
     if not engine.components:
         _emit(config, "agent:done", {"message": "No components could be placed."})
         return {}
 
-    # ── 2. Place components ────────────────────────────────────────────
+    # ── 2a. Schematic layout — column-based, drives frontend rendering ──
+    engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
+
+    # ── 2b. PCB layout — compact, for routability and board export ──
     pcb_placements = place_components(comps, netlist)
-    if pcb_placements:
-        for p in pcb_placements:
-            engine.set_component_position(
-                p["ref_des"], p["x"], p["y"],
-                rotation=p.get("rotation", 0),
-            )
-    else:
-        engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
+    pcb_pos = {p["ref_des"]: (p["x"], p["y"], p.get("rotation", 0)) for p in pcb_placements}
 
     # Convert engine components to BoardComponent with pads
     for ec in engine.components:
@@ -69,11 +65,12 @@ def layout_route_node(state, config):
                     rotation=pd.get("rotation", 0), drill=pd.get("drill"),
                 ))
         bbox = ec.get("bbox", {})
+        bx, by, brot = pcb_pos.get(ref, (ec["x"], ec["y"], ec.get("rotation", 0)))
         model.components.append(BoardComponent(
             ref=ref,
             footprint=comp_info.get("footprint", "") if comp_info else "",
-            x=ec["x"], y=ec["y"],
-            rotation=ec.get("rotation", 0),
+            x=bx, y=by,
+            rotation=brot,
             value=comp_info.get("id_str", "").rpartition(":")[2] if comp_info else "",
             pads=pads,
             bbox=(bbox.get("x", 0), bbox.get("y", 0), bbox.get("w", 10), bbox.get("h", 10)),

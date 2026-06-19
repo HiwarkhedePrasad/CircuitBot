@@ -34,6 +34,17 @@ class AgentLLMError(Exception):
 
 
 def _emit(config, event, data):
+    msg = data.get("message", "")
+    if event == "agent:thinking":
+        print(f"[THINKING] {msg} [THINKING]")
+    elif event == "agent:log":
+        print(f"  {msg}")
+    elif event == "agent:component":
+        print(f"  [COMPONENT] {data.get('ref_des', '')} = {data.get('id_str', '')}")
+    elif event in ("agent:done", "agent:layout_ready", "agent:pcb_ready", "agent:error"):
+        print(f"[{event.split(':')[-1].upper()}] {msg}" if msg else f"[{event.split(':')[-1].upper()}] {data}")
+    elif msg:
+        print(f"[{event}] {msg}")
     emit_fn = config["configurable"].get("emit")
     if emit_fn:
         emit_fn(event, data)
@@ -148,6 +159,9 @@ def _retry_llm_call(system: str, user: str, stage: str = "") -> str:
             _rate_limit()
             result = llm_call(system, user)
             _record_call()
+            prefix = f" ({stage})" if stage else ""
+            snippet = result[:300].replace('\n', ' ')
+            print(f"[LLM{prefix}] {snippet}{'...' if len(result) > 300 else ''}")
             return result
         except Exception as e:
             prefix = f" ({stage})" if stage else ""

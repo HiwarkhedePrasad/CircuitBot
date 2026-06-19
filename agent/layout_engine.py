@@ -15,23 +15,32 @@ MATRIX_SIZE = 300
 MATRIX_OFFSET = 150  # offset to keep grid coords positive
 
 BBOX_PAD = 2.0
-COLUMN_SPACING = 6.35   # extra horizontal routing channel between columns (5 grid cells)
-ROW_CLEARANCE = 3.81    # extra vertical routing channel between rows (3 grid cells)
+COLUMN_SPACING = 10.16  # extra horizontal routing channel between columns (8 grid cells)
+ROW_CLEARANCE = 6.35    # extra vertical routing channel between rows (5 grid cells)
 
 # Column definitions — must match frontend COLUMN_DEFS
 COLUMN_KEYWORDS = [
-    ['REGULATOR', 'CONNECTOR', 'POWER', 'BATTERY', 'SWITCH', 'FUSE', 'DIODE'],
-    ['LDO', 'BUCK', 'BOOST', 'CAPACITOR', 'INDUCTOR', 'FILTER', 'CONVERTER'],
+    ['REGULATOR', 'CONNECTOR', 'POWER', 'BATTERY', 'SWITCH', 'FUSE', 'DIODE', 'POLYFUSE'],
+    ['LDO', 'BUCK', 'BOOST', 'CAPACITOR', 'RESISTOR', 'INDUCTOR', 'FILTER', 'CONVERTER'],
     ['MCU', 'ESP32', 'STM32', 'PROCESSOR', 'FPGA', 'DSP', 'MEMORY', 'CPU', 'RF_MODULE'],
     [],  # default
 ]
 
+_IDSTR_TYPE_MAP = {
+    'C_SMALL': 'CAPACITOR', 'C_SMALL_US': 'CAPACITOR', 'C_POLARIZED': 'CAPACITOR',
+    'R_SMALL': 'RESISTOR', 'R': 'RESISTOR',
+    'POLYFUSE': 'FUSE', 'LED': 'DIODE',
+}
 
-def _get_column_for_category(category: str) -> int:
+
+def _get_column_for_category(category: str, id_str: str = '') -> int:
     cat = category.upper()
+    id_name = id_str.split(':')[-1].upper() if ':' in id_str else id_str.upper()
+    mapped = _IDSTR_TYPE_MAP.get(id_name, '')
+    text = f'{cat} {mapped}'
     for i, keywords in enumerate(COLUMN_KEYWORDS):
         for kw in keywords:
-            if kw in cat:
+            if kw in text:
                 return i
     return 3
 
@@ -115,12 +124,13 @@ class BackendLayoutEngine:
     def __init__(self):
         self.components = []  # list of dicts with ref_des, ops, category, bbox, x, y
 
-    def add_component(self, ref_des: str, ops: list, category: str):
+    def add_component(self, ref_des: str, ops: list, category: str, id_str: str = ''):
         bbox = calculate_ops_bbox(ops)
         self.components.append({
             'ref_des': ref_des,
             'ops': ops,
             'category': category,
+            'id_str': id_str,
             'bbox': bbox,
             'x': 0.0,
             'y': 0.0,
@@ -144,7 +154,7 @@ class BackendLayoutEngine:
 
         cols = [[], [], [], []]
         for comp in self.components:
-            comp['column'] = _get_column_for_category(comp['category'])
+            comp['column'] = _get_column_for_category(comp['category'], comp.get('id_str', ''))
             cols[comp['column']].append(comp)
 
         # ── Connectivity-aware ordering within each column ──
@@ -288,7 +298,7 @@ class BackendLayoutEngine:
                         if matrix[cy_g][cx_g] == 1:
                             cleared += 1
                         matrix[cy_g][cx_g] = 1
-                    if cleared >= 3:
+                    if cleared >= 5:
                         break
                     cx_g += step[0]
                     cy_g += step[1]

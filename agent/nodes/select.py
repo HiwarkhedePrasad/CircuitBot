@@ -35,6 +35,29 @@ def select_node(state, config):
     selected = []
     existing_ids = {c["id_str"] for c in state.get("selected_components", [])}
     research.sort(key=lambda s: 0 if any(k in s.get('subsystem', '').lower() for k in ['mcu', 'processing', 'microcontroller', 'core']) else 1)
+
+    _GENERIC_PASSIVES = frozenset([
+        "Device:R_Small", "Device:C_Small", "Device:LED",
+        "Device:L_Small", "Device:D_Small",
+    ])
+    subs_to_skip = set()
+    for sub in research:
+        sub_name = sub.get("subsystem", "")
+        match = next(
+            (c for c in state.get("selected_components", [])
+             if c.get("subsystem") == sub_name
+             and c.get("id_str") not in _GENERIC_PASSIVES),
+            None
+        )
+        if match:
+            subs_to_skip.add(sub_name)
+            selected.append(match)
+            _emit(config, "agent:log", {
+                "message": f"  Preserved {match['id_str']} for '{sub_name}' (validator already fixed this)"
+            })
+
+    research = [sub for sub in research if sub["subsystem"] not in subs_to_skip]
+
     _emit(config, "agent:thinking", {"message": f"Scoring candidates across {len(research)} subsystem(s)..."})
     for sub in research:
         candidates = sub.get("results", [])
@@ -61,6 +84,7 @@ def select_node(state, config):
                 "description": best.get("text", best.get("description", "")),
                 "justification": best.get("justification", ""),
                 "datasheet_text": "",
+                "subsystem": sub.get("subsystem", ""),
             })
             _emit(config, "agent:log", {
                 "message": f"  Selected {best['id_str']} (score={best_score}) for '{sub.get('subsystem', '')}'"
@@ -108,6 +132,56 @@ def select_node(state, config):
         deduped.append(s)
     selected = deduped
 
+    prev_selected = state.get("selected_components", [])
+    current_ids = {c["id_str"] for c in selected}
+    research_names = {s["subsystem"] for s in research}
+    carried = 0
+
+    def _claim_carried_ref(c):
+        ref = c.get("ref_des", "")
+        id_str = c["id_str"]
+        category = c.get("category", "")
+        prefix = ''.join(ch for ch in ref if ch.isalpha()) or _ref_prefix_for(id_str, category)
+        if not ref or ref in seen_refs:
+            old_ref = ref or "?"
+            c["ref_des"] = _next_ref(prefix)
+            if old_ref != c["ref_des"]:
+                _emit(config, "agent:log", {
+                    "message": f"  Renamed {old_ref} -> {c['ref_des']} (carry-forward collision)"
+                })
+        else:
+            num_part = ''.join(ch for ch in ref if ch.isdigit())
+            if num_part:
+                ref_counter[prefix] = max(ref_counter.get(prefix, 0), int(num_part))
+            seen_refs.add(ref)
+        seen_ids.add(id_str)
+
+    for c in prev_selected:
+        if c["id_str"] in current_ids:
+            continue
+        if c.get("justification", "").startswith("Auto-added by validator"):
+            _claim_carried_ref(c)
+            selected.append(c)
+            carried += 1
+            _emit(config, "agent:log", {
+                "message": f"  Preserved {c['id_str']} (validator-added, carried forward)"
+            })
+        elif c.get("subsystem", "") in research_names:
+            _claim_carried_ref(c)
+            selected.append(c)
+            carried += 1
+            _emit(config, "agent:log", {
+                "message": f"  Preserved {c['id_str']} for '{c['subsystem']}' (reranker skipped, previous selection carried forward)"
+            })
+    if carried:
+        _emit(config, "agent:log", {"message": f"  Carried forward {carried} component(s)"})
+
+    covered_prefixes_by_subsystem = {}
+    for c in selected:
+        if c.get("justification", "").startswith("Auto-added by validator") and c.get("subsystem"):
+            prefix = ''.join(ch for ch in c.get("ref_des", "") if ch.isalpha())
+            covered_prefixes_by_subsystem.setdefault(c["subsystem"], set()).add(prefix)
+
     _emit(config, "agent:thinking", {"message": "Fetching datasheets for selected components..."})
     for s in selected:
         id_str = s["id_str"]
@@ -133,7 +207,13 @@ def select_node(state, config):
     support_parts = []
     for s in selected:
         parts = get_supporting_components(s)
+        covered = covered_prefixes_by_subsystem.get(s.get("subsystem", ""), set())
         for p in parts:
+            if p["ref_des_prefix"] in covered:
+                _emit(config, "agent:log", {
+                    "message": f"  Skipped {p['description']} for {s['ref_des']} — '{s.get('subsystem','')}' already has a validator-fixed {p['ref_des_prefix']}-part"
+                })
+                continue
             count = p.get("count", 1)
             for _ in range(count):
                 support_parts.append({
