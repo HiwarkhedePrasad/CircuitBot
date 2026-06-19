@@ -30,6 +30,13 @@ IMPORTANT: Besides the main functional blocks, ALWAYS include essential supporti
 
 Output as a JSON array of objects with keys: "subsystem", "function", "example_components".
 
+CONNECTOR SEARCH RULE:
+When listing example_components for physical connectors (USB, power jack, audio jack, etc.),
+you MUST include the EXACT KiCad symbol name as one of the example_components entries.
+- For USB-C power: include "USB_C_Receptacle_USB2.0"
+- For barrel jacks: include "Barrel_Jack"
+- For audio jacks: include "Audio_Jack"
+
 Be specific, practical, and electrically complete."""
 
 ANALYZE_USER = """Design request: {prompt}

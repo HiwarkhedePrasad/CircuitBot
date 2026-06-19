@@ -33,6 +33,7 @@ def select_node(state, config):
                 })
 
     selected = []
+    existing_ids = {c["id_str"] for c in state.get("selected_components", [])}
     _emit(config, "agent:thinking", {"message": f"Scoring candidates across {len(research)} subsystem(s)..."})
     for sub in research:
         candidates = sub.get("results", [])
@@ -44,6 +45,10 @@ def select_node(state, config):
         ranked = rank_candidates(sub, candidates, existing_components=selected, config=config)
         best = ranked[0] if ranked else None
         if not best:
+            if existing_ids:
+                _emit(config, "agent:log", {
+                    "message": f"  '{sub.get('subsystem', '')}' has no candidates — keeping existing components if any"
+                })
             continue
         best_score = best.get("score", 0)
         best_just = (best.get("justification") or "").upper()
