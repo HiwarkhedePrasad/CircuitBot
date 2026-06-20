@@ -115,6 +115,20 @@ def analyze_node(state, config):
         analysis = _fallback_analysis(state["prompt"])
     else:
         analysis = _normalize(analysis) or _fallback_analysis(state["prompt"])
+    # Auto-inject Microcontroller subsystem when the design clearly needs
+    # programmatic control but the user didn't explicitly ask for an MCU.
+    _IMPLIES_MCU = {"Sensor", "Display", "Status Indicator", "User Input", "Wireless Module"}
+    sub_names = {a.get("subsystem", "") for a in analysis}
+    if "Microcontroller" not in sub_names and sub_names & _IMPLIES_MCU:
+        analysis.insert(0, {
+            "subsystem": "Microcontroller",
+            "function": "Main controller for the system",
+            "bus": "any",
+            "example_components": ["ESP32-C3", "RP2040", "STM32G030"],
+        })
+        _emit(config, "agent:log", {
+            "message": "  Auto-added Microcontroller subsystem (implied by design requirements)"
+        })
     subsystems = [a.get("subsystem", "?") for a in analysis]
     _emit(config, "agent:log", {
         "message": f"Identified {len(analysis)} subsystems: " + ", ".join(subsystems)

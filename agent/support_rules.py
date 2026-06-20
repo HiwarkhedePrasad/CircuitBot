@@ -49,9 +49,30 @@ RULES: list[Rule] = [
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "0.1µF output bypass cap for regulator", "count": 1},
         ],
     ),
+    # ── ATmega / classic AVR MCUs: RESET pull-up + AREF cap + VCC/AVCC decoupling ──
+    # Must come BEFORE the generic MCU rule — first match wins.
+    (
+        lambda c: (
+            any(kw in _id(c) for kw in ["ATMEGA", "ATTINY", "AT90", "ATXMEGA"])
+            or _has_lib(c, "MCU_Microchip_AVR")
+        ),
+        [
+            {"search_query": "10k ohm resistor",  "preferred_id_str": "Device:R_Small",  "library_filter": "Device", "ref_des_prefix": "R", "description": "10kΩ ~RESET pull-up resistor (active-low reset stability)", "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "100nF AREF decoupling cap",                              "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "100nF VCC decoupling cap for AVR MCU",                    "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "100nF AVCC decoupling cap for AVR MCU",                   "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "10µF bulk decoupling cap for AVR MCU",                    "count": 1},
+        ],
+    ),
     # ── Microcontrollers / MCU modules: decoupling caps ──
     (
-        lambda c: (_has_lib(c, "MCU_", "Module_") or "MCU" in _id(c) or "ESP32" in _id(c) or "RP2040" in _id(c) or "STM32" in _id(c)) and not any(dev in _id(c) for dev in ["WEMOS", "NODEMCU", "DEVKIT", "MINI"]),
+        lambda c: (
+            (_has_lib(c, "MCU_", "Module_") or "MCU" in _id(c) or "ESP32" in _id(c) or "RP2040" in _id(c) or "STM32" in _id(c))
+            and not any(dev in _id(c) for dev in ["WEMOS", "NODEMCU", "DEVKIT", "MINI"])
+            # Exclude AVR — already handled by the specific rule above
+            and not any(kw in _id(c) for kw in ["ATMEGA", "ATTINY", "AT90", "ATXMEGA"])
+            and not _has_lib(c, "MCU_Microchip_AVR")
+        ),
         [
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "0.1µF decoupling cap for MCU", "count": 2},
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "10µF bulk decoupling cap for MCU", "count": 1},

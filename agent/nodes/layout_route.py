@@ -163,6 +163,9 @@ def layout_route_node(state, config):
                        detail=f"Routed {len(traces_new)} connections ({len(model.vias)} vias)")
     else:
         # Fallback to old router
+        _emit(config, "agent:log", {
+            "message": "  ⚠ Router2 returned 0 traces (or Shapely not available) — falling back to old router..."
+        })
         engine.build_obstacle_matrix(pin_matrix=pin_matrix)
         traces_old, drc_violations = route_board_old(engine, netlist, pin_matrix)
         if drc_violations:

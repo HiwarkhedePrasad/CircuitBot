@@ -48,12 +48,12 @@ class AgentState(TypedDict, total=False):
     netlist: List[NetlistConnection]
     nets: List[dict]
     power_pins: List[dict]
-    power_labels: List[dict]
+    power_labels: Optional[List[dict]]
     component_bboxes: dict
     component_placements: List[ComponentPlacement]
     wire_paths: List[WirePath]
     error: Optional[str]
     retry_count: int
-    validation_errors: List[dict]
-    rejected_ids: List[str]
+    validation_errors: List[str]
+    rejected_ids: Optional[List[str]]
     _stage: str

@@ -6,7 +6,7 @@ from agent.support_rules import get_supporting_components, resolve_fallback_symb
 from agent.tools import search_components, fetch_footprint
 from agent.utils import (
     _emit, _emit_activity, _check_stage_contract, _stage_result,
-    _is_passive,
+    _is_passive, _sanitize_data,
 )
 
 _PREFIX_RULES: list[tuple[str, str]] = [
@@ -52,11 +52,16 @@ def _assign_ref_des(components: list[dict]) -> list[dict]:
         if existing and re.fullmatch(r'[A-Z]+\d+', existing):
             ref_counts[existing] = ref_counts.get(existing, 0) + 1
 
-    # Pass 3: assign refs — keep unique valid refs, reassign collisions
+    # Pass 3: Pre-register all unique valid refs to seen_refs
     for comp in components:
         existing = comp.get('ref_des', '')
         if existing and re.fullmatch(r'[A-Z]+\d+', existing) and ref_counts.get(existing, 0) == 1:
             seen_refs.add(existing)
+
+    # Pass 4: assign refs — keep unique valid refs, generate new ones for collisions, invalid, or empty refs
+    for comp in components:
+        existing = comp.get('ref_des', '')
+        if existing and re.fullmatch(r'[A-Z]+\d+', existing) and ref_counts.get(existing, 0) == 1:
             continue
         cat = comp.get('category', '')
         id_str = comp.get('id_str', '')
@@ -129,7 +134,12 @@ def select_node(state, config):
                 "message": f"  No candidates for '{sub.get('subsystem', '')}' — skipping"
             })
             continue
-        ranked = rank_candidates(sub, candidates, existing_components=selected, config=config)
+        ranked = rank_candidates(
+            sub, candidates,
+            existing_components=selected,
+            user_prompt=state.get("prompt", ""),
+            config=config,
+        )
         best = ranked[0] if ranked else None
         if not best:
             if existing_ids:
@@ -216,7 +226,10 @@ def select_node(state, config):
             if url:
                 break
         if url:
-            snippet = fetch_datasheet_text(url, offset=0, length=500)
+            snippet = _sanitize_data(
+                fetch_datasheet_text(url, offset=0, length=500),
+                label=f"datasheet:{s['id_str']}"
+            )
             if snippet:
                 s["datasheet_text"] = snippet
                 _emit(config, "agent:log", {

@@ -5,6 +5,7 @@ from agent.utils import _emit, _parse_sexpr_to_ops, _extract_pins_from_ops
 def dispatch_node(state, config):
     pin_matrix = {}
     component_ops = {}
+    skipped_refs = []
     for comp in state.get("selected_components", []):
         id_str = comp["id_str"]
         ref_des = comp["ref_des"]
@@ -30,7 +31,11 @@ def dispatch_node(state, config):
             except Exception:
                 pass
         if not ops:
-            _emit(config, "agent:log", {"message": f"  Skipped {ref_des}: no symbol found"})
+            skipped_refs.append({"ref_des": ref_des, "id_str": id_str})
+            _emit(config, "agent:log", {
+                "message": f"  ⚠ SKIPPED {ref_des} ({id_str}): no symbol found — "
+                           f"this component will be MISSING from the final design"
+            })
             continue
         _emit(config, "agent:component", {
             "id_str": id_str,
@@ -50,4 +55,19 @@ def dispatch_node(state, config):
         pin_matrix.update(pins)
         component_ops[ref_des] = ops
     _emit(config, "agent:log", {"message": "All components loaded. Planning layout and routing..."})
-    return {"pin_matrix": pin_matrix, "component_ops": component_ops}
+    if skipped_refs:
+        skipped_msg = ", ".join(f"{s['ref_des']} ({s['id_str']})" for s in skipped_refs)
+        _emit(config, "agent:log", {
+            "message": f"  ⚠ WARNING: {len(skipped_refs)} component(s) could not be loaded "
+                       f"and will be ABSENT from the design: {skipped_msg}"
+        })
+    result = {
+        "pin_matrix": pin_matrix,
+        "component_ops": component_ops,
+        "retry_count": 0,
+        "validation_errors": [],
+        "rejected_ids": [],
+    }
+    if skipped_refs:
+        result["_skipped_components"] = skipped_refs
+    return result

@@ -55,11 +55,17 @@ def netlist_node(state, config):
         _emit(config, "agent:thinking", {
             "message": f"Planning pin connections (batch {bi}/{len(batches)})..."
         })
+        batch_refs_set = set(batch_refs)
+        batch_comps_desc = "\n".join(
+            f'  {c["ref_des"]}: {c["id_str"]} ({c["category"]})'
+            for c in comps
+            if c["ref_des"] in batch_refs_set
+        )
         pins_desc = "\n".join(f'  {k}: pin_name="{pins[k]["name"]}"' for k in batch_keys)
         existing = ", ".join(n["net"] for n in nets) or "(none yet)"
         text = _call_llm_with_tools(NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER.format(
             prompt=state["prompt"],
-            components_desc=comps_desc,
+            components_desc=batch_comps_desc,
             existing_nets=existing,
             pins_desc=pins_desc,
         ))

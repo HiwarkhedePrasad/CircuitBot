@@ -84,10 +84,11 @@ def fake_llm(system, user):
         ])
     return "[]"
 
-orig = graph._call_llm
-orig_cap = graph.MAX_BATCH_PINS
-graph._call_llm = fake_llm
-graph.MAX_BATCH_PINS = 8  # force multiple batches
+import agent.nodes.netlist as netlist_module
+orig = netlist_module._call_llm_with_tools
+orig_cap = netlist_module.MAX_BATCH_PINS
+netlist_module._call_llm_with_tools = fake_llm
+netlist_module.MAX_BATCH_PINS = 8  # force multiple batches
 
 logs = []
 config = {"configurable": {"emit": lambda ev, d: logs.append(d.get("message", ""))}}
@@ -103,8 +104,8 @@ state = {
 try:
     out = netlist_node(state, config)
 finally:
-    graph._call_llm = orig
-    graph.MAX_BATCH_PINS = orig_cap
+    netlist_module._call_llm_with_tools = orig
+    netlist_module.MAX_BATCH_PINS = orig_cap
 
 nets = {n["net"]: set(n["pins"]) for n in out["nets"]}
 power_keys = {p["pin"] for p in out["power_pins"]}

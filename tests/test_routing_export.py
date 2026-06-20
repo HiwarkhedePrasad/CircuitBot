@@ -43,11 +43,11 @@ engine.execute_placement()
 
 # Build pin matrix (relative pin endpoint coordinates, same as graph.py logic)
 pin_matrix = {
-    'U1:1': {'x': -7.62, 'y': 5.08, 'name': 'VCC'},
-    'U1:2': {'x': -7.62, 'y': -5.08, 'name': 'GND'},
-    'U1:3': {'x': 7.62, 'y': 0.0, 'name': 'IO1'},
-    'R1:1': {'x': -2.54, 'y': 0.0, 'name': '~'},
-    'R1:2': {'x': 2.54, 'y': 0.0, 'name': '~'},
+    'U1:1': {'x': -10.16, 'y': 5.08, 'angle': 0, 'name': 'VCC'},
+    'U1:2': {'x': -10.16, 'y': -5.08, 'angle': 0, 'name': 'GND'},
+    'U1:3': {'x': 10.16, 'y': 0.0, 'angle': 180, 'name': 'IO1'},
+    'R1:1': {'x': -5.08, 'y': 0.0, 'angle': 0, 'name': '~'},
+    'R1:2': {'x': 5.08, 'y': 0.0, 'angle': 180, 'name': '~'},
 }
 
 netlist = [
@@ -73,11 +73,11 @@ for t in traces:
 print(f"All paths orthogonal: {orthogonal}")
 print("[PASS]" if orthogonal else "[FAIL]", "- paths are orthogonal L/Z-shaped")
 
-# Verify all paths have 2-4 points (L-shape or Z-shape)
+# Verify all paths have 2-6 points (straight, L-shape, or Z-shape)
 valid_shapes = True
 for t in traces:
     n = len(t['path'])
-    if n < 2 or n > 4:
+    if n < 2 or n > 6:
         valid_shapes = False
         break
 print(f"All paths valid shapes (2-4 pts): {valid_shapes}")

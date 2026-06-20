@@ -20,7 +20,7 @@ from agent.utils import (
     _merge_net, _make_signal_batches,
     _generate_nets_fallback,
     _parse_sexpr_to_ops, _extract_pins_from_ops, _get_attr,
-    _route_after_validate,
+    _route_after_validate, _sanitize_data,
     PIN_ALIASES, COMPLEMENTARY_PAIRS,
 )
 
@@ -39,6 +39,6 @@ __all__ = [
     "_merge_net", "_make_signal_batches",
     "_generate_nets_fallback",
     "_parse_sexpr_to_ops", "_extract_pins_from_ops", "_get_attr",
-    "_route_after_validate",
+    "_route_after_validate", "_sanitize_data",
     "PIN_ALIASES", "COMPLEMENTARY_PAIRS",
 ]

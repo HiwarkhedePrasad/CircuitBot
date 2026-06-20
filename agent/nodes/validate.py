@@ -1,4 +1,5 @@
 import json
+import re
 
 from agent.prompts import VALIDATE_SYSTEM, VALIDATE_USER
 from agent.tools import search_components
@@ -14,9 +15,14 @@ _KNOWN_SYMBOLS = frozenset([
     "Connector_USB:TPD6S300A",
     "Sensor_Temperature:TMP117xxYBG",
     "Sensor_Temperature:DS18B20",
-    "Device:Crystal",
+    "Device:Crystal", "Device:Crystal_GND24", "Device:Crystal_Small",
     "Connector:AVR-ISP-6",
     "Device:Polyfuse",
+    # Placeholder symbols from support_rules KNOWN_FALLBACK_SYMBOLS —
+    # these are used when RAG has no real KiCad symbol for an IC.
+    # They are placeholders; the validator should not flag them.
+    "Device:TPD6S300A", "Device:USBLC6-2SC6", "Device:IP4234CZ10",
+    "Device:SRV05-4",
 ])
 
 LIBRARY_PREFIX_FIXES: dict[str, str] = {
@@ -172,20 +178,60 @@ def validate_node(state, config):
         _emit(config, "agent:log", {
             "message": f"  Corrected: added {len(corrections)} missing component(s)"
         })
-    validation_errors = [e["message"] for e in errors]
+    # Filter out errors that were fixed by auto-added corrections.
+    # Uses keyword overlap: if an error message shares significant keywords
+    # with a corrected missing-component description, it's considered fixed.
+    _STOP = frozenset({"with", "from", "that", "this", "have", "been", "for",
+        "the", "and", "are", "its", "has", "not", "can", "will", "but",
+        "also", "than", "into", "more", "some", "their", "about", "other",
+        "over", "such", "than", "very", "just", "should", "would", "could",
+        "each", "between", "without", "within", "after", "before", "during",
+        "when", "where", "there", "which", "while", "because", "through"})
+    def _keywords(text):
+        return {w for w in re.findall(r'[a-zA-Z0-9]+', text.lower())
+                if len(w) >= 4 and w not in _STOP}
+    fixed_descs = [c.get("description", "") for c in corrections]
+    validation_errors = []
+    for e in errors:
+        msg = e.get("message", "")
+        if not msg:
+            continue
+        msg_kw = _keywords(msg)
+        fixed = False
+        for fd in fixed_descs:
+            shared = len(msg_kw & _keywords(fd))
+            if shared >= 2:
+                fixed = True
+                break
+        if not fixed:
+            validation_errors.append(msg)
+    # Remove errors about known placeholder symbols (e.g. Device:TPD6S300A).
+    # These are intentional fallback symbols from support_rules
+    # KNOWN_FALLBACK_SYMBOLS used when RAG has no real KiCad library symbol.
+    # The LLM validator flags them as non-existent — skip those errors.
+    _BASIC_PASSIVES = frozenset([
+        "Device:R_Small", "Device:C_Small", "Device:L_Small", "Device:D_Small",
+        "Device:LED", "Device:Polyfuse", "Device:Crystal", "Device:Crystal_GND24",
+        "Device:Crystal_Small",
+    ])
+    _placeholders = {s for s in _KNOWN_SYMBOLS if s.startswith("Device:") and s not in _BASIC_PASSIVES}
+    validation_errors = [
+        m for m in validation_errors
+        if not any(s.split(":")[1].lower() in m.lower() for s in _placeholders)
+    ]
     rejected = list(state.get("rejected_ids", []))
     for e in errors:
         eid = e.get("id_str", "")
         if eid and eid not in rejected:
             rejected.append(eid)
-    if errors:
+    if validation_errors:
         _emit(config, "agent:log", {
-            "message": f"Validation found {len(errors)} error(s) — will retry selection"
+            "message": f"Validation found {len(validation_errors)} unfixed error(s) — will retry selection"
         })
     else:
         _emit_activity(config, "validate", "Validation", "update", level="success", kind="validation", detail="Validation passed")
     _emit(config, "agent:log", {
-        "message": f"Validation done: {len(comps)} components, {len(errors)} error(s), {len(warnings)} warning(s)"
+        "message": f"Validation done: {len(comps)} components, {len(validation_errors)} unfixed error(s), {len(warnings)} warning(s)"
     })
     _emit_activity(config, "validate", "Validation", "done")
     result = {
@@ -193,7 +239,7 @@ def validate_node(state, config):
         "validation_errors": validation_errors,
         "rejected_ids": rejected,
     }
-    if errors and state.get("retry_count", 0) >= MAX_VALIDATION_RETRIES:
+    if validation_errors and state.get("retry_count", 0) >= MAX_VALIDATION_RETRIES:
         error_msgs = "; ".join(validation_errors[:3])
         result["error"] = f"Validation failed after {MAX_VALIDATION_RETRIES} retries: {error_msgs}"
     return _stage_result(state, "validate", result)

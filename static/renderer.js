@@ -895,6 +895,11 @@ function drawSchematic() {
             ctx.beginPath();
             ctx.moveTo(wire.path[0].x, wire.path[0].y);
             for (let i = 1; i < wire.path.length; i++) {
+                const dx = Math.abs(wire.path[i].x - wire.path[i-1].x);
+                const dy = Math.abs(wire.path[i].y - wire.path[i-1].y);
+                if (dx > 0.001 && dy > 0.001) {
+                    continue;  // skip diagonal segment — should never happen
+                }
                 ctx.lineTo(wire.path[i].x, wire.path[i].y);
             }
             ctx.stroke();

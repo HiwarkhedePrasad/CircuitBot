@@ -2,6 +2,21 @@ let socket = null;
 const CIRCUITBOT_LAYOUT_VERSION = 'v8-elk-fixed-side';
 console.log('%c[CircuitBot] Layout engine ' + CIRCUITBOT_LAYOUT_VERSION + ' loaded', 'color:#a371f7;font-weight:bold');
 
+// Validate a wire path: must be orthogonal and under length cap.
+// Defined at module level so both handleAgentLayoutReady and runWireBenderLayout can use it.
+const isValidWirePath = (pts, maxLen) => {
+    if (!pts || pts.length < 2) return false;
+    let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+        const dx = Math.abs(pts[i].x - pts[i+1].x);
+        const dy = Math.abs(pts[i].y - pts[i+1].y);
+        if (dx > 0.001 && dy > 0.001) return false; // diagonal
+        total += dx + dy;
+        if (total > maxLen) return false;
+    }
+    return true;
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const searchBtn = document.getElementById('searchBtn');
@@ -345,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const powerPins = data.power_pins || [];
 
         // Fallback: backend grid-router layout
-        const applyBackendLayout = () => {
+        const applyBackendLayout = (label = 'fallback router') => {
             placements.forEach(p => {
                 const comp = currentSchematic.components.find(c => c.refDesignator === p.ref_des);
                 if (comp) { comp.x = p.x; comp.y = p.y; }
@@ -353,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSchematic.wirePaths = traces;
             currentSchematic.powerLabels = powerLabels;
             enterSchematicMode();
-            addLogEntry(`Laid out ${placements.length} components (fallback router).`, 'success');
+            addLogEntry(`Laid out ${placements.length} components (${label}).`, 'success');
         };
 
         // Preferred: WireBender WASM — advanced placement + orthogonal routing.
@@ -504,8 +519,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Apply wires
-        currentSchematic.wirePaths = [];
+        // Apply wires (with validation — drop bad ones)
+        const MAX_WIRE_LEN = 150.0;  // mm, matches backend hard cap
+        const rawWires = [];
         for (let i = 0; i < routeResult.wires.size(); i++) {
             const wire = routeResult.wires.get(i);
             const pts = [];
@@ -514,12 +530,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 pts.push({ x: p.x, y: p.y });
             }
             if (pts.length >= 2) {
-                currentSchematic.wirePaths.push({
-                    source: wire.net,
-                    target: '',
-                    path: pts
-                });
+                rawWires.push({ source: wire.net, target: '', path: pts });
             }
+        }
+        // Validate every wire; drop bad ones, count them.
+        const validWires = [];
+        let nDropped = 0;
+        for (const w of rawWires) {
+            if (isValidWirePath(w.path, MAX_WIRE_LEN)) {
+                validWires.push(w);
+            } else {
+                nDropped++;
+            }
+        }
+        // If too many wires are bad (> 50%), abort WireBender and use backend traces.
+        if (rawWires.length > 0 && nDropped / rawWires.length > 0.5) {
+            throw new Error(
+                `WireBender produced ${nDropped}/${rawWires.length} bad wires — falling back to backend router.`
+            );
+        }
+        currentSchematic.wirePaths = validWires;
+        if (nDropped > 0) {
+            console.log(`[WireBender] Dropped ${nDropped} bad wire(s), kept ${validWires.length}.`);
         }
         
         // Apply junctions

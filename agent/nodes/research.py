@@ -1,5 +1,5 @@
 from agent.tools import search_components
-from agent.utils import _emit, _emit_activity, _check_stage_contract, _stage_result, _extract_part_numbers
+from agent.utils import _emit, _emit_activity, _check_stage_contract, _stage_result, _extract_part_numbers, _sanitize_data
 
 
 def research_node(state, config):
@@ -22,6 +22,8 @@ def research_node(state, config):
                 for r in search_components(part, k=3):
                     if r["id_str"] not in seen:
                         seen.add(r["id_str"])
+                        if r.get("text"):
+                            r["text"] = _sanitize_data(r["text"], label=f"search:{r['id_str']}")
                         results.append(r)
             except Exception as e:
                 print(f"Search failed for user part '{part}': {e}")
@@ -54,6 +56,8 @@ def research_node(state, config):
         for r in results:
             if r["id_str"] not in seen:
                 seen.add(r["id_str"])
+                if r.get("text"):
+                    r["text"] = _sanitize_data(r["text"], label=f"search:{r['id_str']}")
                 deduped.append(r)
         all_results.append({
             "subsystem": name,

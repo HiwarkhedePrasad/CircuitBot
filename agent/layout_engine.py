@@ -40,7 +40,8 @@ PIN_STUB_LEN   = 2.54          # one grid step out from the symbol body
 
 MAX_WIRE_MANHATTAN = 150.0     # HARD cap — anything longer is DROPPED
 MAX_COMPS_PER_COLUMN = 4       # grid placement: max components per column
-MAX_COLLISIONS = 2             # if a candidate hits more than this, skip it
+MAX_COLLISIONS = 0             # STRICT: wires must NOT pass through any component body
+BBOX_CLEARANCE = 1.27          # extra clearance margin around symbol bodies (1 grid step)
 
 MATRIX_SIZE   = 300
 MATRIX_OFFSET = 150
@@ -58,7 +59,16 @@ _IDSTR_HINTS: dict[str, str] = {
     'LED':            'LED',
     'D_Small':        'DIODE',
     'Zener':          'ZENER',
+    # ── AVR / ATmega ──
     'ATmega':         'MCU',
+    'ATtiny':         'MCU',
+    'AT90':           'MCU',
+    'ATxmega':        'MCU',
+    'AVR128DA':       'MCU',
+    'AVR128DB':       'MCU',
+    'AVR64DA':        'MCU',
+    'AVR64DD':        'MCU',
+    # ── Other ICs ──
     'AMS1117':        'LDO',
     'DS18B20':        'SENSOR',
     'TPD6S300A':      'ESD_IC',
@@ -88,8 +98,18 @@ def _snap(v: float) -> float:
 
 def _sem_type(category: str, id_str: str = '') -> str:
     id_name = id_str.split(':')[-1] if ':' in id_str else id_str
+    id_up = id_name.upper()
     for key, typ in _IDSTR_HINTS.items():
-        if key.upper() in id_name.upper():
+        key_up = key.upper()
+        if key_up == 'R':
+            # Strict match for single-letter 'R' to avoid matching 'ER_OLED', 'ALERT', etc.
+            if id_up == 'R' or id_up.startswith('R_') or id_up.startswith('R-'):
+                return typ
+        elif key_up == 'LED':
+            # Avoid matching 'OLED' as 'LED'
+            if 'OLED' not in id_up and 'LED' in id_up:
+                return typ
+        elif key_up in id_up:
             return typ
     return category.upper().replace(' ', '_')
 
@@ -122,31 +142,33 @@ def calculate_ops_bbox(ops: list) -> dict:
         if y < mn_y: mn_y = y
         if y > mx_y: mx_y = y
 
+    has_graphics = False
     for op in ops:
         t = op[0]
         if t == 'rectangle':
+            has_graphics = True
             s = _get_attr(op, 'start'); e = _get_attr(op, 'end')
             if s: upd(float(s[1]), float(s[2]))
             if e: upd(float(e[1]), float(e[2]))
         elif t == 'polyline':
+            has_graphics = True
             pts = _get_attr(op, 'pts')
             if pts:
                 for i in range(1, len(pts)):
                     if pts[i][0] == 'xy': upd(float(pts[i][1]), float(pts[i][2]))
         elif t == 'circle':
+            has_graphics = True
             c = _get_attr(op, 'center'); r = _get_attr(op, 'radius')
             if c and r:
                 cx, cy, rv = float(c[1]), float(c[2]), float(r[1])
                 upd(cx-rv, cy-rv); upd(cx+rv, cy+rv)
-        elif t == 'pin':
-            a = _get_attr(op, 'at')
-            if a: upd(float(a[1]), float(a[2]))
-        elif t in ('property', 'text'):
-            a = _get_attr(op, 'at'); h = _get_attr(op, 'hide')
-            if a and (not h or h[1] != 'yes'):
-                x, y = float(a[1]), float(a[2])
-                txt = op[1][1] if len(op) > 1 and isinstance(op[1], list) else ''
-                upd(x, y); upd(x + len(txt) * 1.27, y - 2.54)
+
+    # Fallback to pins if no body graphics exist
+    if not has_graphics:
+        for op in ops:
+            if op[0] == 'pin':
+                a = _get_attr(op, 'at')
+                if a: upd(float(a[1]), float(a[2]))
 
     if mn_x == float('inf'):
         return {'x': -5.0, 'y': -5.0, 'w': 10.0, 'h': 10.0}
@@ -162,7 +184,7 @@ def calculate_ops_bbox(ops: list) -> dict:
 
 
 def _pin_direction(pin: dict) -> str:
-    """Resolve electrical pin direction from pin_matrix entry."""
+    """Resolve electrical pin exit direction (outward, away from symbol body)."""
     ang = pin.get('angle')
     if ang is None:
         ang = 0
@@ -170,9 +192,12 @@ def _pin_direction(pin: dict) -> str:
         ang = int(round(float(ang))) % 360
     except (TypeError, ValueError):
         ang = 0
-    if 45 <= ang < 135:   return 'up'
-    if 135 <= ang < 225:  return 'left'
-    if 225 <= ang < 315:  return 'down'
+    # The pin's angle in KiCad points inward from hotspot to body.
+    # To route away from the body, we exit in the opposite direction.
+    exit_ang = (ang + 180) % 360
+    if 45 <= exit_ang < 135:   return 'up'
+    if 135 <= exit_ang < 225:  return 'left'
+    if 225 <= exit_ang < 315:  return 'down'
     return 'right'
 
 
@@ -219,8 +244,17 @@ def _seg_intersects_bbox(p1: tuple[float, float],
 
 def _path_collisions(path: list[tuple[float, float]],
                      components: list[dict],
-                     exclude_refs: set[str]) -> int:
-    """Count segment/component body intersections for a candidate path."""
+                     src_ref: str,
+                     tgt_ref: str) -> int:
+    """Count segment/component body intersections for a candidate path.
+
+    Uses BBOX_CLEARANCE as margin so wires are routed with a safe
+    keepout gap around symbol bodies, not just their bare outlines.
+
+    For the source and target components, we only ignore collisions on
+    the first and last segments of the path respectively, preventing wires
+    from routing through their own components.
+    """
     if len(path) < 2:
         return 0
     hits = 0
@@ -229,12 +263,19 @@ def _path_collisions(path: list[tuple[float, float]],
         if abs(p1[0] - p2[0]) < 1e-3 and abs(p1[1] - p2[1]) < 1e-3:
             continue
         for c in components:
-            if c['ref_des'] in exclude_refs:
+            ref = c['ref_des']
+            # Allow the first segment (connection to source pin) to touch/intersect the source component
+            if ref == src_ref and i == 0:
                 continue
+            # Allow the last segment (connection to target pin) to touch/intersect the target component
+            if ref == tgt_ref and i == len(path) - 2:
+                continue
+                
             bbox = c.get('bbox') or c.get('geom_bbox')
             if not bbox:
                 continue
-            if _seg_intersects_bbox(p1, p2, bbox, c['x'], c['y']):
+            if _seg_intersects_bbox(p1, p2, bbox, c['x'], c['y'],
+                                    margin=BBOX_CLEARANCE):
                 hits += 1
     return hits
 
@@ -320,19 +361,45 @@ def _candidate_L(s_pos, s_stub, t_pos, t_stub):
     return cands
 
 
-def _candidate_Z(s_pos, s_stub, t_pos, t_stub):
-    """Z-shape: src stub → horizontal mid → vertical → tgt stub."""
+def _candidate_Z(s_pos, s_stub, t_pos, t_stub, components):
+    """Z-shape candidates using obstacle clearance boundaries as bypass channels."""
     cands = []
-    mid_x = _snap((s_stub[0] + t_stub[0]) / 2)
-    cands.append([s_pos, s_stub, (mid_x, s_stub[1]),
-                  (mid_x, t_stub[1]), t_stub, t_pos])
-    mid_y = _snap((s_stub[1] + t_stub[1]) / 2)
-    cands.append([s_pos, s_stub, (s_stub[0], mid_y),
-                  (t_stub[0], mid_y), t_stub, t_pos])
+    
+    # Base levels
+    x_levels = {s_stub[0], t_stub[0], _snap((s_stub[0] + t_stub[0]) / 2)}
+    y_levels = {s_stub[1], t_stub[1], _snap((s_stub[1] + t_stub[1]) / 2)}
+    
+    # Add clearance levels of all components to bypass them
+    for c in components:
+        bbox = c.get('bbox') or c.get('geom_bbox')
+        if not bbox:
+            continue
+        cx, cy = c['x'], c['y']
+        
+        # Left/right boundaries
+        x_left = _snap(cx + bbox['x'] - BBOX_CLEARANCE - 1.27)
+        x_right = _snap(cx + bbox['x'] + bbox['w'] + BBOX_CLEARANCE + 1.27)
+        x_levels.add(x_left)
+        x_levels.add(x_right)
+        
+        # Top/bottom boundaries
+        y_bottom = _snap(cy + bbox['y'] - BBOX_CLEARANCE - 1.27)
+        y_top = _snap(cy + bbox['y'] + bbox['h'] + BBOX_CLEARANCE + 1.27)
+        y_levels.add(y_bottom)
+        y_levels.add(y_top)
+        
+    for mid_x in x_levels:
+        cands.append([s_pos, s_stub, (mid_x, s_stub[1]),
+                      (mid_x, t_stub[1]), t_stub, t_pos])
+                      
+    for mid_y in y_levels:
+        cands.append([s_pos, s_stub, (s_stub[0], mid_y),
+                      (t_stub[0], mid_y), t_stub, t_pos])
+                      
     return cands
 
 
-def _make_path(s_pos, s_dir, t_pos, t_dir, components, exclude_refs):
+def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref):
     """Generate, score, and pick the best orthogonal path.
 
     Returns None if no candidate satisfies the length cap and collision
@@ -344,7 +411,7 @@ def _make_path(s_pos, s_dir, t_pos, t_dir, components, exclude_refs):
     candidates = []
     candidates += _candidate_straight(s_pos, s_stub, t_pos, t_stub)
     candidates += _candidate_L(s_pos, s_stub, t_pos, t_stub)
-    candidates += _candidate_Z(s_pos, s_stub, t_pos, t_stub)
+    candidates += _candidate_Z(s_pos, s_stub, t_pos, t_stub, components)
 
     best_path = None
     best_score = float('inf')
@@ -356,13 +423,13 @@ def _make_path(s_pos, s_dir, t_pos, t_dir, components, exclude_refs):
         length = _path_length(path)
         if length > MAX_WIRE_MANHATTAN:
             continue
-        # Collision cap — drop candidate if it hits too many components
-        collisions = _path_collisions(path, components, exclude_refs)
+        # Collision cap — drop candidate if it hits ANY component body
+        collisions = _path_collisions(path, components, src_ref, tgt_ref)
         if collisions > MAX_COLLISIONS:
             continue
         bends = _bend_count(path)
-        # Score: collisions dominate, then length, then bend count
-        score = collisions * 1000 + length + bends * 2
+        # Score: zero-collision paths first, then shortest, then fewest bends
+        score = collisions * 10000 + length + bends * 2
         if score < best_score:
             best_score = score
             best_path = path
@@ -440,17 +507,22 @@ class BackendLayoutEngine:
                 continue
             tier_w = max(c['width'] for c in comps) + BBOX_PAD * 2
 
-            # ── GRID placement: max N components per column ──
             col_count = max(1, math.ceil(len(comps) / MAX_COMPS_PER_COLUMN))
             col_w = tier_w + TIER_GAP
 
+            # Group components by column
+            cols = [[] for _ in range(col_count)]
             for i, c in enumerate(comps):
                 col_idx = i // MAX_COMPS_PER_COLUMN
-                row_idx = i % MAX_COMPS_PER_COLUMN
-                c['x'] = _snap(x_cursor + col_idx * col_w +
-                               (tier_w - c['width']) / 2)
-                y_off = row_idx * (c['height'] + BBOX_PAD * 2 + COMP_V_GAP)
-                c['y'] = _snap(y_off - c['bbox']['y'])
+                cols[col_idx].append(c)
+
+            for col_idx, col_comps in enumerate(cols):
+                y_cursor = 0.0
+                for c in col_comps:
+                    c['x'] = _snap(x_cursor + col_idx * col_w +
+                                   (tier_w - c['width']) / 2)
+                    c['y'] = _snap(y_cursor - c['bbox']['y'])
+                    y_cursor += c['height'] + BBOX_PAD * 2 + COMP_V_GAP
 
             x_cursor += col_count * col_w + TIER_GAP
 
@@ -471,11 +543,19 @@ class BackendLayoutEngine:
                 continue
             sx = _snap(par_c['x'] + par_c['width'] + SAT_H_GAP)
             sy_start = _snap(par_c['y'])
+            
+            sat_col_count = max(1, math.ceil(len(group) / MAX_COMPS_PER_COLUMN))
+            sat_cols = [[] for _ in range(sat_col_count)]
             for i, s in enumerate(group):
                 col_idx = i // MAX_COMPS_PER_COLUMN
-                row_idx = i % MAX_COMPS_PER_COLUMN
-                s['x'] = _snap(sx + col_idx * (s['width'] + SAT_H_GAP))
-                s['y'] = _snap(sy_start + row_idx * (s['height'] + SAT_V_GAP))
+                sat_cols[col_idx].append(s)
+                
+            for col_idx, col_sats in enumerate(sat_cols):
+                y_cursor = sy_start
+                for s in col_sats:
+                    s['x'] = _snap(sx + col_idx * (s['width'] + SAT_H_GAP))
+                    s['y'] = _snap(y_cursor)
+                    y_cursor += s['height'] + SAT_V_GAP
 
         # Orphan satellites: grid placement, not single tall column
         if orphan_sats:
@@ -483,11 +563,19 @@ class BackendLayoutEngine:
                       if c['tier'] != -1), default=x_cursor)
             rx = _snap(rx + TIER_GAP)
             col_w_orphan = max(s['width'] for s in orphan_sats) + SAT_H_GAP
+            
+            orphan_col_count = max(1, math.ceil(len(orphan_sats) / MAX_COMPS_PER_COLUMN))
+            orphan_cols = [[] for _ in range(orphan_col_count)]
             for i, s in enumerate(orphan_sats):
                 col_idx = i // MAX_COMPS_PER_COLUMN
-                row_idx = i % MAX_COMPS_PER_COLUMN
-                s['x'] = _snap(rx + col_idx * col_w_orphan)
-                s['y'] = _snap(row_idx * (s['height'] + SAT_V_GAP))
+                orphan_cols[col_idx].append(s)
+                
+            for col_idx, col_sats in enumerate(orphan_cols):
+                y_cursor = 0.0
+                for s in col_sats:
+                    s['x'] = _snap(rx + col_idx * col_w_orphan)
+                    s['y'] = _snap(y_cursor)
+                    y_cursor += s['height'] + SAT_V_GAP
 
         # Centre everything around (0, 0)
         xs = [c['x'] for c in self.components]
@@ -570,11 +658,11 @@ class BackendLayoutEngine:
 
             s_dir = _dir(conn['source'])
             t_dir = _dir(conn['target'])
-            exclude = {conn['source'].split(':')[0],
-                       conn['target'].split(':')[0]}
+            src_ref = conn['source'].split(':')[0]
+            tgt_ref = conn['target'].split(':')[0]
 
             path = _make_path(s_pos, s_dir, t_pos, t_dir,
-                              self.components, exclude)
+                              self.components, src_ref, tgt_ref)
 
             # HARD final guards — drop the wire if ANY check fails
             if not path:
@@ -589,7 +677,7 @@ class BackendLayoutEngine:
             if _path_length(path) > MAX_WIRE_MANHATTAN:
                 n_dropped += 1
                 continue
-            if _path_collisions(path, self.components, exclude) > MAX_COLLISIONS:
+            if _path_collisions(path, self.components, src_ref, tgt_ref) > MAX_COLLISIONS:
                 n_dropped += 1
                 continue
 
@@ -615,9 +703,92 @@ class BackendLayoutEngine:
     def unblock_pin_cells(self, pin_matrix: dict) -> None:
         pass
 
-    def check_and_fix_overlaps(self, traces: list,
-                               max_passes: int = 2) -> tuple:
-        return traces, 0, 0
+    def check_and_fix_overlaps(self, traces: list, max_passes: int = 2) -> tuple:
+        """Post-route validation: detect traces that run on top of each other
+        (2+ consecutive shared cells = parallel overlap, not a crossing) and
+        re-route the offenders with the other traces' cells hard-blocked.
+
+        Returns (traces, n_fixed, n_remaining_conflicts).
+        """
+        from pathfinding.core.grid import Grid
+        from pathfinding.finder.a_star import AStarFinder
+        from pathfinding.core.diagonal_movement import DiagonalMovement
+
+        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
+
+        def to_cells(tr):
+            return [
+                (round(p['x'] / GRID_SIZE) + MATRIX_OFFSET,
+                 round(p['y'] / GRID_SIZE) + MATRIX_OFFSET)
+                for p in tr['path']
+            ]
+
+        def find_conflicts(all_cells):
+            usage = {}
+            for idx, cs in enumerate(all_cells):
+                for c in cs[1:-1]:
+                    usage.setdefault(c, set()).add(idx)
+            conflicts = []
+            for idx, cs in enumerate(all_cells):
+                run = 0
+                for c in cs[1:-1]:
+                    if len(usage.get(c, ())) > 1:
+                        run += 1
+                        if run >= 2:  # 2+ consecutive shared cells = parallel overlap
+                            conflicts.append(idx)
+                            break
+                    else:
+                        run = 0
+            return conflicts
+
+        n_fixed = 0
+        for _ in range(max_passes):
+            all_cells = [to_cells(t) for t in traces]
+            conflicts = find_conflicts(all_cells)
+            if not conflicts:
+                return traces, n_fixed, 0
+
+            # Re-route longest offenders first — they have the most detour room
+            conflicts.sort(key=lambda i: -len(all_cells[i]))
+            progress = False
+            for idx in conflicts:
+                cs = all_cells[idx]
+                if len(cs) < 2:
+                    continue
+                # Hard-block every middle cell occupied by any OTHER trace
+                m = [row[:] for row in self.matrix]
+                for j, ocs in enumerate(all_cells):
+                    if j == idx:
+                        continue
+                    for (x, y) in ocs[1:-1]:
+                        if 0 <= x < MATRIX_SIZE and 0 <= y < MATRIX_SIZE:
+                            m[y][x] = 0
+                grid = Grid(matrix=m)
+                (sx, sy), (ex, ey) = cs[0], cs[-1]
+                try:
+                    start = grid.node(sx, sy)
+                    end = grid.node(ex, ey)
+                    start.walkable = True
+                    end.walkable = True
+                    path, _ = finder.find_path(start, end, grid)
+                except Exception:
+                    path = None
+                if path:
+                    manhattan = abs(sx - ex) + abs(sy - ey)
+                    if len(path) <= max(manhattan * 4, 50):
+                        traces[idx]['path'] = [
+                            {'x': (n.x - MATRIX_OFFSET) * GRID_SIZE,
+                             'y': (n.y - MATRIX_OFFSET) * GRID_SIZE}
+                            for n in path
+                        ]
+                        all_cells[idx] = to_cells(traces[idx])
+                        n_fixed += 1
+                        progress = True
+            if not progress:
+                break  # nothing improvable; stop iterating
+
+        remaining = len(find_conflicts([to_cells(t) for t in traces]))
+        return traces, n_fixed, remaining
 
     def _get_comp(self, ref_des: str) -> Optional[dict]:
         for c in self.components:

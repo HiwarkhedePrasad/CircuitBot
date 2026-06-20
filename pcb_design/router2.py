@@ -535,11 +535,28 @@ def drc2(model: BoardModel, drc: Optional[DRCConfig] = None) -> list[dict]:
                     "message": f"Trace {t1.net} and {t2.net} too close (clearance < {clearance}mm)",
                 })
 
+    # Build a mapping from pin connection key (ref:pad_num) to net name (case-insensitive)
+    pin_to_net = {}
+    for net in model.nets:
+        name = str(net.get("net", "")).strip().upper()
+        for p in net.get("pins", []):
+            pin_to_net[p] = name
+    for pp in model.power_pins:
+        p = pp.get("pin")
+        name = str(pp.get("net", "")).strip().upper()
+        if p:
+            pin_to_net[p] = name
+
     # 2. Trace-pad clearance
     for trace, buf in trace_bufs:
+        trace_net_upper = trace.net.upper()
         for ref, pads in pad_polys.items():
             for pnum, ppoly in pads:
-                # Skip the trace's own endpoint pads
+                pin_key = f"{ref}:{pnum}"
+                # Skip the trace's own endpoint pads (same net)
+                if pin_to_net.get(pin_key) == trace_net_upper:
+                    continue
+                # Fallback to simple ref check as backup
                 if ref in trace.net:
                     continue
                 if clearance_violation(buf, ppoly, clearance):
