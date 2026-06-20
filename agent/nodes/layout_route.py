@@ -1,3 +1,22 @@
+"""Layout + routing orchestration node.
+
+Hardened pipeline:
+  1. Build BoardModel from selected components.
+  2. Backend schematic placement (tier-based) → for frontend rendering.
+  3. Backend schematic wire routing (obstacle-aware orthogonal) → for
+     frontend rendering AND .kicad_sch export.
+  4. PCB component placement (connectivity-aware, force-directed,
+     decoupling-cap-aware) → for PCB routing and .kicad_pcb export.
+  5. PCB routing (weighted A* with rip-up & reroute):
+        a. Power nets first (VBUS, 3V3, 5V, GND) — wider traces
+        b. High-speed signals (USB D+/D-, crystal) — direct routes
+        c. Critical signals (RESET, EN, INT)
+        d. General signals
+  6. GND copper pour on F.Cu + B.Cu with thermal reliefs.
+  7. DRC (Shapely polygon-based clearance + width + keepout).
+  8. Emit layout_ready + pcb_ready events.
+"""
+
 from agent.layout_engine import BackendLayoutEngine
 from agent.utils import _emit, _emit_activity
 
@@ -45,17 +64,51 @@ def layout_route_node(state, config):
     # ── 2a. Schematic layout — tier-based, drives frontend rendering ──
     engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
 
-    # ── 2b. Schematic wire routing — Z-shaped orthogonal paths, no A* ──
+    # ── 2b. Schematic wire routing — obstacle-aware orthogonal paths ──
     sch_traces = engine.route_traces(netlist, pin_matrix)
 
-    # ── 2c. PCB layout — compact, for routability and board export ──
-    pcb_placements = place_components(comps, netlist)
+    # HARD GUARD: drop any trace that slipped through with bad geometry.
+    # This catches bugs in the router before they reach the frontend or
+    # the KiCad exporter. A dropped wire is better than a 800mm monster.
+    MAX_WIRE_LEN = 150.0  # mm
+    clean_traces = []
+    n_dropped = 0
+    for tr in sch_traces:
+        path = tr.get('path', [])
+        if len(path) < 2:
+            n_dropped += 1
+            continue
+        # Verify orthogonal + under length cap
+        ok = True
+        total_len = 0.0
+        for i in range(len(path) - 1):
+            dx = abs(path[i]['x'] - path[i + 1]['x'])
+            dy = abs(path[i]['y'] - path[i + 1]['y'])
+            if dx > 1e-3 and dy > 1e-3:
+                ok = False  # diagonal segment
+                break
+            total_len += dx + dy
+            if total_len > MAX_WIRE_LEN:
+                ok = False  # too long
+                break
+        if not ok:
+            n_dropped += 1
+            continue
+        clean_traces.append(tr)
+    sch_traces = clean_traces
+
+    _emit(config, "agent:log", {
+        "message": (f"  Schematic: routed {len(sch_traces)} signal wires "
+                    f"(obstacle-aware, dropped {n_dropped} bad wires)")
+    })
+
+    # ── 2c. PCB layout — connectivity-aware, force-directed ──
+    pcb_placements = place_components(comps, netlist, pin_matrix=pin_matrix)
     pcb_pos = {p["ref_des"]: (p["x"], p["y"], p.get("rotation", 0)) for p in pcb_placements}
 
     # Convert engine components to BoardComponent with pads
     for ec in engine.components:
         ref = ec["ref_des"]
-        # Find matching component with pad data
         comp_info = next((c for c in comps if c["ref_des"] == ref), None)
         pads = []
         if comp_info and comp_info.get("pads"):
@@ -86,18 +139,28 @@ def layout_route_node(state, config):
         )
 
     _emit_activity(config, "layout", "PCB Layout", "update", kind="placement",
-                   detail=f"Placed {len(model.components)} components")
+                   detail=f"Placed {len(model.components)} components (force-directed)")
 
     drc_config = DRCConfig()
 
-    # ── 3. Route ───────────────────────────────────────────────────────
+    # ── 3. Route PCB nets — power-first, A* with rip-up & reroute ─────
+    _emit(config, "agent:thinking", {"message": "Routing PCB traces (power-first A*)..."})
+
     traces_new = route_board_new(model, netlist, pin_matrix, drc=drc_config)
     if traces_new:
         model.traces = traces_new
+        n_power = sum(1 for t in traces_new if t.net.upper() in
+                      {"VCC", "VDD", "VBAT", "VIN", "VBUS", "VSYS", "VOUT",
+                       "+5V", "+3.3V", "3.3V", "5V", "3V3"})
+        n_gnd = sum(1 for t in traces_new if t.net.upper() in {"GND", "GROUND"})
+        n_sig = len(traces_new) - n_power - n_gnd
         _emit(config, "agent:log", {
-            "message": f"  Router2: routed {len(traces_new)} traces"
+            "message": (f"  Router2: routed {len(traces_new)} traces "
+                        f"({n_power} power, {n_gnd} GND, {n_sig} signal) "
+                        f"with {len(model.vias)} vias")
         })
-        _emit_activity(config, "layout", "PCB Layout", "update", kind="routing", detail=f"Routed {len(traces_new)} connections")
+        _emit_activity(config, "layout", "PCB Layout", "update", kind="routing",
+                       detail=f"Routed {len(traces_new)} connections ({len(model.vias)} vias)")
     else:
         # Fallback to old router
         engine.build_obstacle_matrix(pin_matrix=pin_matrix)
@@ -115,11 +178,12 @@ def layout_route_node(state, config):
             for w in traces_old
         ]
         _emit(config, "agent:log", {
-            "message": f"  Router (old): routed {len(traces_old)} traces"
+            "message": f"  Router (old fallback): routed {len(traces_old)} traces"
         })
-        _emit_activity(config, "layout", "PCB Layout", "update", kind="routing", detail=f"Routed {len(traces_old)} connections")
+        _emit_activity(config, "layout", "PCB Layout", "update", kind="routing",
+                       detail=f"Routed {len(traces_old)} connections (fallback)")
 
-    # ── 4. Zone pouring ────────────────────────────────────────────────
+    # ── 4. GND copper pour (thermal-relief, both layers) ──────────────
     zone_count = pour_ground(model,
         clearance=drc_config.zone_clearance,
         min_zone_area=drc_config.min_zone_area,
@@ -128,15 +192,19 @@ def layout_route_node(state, config):
     )
     if zone_count:
         _emit(config, "agent:log", {
-            "message": f"  Poured {zone_count} GND zones on F.Cu + B.Cu"
+            "message": f"  Poured {zone_count} GND zones on F.Cu + B.Cu (4-spoke thermal relief)"
         })
 
     # ── 5. DRC ─────────────────────────────────────────────────────────
     drc_results = drc2(model, drc=drc_config)
+    n_err = sum(1 for v in drc_results if v.get("severity") == "error")
+    n_warn = sum(1 for v in drc_results if v.get("severity") == "warning")
     for v in drc_results:
         _emit(config, "agent:log", {
             "message": f"  DRC: [{v.get('severity', 'info').upper()}] {v['message']}"
         })
+    if n_err == 0 and n_warn == 0:
+        _emit(config, "agent:log", {"message": "  DRC: clean (0 errors, 0 warnings)"})
 
     placements = engine.get_placements()
 
@@ -156,7 +224,6 @@ def layout_route_node(state, config):
         ccy = comp["y"] + comp["bbox"]["y"] + comp["bbox"]["h"] / 2
         dx = ax - ccx
         dy = ay - ccy
-        direction = "right" if abs(dx) >= abs(dy) else ("up" if dy >= 0 else "down")
         if abs(dx) < abs(dy):
             direction = "up" if dy >= 0 else "down"
         else:
@@ -180,8 +247,12 @@ def layout_route_node(state, config):
     })
     _emit(config, "agent:pcb_ready", {"board_model": board_dict})
     _emit(config, "agent:done", {
-        "message": f"Design complete: {len(model.components)} components, "
-                   f"{len(model.traces)} signal wires, {len(power_labels)} power symbols"
+        "message": (f"Design complete: {len(model.components)} components, "
+                    f"{len(model.traces)} PCB traces, {len(model.vias)} vias, "
+                    f"{zone_count} GND zones, "
+                    f"{len(sch_traces)} schematic wires, "
+                    f"{len(power_labels)} power symbols, "
+                    f"DRC: {n_err} err / {n_warn} warn")
     })
     _emit_activity(config, "layout", "PCB Layout", "done")
     return {

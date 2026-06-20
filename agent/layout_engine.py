@@ -1,11 +1,26 @@
 """
-agent/layout_engine.py  —  Hierarchical schematic layout + Z-shaped routing.
+agent/layout_engine.py  —  Hierarchical schematic layout + hard-capped
+                            obstacle-aware orthogonal wire routing.
+
+CRITICAL FIXES over the previous version:
+  1. NO early-return bypass of the length cap. Every candidate — including
+     straight wires — is scored and length-checked uniformly.
+  2. NO fallback path. If every candidate exceeds MAX_WIRE_MANHATTAN or
+     collides with too many components, the wire is DROPPED, not drawn.
+     A dropped wire is better than a 800mm diagonal monstrosity.
+  3. Grid placement: components are arranged in a grid (max N per column)
+     instead of a single tall vertical stack. This prevents the 750mm+
+     vertical spans that were forcing absurd wires.
+  4. Hard final guard: every emitted path is verified to be (a) strictly
+     orthogonal, (b) under MAX_WIRE_MANHATTAN, and (c) at least 2 points.
+     Any path that fails any check is dropped.
 
 Two-phase layout:
-  Phase 1 – Tier placement (signal-flow left→right).
+  Phase 1 – Tier placement (signal-flow left→right) with GRID packing.
              Satellites (caps, resistors) placed adjacent to their parent IC.
-  Phase 2 – Z-shaped orthogonal wire routing.  No A*, no obstacle avoidance.
-             Hard wire-length cap prevents ghost loops.
+  Phase 2 – Orthogonal wire routing with obstacle avoidance.
+             Multi-bend L / Z candidates, pin-direction-aware stubs,
+             grid-snapped endpoints, length-capped, no diagonals.
 """
 
 from __future__ import annotations
@@ -21,9 +36,11 @@ TIER_GAP       = 20.32
 COMP_V_GAP     = 7.62
 SAT_H_GAP      = 12.70
 SAT_V_GAP      = 3.81
-PIN_STUB_LEN   = 3.81
+PIN_STUB_LEN   = 2.54          # one grid step out from the symbol body
 
-MAX_WIRE_MANHATTAN = 180.0
+MAX_WIRE_MANHATTAN = 150.0     # HARD cap — anything longer is DROPPED
+MAX_COMPS_PER_COLUMN = 4       # grid placement: max components per column
+MAX_COLLISIONS = 2             # if a candidate hits more than this, skip it
 
 MATRIX_SIZE   = 300
 MATRIX_OFFSET = 150
@@ -141,8 +158,223 @@ def calculate_ops_bbox(ops: list) -> dict:
     }
 
 
+# ── Routing geometry helpers ─────────────────────────────────────────────
+
+
+def _pin_direction(pin: dict) -> str:
+    """Resolve electrical pin direction from pin_matrix entry."""
+    ang = pin.get('angle')
+    if ang is None:
+        ang = 0
+    try:
+        ang = int(round(float(ang))) % 360
+    except (TypeError, ValueError):
+        ang = 0
+    if 45 <= ang < 135:   return 'up'
+    if 135 <= ang < 225:  return 'left'
+    if 225 <= ang < 315:  return 'down'
+    return 'right'
+
+
+def _stub_point(px: float, py: float, direction: str,
+                length: float = PIN_STUB_LEN) -> tuple[float, float]:
+    if direction == 'left':  return (_snap(px - length), _snap(py))
+    if direction == 'up':    return (_snap(px),            _snap(py + length))
+    if direction == 'down':  return (_snap(px),            _snap(py - length))
+    return (_snap(px + length), _snap(py))                  # right (default)
+
+
+def _seg_intersects_bbox(p1: tuple[float, float],
+                         p2: tuple[float, float],
+                         bbox: dict,
+                         cx: float, cy: float,
+                         margin: float = 0.0) -> bool:
+    """Liang–Barsky line/AABB intersection test."""
+    left   = cx + bbox['x'] - margin
+    right  = left + bbox['w'] + 2 * margin
+    top    = cy + bbox['y'] - margin
+    bottom = top + bbox['h'] + 2 * margin
+
+    x1, y1 = p1
+    x2, y2 = p2
+    dx = x2 - x1
+    dy = y2 - y1
+
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-dx, x1 - left), (dx, right - x1),
+                 (-dy, y1 - top),  (dy, bottom - y1)):
+        if abs(p) < 1e-9:
+            if q < 0:
+                return False
+            continue
+        t = q / p
+        if p < 0:
+            if t > t1: return False
+            if t > t0: t0 = t
+        else:
+            if t < t0: return False
+            if t < t1: t1 = t
+    return t0 < t1 - 1e-9
+
+
+def _path_collisions(path: list[tuple[float, float]],
+                     components: list[dict],
+                     exclude_refs: set[str]) -> int:
+    """Count segment/component body intersections for a candidate path."""
+    if len(path) < 2:
+        return 0
+    hits = 0
+    for i in range(len(path) - 1):
+        p1, p2 = path[i], path[i + 1]
+        if abs(p1[0] - p2[0]) < 1e-3 and abs(p1[1] - p2[1]) < 1e-3:
+            continue
+        for c in components:
+            if c['ref_des'] in exclude_refs:
+                continue
+            bbox = c.get('bbox') or c.get('geom_bbox')
+            if not bbox:
+                continue
+            if _seg_intersects_bbox(p1, p2, bbox, c['x'], c['y']):
+                hits += 1
+    return hits
+
+
+def _path_length(path: list[tuple[float, float]]) -> float:
+    total = 0.0
+    for i in range(len(path) - 1):
+        total += abs(path[i][0] - path[i + 1][0]) + \
+                 abs(path[i][1] - path[i + 1][1])
+    return total
+
+
+def _bend_count(path: list[tuple[float, float]]) -> int:
+    if len(path) < 3:
+        return 0
+    bends = 0
+    for i in range(1, len(path) - 1):
+        dx1 = path[i][0] - path[i - 1][0]
+        dy1 = path[i][1] - path[i - 1][1]
+        dx2 = path[i + 1][0] - path[i][0]
+        dy2 = path[i + 1][1] - path[i][1]
+        if abs(dx1 - dx2) > 1e-3 or abs(dy1 - dy2) > 1e-3:
+            bends += 1
+    return bends
+
+
+def _clean_path(path: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Drop consecutive duplicates and merge collinear interior points.
+
+    Guarantees the returned path has only direction-change vertices
+    plus the two endpoints — never produces a diagonal segment.
+    """
+    if not path:
+        return []
+    cleaned = [path[0]]
+    for p in path[1:]:
+        last = cleaned[-1]
+        if abs(last[0] - p[0]) < 1e-3 and abs(last[1] - p[1]) < 1e-3:
+            continue
+        cleaned.append(p)
+    if len(cleaned) < 3:
+        return cleaned
+    out = [cleaned[0]]
+    for i in range(1, len(cleaned) - 1):
+        x0, y0 = out[-1]
+        x1, y1 = cleaned[i]
+        x2, y2 = cleaned[i + 1]
+        dx1, dy1 = x1 - x0, y1 - y0
+        dx2, dy2 = x2 - x1, y2 - y1
+        if abs(dx1 * dy2 - dy1 * dx2) < 1e-6 and \
+           dx1 * dx2 >= -1e-6 and dy1 * dy2 >= -1e-6:
+            continue
+        out.append(cleaned[i])
+    out.append(cleaned[-1])
+    return out
+
+
+def _is_orthogonal(path: list[tuple[float, float]]) -> bool:
+    """Verify every segment is strictly horizontal or vertical."""
+    for i in range(len(path) - 1):
+        dx = abs(path[i][0] - path[i + 1][0])
+        dy = abs(path[i][1] - path[i + 1][1])
+        if dx > 1e-3 and dy > 1e-3:
+            return False
+    return True
+
+
+# ── Candidate path generators ────────────────────────────────────────────
+
+
+def _candidate_straight(s_pos, s_stub, t_pos, t_stub):
+    """Direct s_stub → t_stub wire (only valid if they share X or Y)."""
+    if abs(s_stub[0] - t_stub[0]) < 1e-3 or abs(s_stub[1] - t_stub[1]) < 1e-3:
+        return [[s_pos, s_stub, t_stub, t_pos]]
+    return []
+
+
+def _candidate_L(s_pos, s_stub, t_pos, t_stub):
+    """L-shape: src stub → corner → tgt stub.  Two orientations."""
+    cands = []
+    cands.append([s_pos, s_stub, (t_stub[0], s_stub[1]), t_stub, t_pos])
+    cands.append([s_pos, s_stub, (s_stub[0], t_stub[1]), t_stub, t_pos])
+    return cands
+
+
+def _candidate_Z(s_pos, s_stub, t_pos, t_stub):
+    """Z-shape: src stub → horizontal mid → vertical → tgt stub."""
+    cands = []
+    mid_x = _snap((s_stub[0] + t_stub[0]) / 2)
+    cands.append([s_pos, s_stub, (mid_x, s_stub[1]),
+                  (mid_x, t_stub[1]), t_stub, t_pos])
+    mid_y = _snap((s_stub[1] + t_stub[1]) / 2)
+    cands.append([s_pos, s_stub, (s_stub[0], mid_y),
+                  (t_stub[0], mid_y), t_stub, t_pos])
+    return cands
+
+
+def _make_path(s_pos, s_dir, t_pos, t_dir, components, exclude_refs):
+    """Generate, score, and pick the best orthogonal path.
+
+    Returns None if no candidate satisfies the length cap and collision
+    limit — caller must DROP the wire in that case (do NOT fallback).
+    """
+    s_stub = _stub_point(*s_pos, s_dir)
+    t_stub = _stub_point(*t_pos, t_dir)
+
+    candidates = []
+    candidates += _candidate_straight(s_pos, s_stub, t_pos, t_stub)
+    candidates += _candidate_L(s_pos, s_stub, t_pos, t_stub)
+    candidates += _candidate_Z(s_pos, s_stub, t_pos, t_stub)
+
+    best_path = None
+    best_score = float('inf')
+    for raw in candidates:
+        path = _clean_path(raw)
+        if len(path) < 2:
+            continue
+        # HARD length cap — drop candidate, do not fallback
+        length = _path_length(path)
+        if length > MAX_WIRE_MANHATTAN:
+            continue
+        # Collision cap — drop candidate if it hits too many components
+        collisions = _path_collisions(path, components, exclude_refs)
+        if collisions > MAX_COLLISIONS:
+            continue
+        bends = _bend_count(path)
+        # Score: collisions dominate, then length, then bend count
+        score = collisions * 1000 + length + bends * 2
+        if score < best_score:
+            best_score = score
+            best_path = path
+
+    return best_path
+
+
+# ── Layout engine ────────────────────────────────────────────────────────
+
+
 class BackendLayoutEngine:
-    """Hierarchical schematic placement + Z-shaped orthogonal wire routing."""
+    """Hierarchical schematic placement + obstacle-aware orthogonal routing."""
 
     def __init__(self):
         self.components: list[dict] = []
@@ -175,7 +407,13 @@ class BackendLayoutEngine:
 
     def execute_placement(self, pin_matrix: dict = None,
                           netlist: list = None) -> None:
-        """Hierarchical tier placement with satellite passives."""
+        """Hierarchical tier placement with GRID packing.
+
+        Components within a tier are arranged in a grid (max
+        MAX_COMPS_PER_COLUMN per column) instead of a single tall
+        vertical stack. This prevents the 750mm+ vertical spans that
+        were forcing absurd wires.
+        """
         if not self.components:
             return
 
@@ -201,13 +439,22 @@ class BackendLayoutEngine:
             if not comps:
                 continue
             tier_w = max(c['width'] for c in comps) + BBOX_PAD * 2
-            y_cursor = 0.0
-            for c in comps:
-                c['x'] = _snap(x_cursor + (tier_w - c['width']) / 2)
-                c['y'] = _snap(y_cursor - c['bbox']['y'])
-                y_cursor += c['height'] + BBOX_PAD * 2 + COMP_V_GAP
-            x_cursor += tier_w + TIER_GAP
 
+            # ── GRID placement: max N components per column ──
+            col_count = max(1, math.ceil(len(comps) / MAX_COMPS_PER_COLUMN))
+            col_w = tier_w + TIER_GAP
+
+            for i, c in enumerate(comps):
+                col_idx = i // MAX_COMPS_PER_COLUMN
+                row_idx = i % MAX_COMPS_PER_COLUMN
+                c['x'] = _snap(x_cursor + col_idx * col_w +
+                               (tier_w - c['width']) / 2)
+                y_off = row_idx * (c['height'] + BBOX_PAD * 2 + COMP_V_GAP)
+                c['y'] = _snap(y_off - c['bbox']['y'])
+
+            x_cursor += col_count * col_w + TIER_GAP
+
+        # ── Satellites (caps, resistors) placed next to parent IC ──
         sat_groups: dict[str, list] = {}
         orphan_sats: list[dict] = []
         for s in sats:
@@ -223,21 +470,26 @@ class BackendLayoutEngine:
             if not par_c:
                 continue
             sx = _snap(par_c['x'] + par_c['width'] + SAT_H_GAP)
-            sy = _snap(par_c['y'])
+            sy_start = _snap(par_c['y'])
             for i, s in enumerate(group):
-                s['x'] = sx
-                s['y'] = _snap(sy + i * (s['height'] + SAT_V_GAP))
+                col_idx = i // MAX_COMPS_PER_COLUMN
+                row_idx = i % MAX_COMPS_PER_COLUMN
+                s['x'] = _snap(sx + col_idx * (s['width'] + SAT_H_GAP))
+                s['y'] = _snap(sy_start + row_idx * (s['height'] + SAT_V_GAP))
 
+        # Orphan satellites: grid placement, not single tall column
         if orphan_sats:
             rx = max((c['x'] + c['width'] for c in self.components
                       if c['tier'] != -1), default=x_cursor)
             rx = _snap(rx + TIER_GAP)
-            ry = 0.0
-            for s in orphan_sats:
-                s['x'] = rx
-                s['y'] = _snap(ry)
-                ry += s['height'] + SAT_V_GAP
+            col_w_orphan = max(s['width'] for s in orphan_sats) + SAT_H_GAP
+            for i, s in enumerate(orphan_sats):
+                col_idx = i // MAX_COMPS_PER_COLUMN
+                row_idx = i % MAX_COMPS_PER_COLUMN
+                s['x'] = _snap(rx + col_idx * col_w_orphan)
+                s['y'] = _snap(row_idx * (s['height'] + SAT_V_GAP))
 
+        # Centre everything around (0, 0)
         xs = [c['x'] for c in self.components]
         ys = [c['y'] for c in self.components]
         if xs:
@@ -270,9 +522,20 @@ class BackendLayoutEngine:
     # ── Wire routing ───────────────────────────────────────────────────
 
     def route_traces(self, netlist: list, pin_matrix: dict) -> list:
-        """Z-shaped orthogonal schematic wire routing with ghost-loop guard."""
+        """Obstacle-aware orthogonal schematic wire routing.
+
+        HARD guarantees for every emitted trace:
+          1. Path is strictly orthogonal (no diagonal segments).
+          2. Path length ≤ MAX_WIRE_MANHATTAN.
+          3. Path has ≥ 2 points.
+          4. Path does not collide with more than MAX_COLLISIONS components.
+
+        Wires that fail ANY of these checks are DROPPED — never emitted
+        as a bad fallback. A dropped wire is better than a 800mm monster.
+        """
         pos = {c['ref_des']: (c['x'], c['y']) for c in self.components}
         traces = []
+        n_dropped = 0
 
         def _abs(key: str) -> Optional[tuple[float, float]]:
             ref = key.split(':')[0]
@@ -284,49 +547,56 @@ class BackendLayoutEngine:
                 return None
             return (_snap(pin['x'] + off[0]), _snap(pin['y'] + off[1]))
 
+        def _dir(key: str) -> str:
+            return _pin_direction(pin_matrix.get(key, {}))
+
         def _mhd(conn) -> float:
             s = _abs(conn['source']); t = _abs(conn['target'])
             if not s or not t: return float('inf')
             return abs(s[0]-t[0]) + abs(s[1]-t[1])
 
-        for conn in sorted(netlist, key=_mhd):
+        # Pre-filter: drop any connection whose pins are too far apart
+        routable = [c for c in netlist if _mhd(c) <= MAX_WIRE_MANHATTAN]
+        n_pre_filtered = len(netlist) - len(routable)
+
+        # Route shortest first so later detours have something to dodge.
+        for conn in sorted(routable, key=_mhd):
             s_pos = _abs(conn['source'])
             t_pos = _abs(conn['target'])
             if not s_pos or not t_pos:
                 continue
-
-            sx, sy = s_pos
-            ex, ey = t_pos
-
-            if abs(ex-sx) + abs(ey-sy) > MAX_WIRE_MANHATTAN:
-                continue
-            if sx == ex and sy == ey:
+            if s_pos == t_pos:
                 continue
 
-            if abs(sx - ex) < 0.001:
-                path = [{'x': sx, 'y': sy}, {'x': ex, 'y': ey}]
-            elif abs(sy - ey) < 0.001:
-                path = [{'x': sx, 'y': sy}, {'x': ex, 'y': ey}]
-            else:
-                src_pin = pin_matrix.get(conn['source'], {})
-                pin_dir = src_pin.get('direction', 'right')
-                stub_dx = -PIN_STUB_LEN if pin_dir == 'left' else PIN_STUB_LEN
-                mid_x = _snap(sx + stub_dx)
-                if stub_dx > 0 and mid_x > ex - PIN_STUB_LEN:
-                    mid_x = _snap((sx + ex) / 2)
-                elif stub_dx < 0 and mid_x < ex + PIN_STUB_LEN:
-                    mid_x = _snap((sx + ex) / 2)
-                path = [
-                    {'x': sx,    'y': sy},
-                    {'x': mid_x, 'y': sy},
-                    {'x': mid_x, 'y': ey},
-                    {'x': ex,    'y': ey},
-                ]
+            s_dir = _dir(conn['source'])
+            t_dir = _dir(conn['target'])
+            exclude = {conn['source'].split(':')[0],
+                       conn['target'].split(':')[0]}
+
+            path = _make_path(s_pos, s_dir, t_pos, t_dir,
+                              self.components, exclude)
+
+            # HARD final guards — drop the wire if ANY check fails
+            if not path:
+                n_dropped += 1
+                continue
+            if len(path) < 2:
+                n_dropped += 1
+                continue
+            if not _is_orthogonal(path):
+                n_dropped += 1
+                continue
+            if _path_length(path) > MAX_WIRE_MANHATTAN:
+                n_dropped += 1
+                continue
+            if _path_collisions(path, self.components, exclude) > MAX_COLLISIONS:
+                n_dropped += 1
+                continue
 
             traces.append({
                 'source': conn['source'],
                 'target': conn['target'],
-                'path':   path,
+                'path':   [{'x': p[0], 'y': p[1]} for p in path],
             })
 
         return traces

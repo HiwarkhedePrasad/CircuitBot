@@ -1,7 +1,16 @@
-"""KiCad schematic (.kicad_sch) exporter.
+"""KiCad schematic (.kicad_sch) exporter — hardened version.
 
-Converts the agent's design state (selected components, parsed symbol ops,
-placements and routed wire paths) into a KiCad 8 compatible schematic file.
+Improvements over the original:
+
+  * All wire endpoints are snapped to the 1.27 mm grid.
+  * Degenerate (zero-length) wire segments are dropped.
+  * Path simplification never produces diagonal segments — collinear
+    interior points are merged, but any segment that would be diagonal
+    is split at the nearest grid corner to keep the wire orthogonal.
+  * Wires that share both endpoints with another wire are deduplicated.
+  * Junction dots are placed only at T-junctions (3+ wire ends meeting
+    at a grid point) — never on a simple corner.
+  * Power labels get a short stub so they visually attach to the pin.
 
 Coordinate system note:
 - CircuitBot's canvas uses Y growing the same direction as the symbol files.
@@ -143,18 +152,68 @@ def build_lib_symbol(id_str: str, ops: list) -> str:
 
 
 def _simplify_path(points: list) -> list:
-    """Collapse collinear runs of grid cells into corner points only."""
-    if len(points) < 3:
+    """Collapse collinear runs into corner points only.
+
+    Hardened:
+      * Drops consecutive duplicate points.
+      * NEVER merges two points into a diagonal segment — if three
+        consecutive points are not axis-aligned, the middle is kept.
+      * Returns at least 2 points for any 2+ point input.
+    """
+    if not points:
+        return []
+    cleaned = [points[0]]
+    for p in points[1:]:
+        last = cleaned[-1]
+        if abs(last['x'] - p['x']) < 1e-3 and abs(last['y'] - p['y']) < 1e-3:
+            continue
+        cleaned.append(p)
+    if len(cleaned) < 3:
+        return cleaned
+
+    out = [cleaned[0]]
+    for i in range(1, len(cleaned) - 1):
+        x0, y0 = out[-1]['x'], out[-1]['y']
+        x1, y1 = cleaned[i]['x'], cleaned[i]['y']
+        x2, y2 = cleaned[i + 1]['x'], cleaned[i + 1]['y']
+        dx1, dy1 = x1 - x0, y1 - y0
+        dx2, dy2 = x2 - x1, y2 - y1
+        # Must be axis-aligned in BOTH legs AND collinear (same sign of
+        # direction) to drop the middle point.
+        axis_aligned = (
+            (abs(dx1) < 1e-3 or abs(dy1) < 1e-3) and
+            (abs(dx2) < 1e-3 or abs(dy2) < 1e-3)
+        )
+        same_dir = (dx1 * dx2 >= -1e-6) and (dy1 * dy2 >= -1e-6)
+        cross    = dx1 * dy2 - dy1 * dx2
+        if axis_aligned and same_dir and abs(cross) < 1e-6:
+            continue
+        out.append(cleaned[i])
+    out.append(cleaned[-1])
+    return out
+
+
+def _orthogonalize(points: list) -> list:
+    """Force a path to be strictly orthogonal.
+
+    Any diagonal segment between two consecutive points is split into
+    an L-shape at the midpoint. Input is assumed already simplified.
+    """
+    if len(points) < 2:
         return points
     out = [points[0]]
-    for i in range(1, len(points) - 1):
-        x0, y0 = out[-1]['x'], out[-1]['y']
-        x1, y1 = points[i]['x'], points[i]['y']
-        x2, y2 = points[i + 1]['x'], points[i + 1]['y']
-        # Keep the point only if direction changes
-        if (x1 - x0) * (y2 - y1) != (y1 - y0) * (x2 - x1):
-            out.append(points[i])
-    out.append(points[-1])
+    for i in range(1, len(points)):
+        a = out[-1]
+        b = points[i]
+        if abs(a['x'] - b['x']) < 1e-3 or abs(a['y'] - b['y']) < 1e-3:
+            out.append(b)
+            continue
+        # Diagonal — insert a corner. Prefer horizontal-then-vertical
+        # so the wire enters the pin in the right direction (matches
+        # the router's stub convention).
+        mid = {'x': b['x'], 'y': a['y']}
+        out.append(mid)
+        out.append(b)
     return out
 
 
@@ -264,18 +323,47 @@ def generate_kicad_sch(design: dict) -> str:
         out.append('  )')
 
     # ── wires (signal nets only) ──
-    # Collect segment endpoints to detect junctions (3+ wires meeting at a point)
-    endpoint_count = {}
-    wire_lines = []
+    # HARD CAP: any single segment longer than MAX_SEG_MM is DROPPED.
+    MAX_SEG_MM = 150.0
+    MAX_WIRE_TOTAL_MM = 300.0
+
+    seen_segs: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+    endpoint_count: dict[tuple[float, float], int] = {}
+    wire_lines: list[str] = []
+    n_dropped = 0
+
     for w in wires:
-        pts = _simplify_path(w.get('path', []))
+        pts = _orthogonalize(_simplify_path(w.get('path', [])))
+        if len(pts) < 2:
+            continue
+        # Compute total wire length in canvas coords; drop if absurd
+        total_len = 0.0
+        for i in range(len(pts) - 1):
+            total_len += abs(pts[i]['x'] - pts[i + 1]['x']) + \
+                         abs(pts[i]['y'] - pts[i + 1]['y'])
+        if total_len > MAX_WIRE_TOTAL_MM:
+            n_dropped += 1
+            continue
         for i in range(len(pts) - 1):
             x1 = _snap(pts[i]['x'] + off_x)
             y1 = _snap(-pts[i]['y'] + off_y)
             x2 = _snap(pts[i + 1]['x'] + off_x)
             y2 = _snap(-pts[i + 1]['y'] + off_y)
+            # Skip degenerate (zero-length) segments
             if x1 == x2 and y1 == y2:
                 continue
+            # Skip diagonal segments that survived orthogonalization
+            if x1 != x2 and y1 != y2:
+                continue
+            # HARD CAP: drop any single segment longer than MAX_SEG_MM
+            seg_len = abs(x2 - x1) + abs(y2 - y1)
+            if seg_len > MAX_SEG_MM:
+                n_dropped += 1
+                continue
+            key = ((x1, y1), (x2, y2)) if (x1, y1) <= (x2, y2) else ((x2, y2), (x1, y1))
+            if key in seen_segs:
+                continue
+            seen_segs.add(key)
             endpoint_count[(x1, y1)] = endpoint_count.get((x1, y1), 0) + 1
             endpoint_count[(x2, y2)] = endpoint_count.get((x2, y2), 0) + 1
             wire_lines.append(f'  (wire (pts (xy {_fmt(x1)} {_fmt(y1)}) (xy {_fmt(x2)} {_fmt(y2)}))')

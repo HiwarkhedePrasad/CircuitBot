@@ -549,6 +549,9 @@ def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
         pin_num = num_node[1].replace('"', '').strip()
         if not pin_num:
             continue
+        # etype (electrical type) — used by netlist generation
+        etype_node = _get_attr(op, "electrical_type")
+        etype = etype_node[1] if etype_node else "passive"
         key = f"{ref_des}:{pin_num}"
         if key in pin_matrix:
             continue
@@ -558,6 +561,10 @@ def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
             "name": pin_name.strip(),
             "ref_des": ref_des,
             "pin_num": pin_num,
+            # KiCad angle convention: 0=right, 90=up, 180=left, 270=down.
+            # Routers use this to know which way to exit the symbol body.
+            "angle": int(round(ang_deg)) % 360,
+            "etype": etype,
         }
     return pin_matrix
 
