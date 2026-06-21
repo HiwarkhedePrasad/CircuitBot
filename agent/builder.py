@@ -3,7 +3,9 @@ from langgraph.graph import StateGraph, END
 from agent.state import AgentState
 from agent.nodes import (
     analyze_node, research_node, select_node, validate_node,
-    dispatch_node, netlist_node, layout_route_node,
+    dispatch_node, netlist_node,
+    schematic_layout_node, pcb_layout_node,
+    schematic_audit_node,
 )
 from agent.utils import _route_after_validate
 
@@ -25,7 +27,9 @@ def build_graph() -> StateGraph:
     builder.add_node("validate", validate_node)
     builder.add_node("dispatch", dispatch_node)
     builder.add_node("netlist", netlist_node)
-    builder.add_node("layout_route", layout_route_node)
+    builder.add_node("schematic_layout", schematic_layout_node)
+    builder.add_node("schematic_audit", schematic_audit_node)
+    builder.add_node("pcb_layout", pcb_layout_node)
     builder.add_node("error_end", error_end_node)
 
     builder.set_entry_point("analyze")
@@ -38,7 +42,10 @@ def build_graph() -> StateGraph:
         "error_end": "error_end",
     })
     builder.add_edge("dispatch", "netlist")
-    builder.add_edge("netlist", "layout_route")
+    builder.add_edge("netlist", "schematic_layout")
+    builder.add_edge("schematic_layout", "schematic_audit")
+    builder.add_edge("schematic_audit", "pcb_layout")
+    builder.add_edge("pcb_layout", END)
     builder.add_edge("error_end", END)
 
     return builder.compile()

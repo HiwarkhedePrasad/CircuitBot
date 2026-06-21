@@ -1,6 +1,6 @@
 import re
 
-from agent.datasheet import fetch_datasheet_text
+from agent.datasheet import extract_critical_specs
 from agent.reranker import rank_candidates
 from agent.support_rules import get_supporting_components, resolve_fallback_symbol
 from agent.tools import search_components, fetch_footprint
@@ -33,9 +33,24 @@ def _ref_prefix(category: str, id_str: str = '') -> str:
     return 'U'
 
 
-def _assign_ref_des(components: list[dict]) -> list[dict]:
-    counters: dict[str, int] = {}
+def _assign_ref_des(components: list[dict], sheet_map: dict[str, int] | None = None) -> list[dict]:
+    """Assign reference designators using sheet×100 numbering when a sheet_map
+    is provided.  Components without a subsystem entry get legacy sequential
+    numbering (no sheet base).
+
+    sheet_map: {subsystem_name: sheet_number} — e.g. {"Power Input": 1, "MCU": 2}
+    """
+    counters: dict[tuple[str, int], int] = {}  # (letter, sheet) -> counter
     seen_refs: set[str] = set()
+
+    def _sheet_of(comp: dict) -> int:
+        if not sheet_map:
+            return 0
+        sub = comp.get("subsystem", "") or ""
+        return sheet_map.get(sub, 0)
+
+    def _base(sheet: int) -> int:
+        return sheet * 100 if sheet > 0 else 0
 
     # Pass 1: register max counter from existing valid refs
     for comp in components:
@@ -43,7 +58,14 @@ def _assign_ref_des(components: list[dict]) -> list[dict]:
         if existing and re.fullmatch(r'[A-Z]+\d+', existing):
             m = re.match(r'([A-Z]+)(\d+)', existing)
             if m:
-                counters[m.group(1)] = max(counters.get(m.group(1), 0), int(m.group(2)))
+                letter = m.group(1)
+                num = int(m.group(2))
+                sheet = _sheet_of(comp)
+                base = _base(sheet)
+                # Only track counters that belong to this sheet's range
+                if base == 0 or (base < num < base + 100):
+                    key = (letter, sheet)
+                    counters[key] = max(counters.get(key, 0), num - base)
 
     # Pass 2: count how many components share each ref
     ref_counts: dict[str, int] = {}
@@ -66,11 +88,14 @@ def _assign_ref_des(components: list[dict]) -> list[dict]:
         cat = comp.get('category', '')
         id_str = comp.get('id_str', '')
         letter = _ref_prefix(cat, id_str)
-        counters[letter] = counters.get(letter, 0) + 1
-        new_ref = f"{letter}{counters[letter]}"
+        sheet = _sheet_of(comp)
+        base = _base(sheet)
+        key = (letter, sheet)
+        counters[key] = counters.get(key, 0) + 1
+        new_ref = f"{letter}{base + counters[key]}"
         while new_ref in seen_refs:
-            counters[letter] += 1
-            new_ref = f"{letter}{counters[letter]}"
+            counters[key] += 1
+            new_ref = f"{letter}{base + counters[key]}"
         comp['ref_des'] = new_ref
         seen_refs.add(new_ref)
     return components
@@ -168,6 +193,14 @@ def select_node(state, config):
                 "message": f"  Skipped '{sub.get('subsystem', '')}' — {reason}"
             })
 
+    # Build subsystem→sheet map for sheet×100 annotation (KiCad convention).
+    # Each unique subsystem gets a sequential sheet number starting at 1.
+    subsystem_sheet_map: dict[str, int] = {
+        sub: i + 1 for i, sub in enumerate(
+            dict.fromkeys(c.get("subsystem", "") for c in selected if c.get("subsystem"))
+        )
+    }
+
     seen_ids = set()
     deduped = []
     for s in selected:
@@ -181,7 +214,7 @@ def select_node(state, config):
         s.setdefault("datasheet_text", "")
         seen_ids.add(id_str)
         deduped.append(s)
-    selected = _assign_ref_des(deduped)
+    selected = _assign_ref_des(deduped, subsystem_sheet_map)
 
     prev_selected = state.get("selected_components", [])
     current_ids = {c["id_str"] for c in selected}
@@ -203,8 +236,37 @@ def select_node(state, config):
                 "message": f"  Preserved {c['id_str']} for '{c['subsystem']}' (reranker skipped, previous selection carried forward)"
             })
     if carried:
-        selected = _assign_ref_des(selected)
+        selected = _assign_ref_des(selected, subsystem_sheet_map)
         _emit(config, "agent:log", {"message": f"  Carried forward {carried} component(s)"})
+
+    # Dedup by subsystem label: if two non-passive components share the same
+    # subsystem (e.g., bare IC + module for same role across retry cycles),
+    # keep only the first one (which is the higher-ranked original pick).
+    # IMPORTANT: skip validator-added components — they are supporting ICs
+    # (USB-UART bridge, fuse, ESD diodes) that genuinely share the subsystem
+    # label with the main IC they support. Deduping them would remove valid
+    # connectivity (e.g., the USB bridge needed for ATmega USB communication).
+    seen_subs: dict[str, str] = {}
+    deduped_subs: list[dict] = []
+    for c in selected:
+        if c.get("justification", "").startswith("Auto-added by validator"):
+            deduped_subs.append(c)
+            continue
+        sub = c.get("subsystem", "")
+        if not sub:
+            deduped_subs.append(c)
+            continue
+        if sub in seen_subs:
+            _emit(config, "agent:log", {
+                "message": f"  Dedup: dropped {c['ref_des']} ({c.get('id_str', '?')}) — "
+                           f"subsystem '{sub}' already has {seen_subs[sub]}"
+            })
+            continue
+        seen_subs[sub] = f"{c['ref_des']} ({c.get('id_str', '?')})"
+        deduped_subs.append(c)
+    if len(deduped_subs) < len(selected):
+        selected = _assign_ref_des(deduped_subs, subsystem_sheet_map)
+        _emit(config, "agent:log", {"message": f"  After dedup: {len(selected)} component(s)"})
 
     covered_prefixes_by_subsystem = {}
     for c in selected:
@@ -227,7 +289,7 @@ def select_node(state, config):
                 break
         if url:
             snippet = _sanitize_data(
-                fetch_datasheet_text(url, offset=0, length=500),
+                extract_critical_specs(url),
                 label=f"datasheet:{s['id_str']}"
             )
             if snippet:
@@ -329,7 +391,7 @@ def select_node(state, config):
                 print(f"Support component search failed: {e}")
     if injected:
         selected.extend(injected)
-        selected = _assign_ref_des(selected)
+        selected = _assign_ref_des(selected, subsystem_sheet_map)
         _emit(config, "agent:log", {
             "message": f"  Injected {len(injected)} supporting components"
         })

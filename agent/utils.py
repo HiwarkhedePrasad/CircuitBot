@@ -437,6 +437,8 @@ def _generate_nets_fallback(pin_matrix: dict,
             if not isinstance(net, dict):
                 continue
             net_name = net.get("net", "")
+            if _is_gnd_net(net_name):
+                continue
             for key in net.get("pins", []):
                 ref = key.split(":")[0]
                 if any(pc == ref for pc in comp_for.values()):

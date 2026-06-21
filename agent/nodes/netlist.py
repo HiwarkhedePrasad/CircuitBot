@@ -1,5 +1,6 @@
 import json
 
+from agent.bus_checker import check_bus_topology
 from agent.prompts import NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER
 from agent.utils import (
     _emit, _emit_activity, _make_signal_batches, _merge_net, _generate_nets_fallback,
@@ -99,6 +100,12 @@ def netlist_node(state, config):
             _emit(config, "agent:log", {
                 "message": f"  Batch {bi}: dropped {n_dropped} hallucinated/duplicate pin refs"
             })
+
+    # ── Bus topology check ─────────────────────────────────────────
+    nets, bus_warnings = check_bus_topology(nets, pins, comps)
+    for w in bus_warnings:
+        _emit(config, "agent:log", {"message": w})
+
     leftover = {k: pins[k] for k in pins if k not in assigned}
     if leftover:
         for net in _generate_nets_fallback(leftover, comps, nets):

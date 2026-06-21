@@ -55,8 +55,8 @@ netlist = [
     {'source': 'U1:1', 'target': 'R1:2'},
     {'source': 'U1:2', 'target': 'R1:2'},
 ]
-traces = engine.route_traces(netlist, pin_matrix)
-print(f"Routed {len(traces)}/{len(netlist)} traces")
+traces, dropped = engine.route_traces(netlist, pin_matrix)
+print(f"Routed {len(traces)}/{len(netlist)} traces ({len(dropped)} dropped)")
 
 # Verify all paths are clean orthogonal segments
 orthogonal = True
@@ -136,6 +136,44 @@ path = [{'x': 0, 'y': 0}, {'x': 1.27, 'y': 0}, {'x': 2.54, 'y': 0},
         {'x': 2.54, 'y': 1.27}, {'x': 2.54, 'y': 2.54}]
 simp = _simplify_path(path)
 print(f"  {'[PASS]' if len(simp) == 3 else '[FAIL]'} path simplification: {len(path)} pts -> {len(simp)} pts")
+
+print()
+print("=" * 60)
+print("TEST 3: Library prefix propagation to export")
+print("=" * 60)
+
+prefix_design = {
+    'selected_components': [
+        {'id_str': 'Connector:USB_C_Receptacle_USB2.0_14P', 'ref_des': 'J1',
+         'category': 'Connector', 'description': 'USB-C'},
+    ],
+    'component_ops': {
+        'J1': [
+            ['rectangle', ['start', '-7.62', '7.62'], ['end', '7.62', '-7.62'],
+             ['stroke', ['width', '0.254']], ['fill', ['type', 'background']]],
+            ['pin', 'passive', 'line', ['at', '-10.16', '5.08', '0'], ['length', '2.54'],
+             ['name', 'D+', ['effects']], ['number', '1', ['effects']]],
+        ],
+    },
+    'component_placements': [{'ref_des': 'J1', 'x': 0, 'y': 0}],
+    'wire_paths': [],
+    'power_labels': [],
+}
+
+# Simulate the prefix fix that validate.py applies
+for c in prefix_design['selected_components']:
+    wrong = 'Connector:USB_C_'
+    right = 'Connector_USB:USB_C_'
+    if c['id_str'].startswith(wrong):
+        c['id_str'] = right + c['id_str'][len(wrong):]
+
+sch_prefix = generate_kicad_sch(prefix_design)
+prefix_ok = '"Connector_USB:USB_C_Receptacle_USB2.0_14P"' in sch_prefix
+wrong_prefix = '"Connector:USB_C_Receptacle_USB2.0_14P"' not in sch_prefix
+lib_id_ok = prefix_ok
+print(f"  {'[PASS]' if lib_id_ok else '[FAIL]'} lib_id uses Connector_USB prefix")
+print(f"  {'[PASS]' if wrong_prefix else '[FAIL]'} no lingering Connector: prefix")
+all_ok = all_ok and lib_id_ok and wrong_prefix
 
 # Write sample file
 with open('test_export.kicad_sch', 'w', encoding='utf-8') as f:

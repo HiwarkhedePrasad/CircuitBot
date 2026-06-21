@@ -5,6 +5,7 @@ supporting parts (caps, resistors, etc.) needed for it to function.
 Rules are ordered most-specific-first; first match wins.
 """
 
+import re
 from typing import Callable
 
 SupportDef = dict
@@ -49,12 +50,36 @@ RULES: list[Rule] = [
             {"search_query": "small capacitor",  "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "0.1µF output bypass cap for regulator", "count": 1},
         ],
     ),
-    # ── ATmega / classic AVR MCUs: RESET pull-up + AREF cap + VCC/AVCC decoupling ──
+    # ── AVR MCUs WITH USB peripheral (ATmega*U4/U2, AT90USB*): RESET pull-up + AREF cap
+    #     + VCC/AVCC decoupling + UCAP cap ──
+    # Must come BEFORE generic AVR rule — first match wins.
+    (
+        lambda c: (
+            bool(re.search(r'ATMEGA\w*US?B?\d', _id(c)))
+            or any(kw in _id(c) for kw in ["ATMEGA32U4", "ATMEGA16U4", "ATMEGA32U2", "ATMEGA16U2", "ATMEGA8U2", "AT90USB"])
+            or (_has_lib(c, "MCU_Microchip_AVR")
+                and bool(re.search(r'ATMEGA\w*[US]\d', _id(c))))
+        ),
+        [
+            {"search_query": "10k ohm resistor",  "preferred_id_str": "Device:R_Small",  "library_filter": "Device", "ref_des_prefix": "R", "description": "10kΩ ~RESET pull-up resistor (active-low reset stability)", "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "100nF AREF decoupling cap",                              "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "100nF VCC decoupling cap for AVR MCU",                    "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "100nF AVCC decoupling cap for AVR MCU",                   "count": 1},
+            {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "10µF bulk decoupling cap for AVR MCU",                    "count": 1},
+            {"search_query": "1uF capacitor",     "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "1µF UCAP decoupling cap for ATmega USB pad regulator",     "count": 1},
+        ],
+    ),
+    # ── AVR MCUs WITHOUT USB (plain ATmega, ATtiny, AT90, ATxmega): RESET pull-up + AREF
+    #     + VCC/AVCC decoupling — NO UCAP (these parts don't have a USB pad regulator) ──
     # Must come BEFORE the generic MCU rule — first match wins.
     (
         lambda c: (
-            any(kw in _id(c) for kw in ["ATMEGA", "ATTINY", "AT90", "ATXMEGA"])
-            or _has_lib(c, "MCU_Microchip_AVR")
+            (any(kw in _id(c) for kw in ["ATMEGA", "ATTINY", "AT90", "ATXMEGA"])
+             or _has_lib(c, "MCU_Microchip_AVR"))
+            and not (
+                bool(re.search(r'ATMEGA\w*US?B?\d', _id(c)))
+                or any(kw in _id(c) for kw in ["ATMEGA32U4", "ATMEGA16U4", "ATMEGA32U2", "ATMEGA16U2", "ATMEGA8U2", "AT90USB"])
+            )
         ),
         [
             {"search_query": "10k ohm resistor",  "preferred_id_str": "Device:R_Small",  "library_filter": "Device", "ref_des_prefix": "R", "description": "10kΩ ~RESET pull-up resistor (active-low reset stability)", "count": 1},

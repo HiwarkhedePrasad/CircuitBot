@@ -55,6 +55,128 @@ def _fix_library_prefixes(components: list[dict], emit_fn) -> int:
     return n_fixed
 
 
+_PART_FAMILIES: dict[re.Pattern, dict] = {
+    # pattern → { "family": str, "traits": set[str], "comment": str }
+    re.compile(r'\bESP32[-_ ]?(?:C3|C6|S2|S3|H2|P4)?\b', re.IGNORECASE):
+        {"family": "ESP32", "traits": {"wireless", "wifi", "bluetooth", "risc-v or xtensa"}, "comment": "wireless MCU"},
+    re.compile(r'\bSTM32\w*\b', re.IGNORECASE):
+        {"family": "STM32", "traits": {"arm", "cortex-m"}, "comment": "ARM Cortex-M MCU"},
+    re.compile(r'\bRP2040\b', re.IGNORECASE):
+        {"family": "RP2040", "traits": {"arm", "cortex-m0+"}, "comment": "Raspberry Pi MCU"},
+    re.compile(r'\bRP2350\b', re.IGNORECASE):
+        {"family": "RP2350", "traits": {"arm", "cortex-m33", "risc-v"}, "comment": "Raspberry Pi MCU"},
+    re.compile(r'\bATmega\w*\b', re.IGNORECASE):
+        {"family": "ATmega", "traits": {"avr"}, "comment": "AVR MCU"},
+    re.compile(r'\bATTINY\w*\b', re.IGNORECASE):
+        {"family": "ATtiny", "traits": {"avr"}, "comment": "AVR MCU"},
+    re.compile(r'\bAT90\w*\b', re.IGNORECASE):
+        {"family": "AT90", "traits": {"avr"}, "comment": "AVR MCU"},
+    re.compile(r'\bSAMD\w*\b', re.IGNORECASE):
+        {"family": "SAMD", "traits": {"arm", "cortex-m0+"}, "comment": "ARM Cortex-M0+ MCU"},
+}
+
+_MCU_FAMILY_KEYWORDS: dict[str, set[str]] = {
+    "ESP32":    {"ESP32", "RISP32", "XTENSA", "WIRELESS", "WIFI", "BLUETOOTH", "IEEE802"},
+    "STM32":    {"STM32", "CORTEX", "ARM"},
+    "RP2040":   {"RP2040", "CORTEX", "ARM"},
+    "RP2350":   {"RP2350", "CORTEX", "ARM"},
+    "ATmega":   {"ATMEGA", "MEGA", "AVR"},
+    "ATTINY":   {"ATTINY", "TINY", "AVR"},
+    "AT90":     {"AT90", "AVR"},
+    "SAMD":     {"SAMD", "CORTEX", "ARM"},
+}
+
+
+def _check_prompt_integrity(prompt: str, comps: list[dict]) -> list[str]:
+    """Deterministic pre-check: if the user named a specific part family,
+    flag any selected component that belongs to a different (incompatible)
+    MCU family.
+
+    Returns a list of error messages, empty if no violations.
+    """
+    mentioned_families: set[str] = set()
+    for pattern, info in _PART_FAMILIES.items():
+        if pattern.search(prompt):
+            mentioned_families.add(info["family"])
+
+    if not mentioned_families:
+        return []
+
+    errors: list[str] = []
+    for c in comps:
+        id_str = (c.get("id_str", "") or "").upper()
+        desc = (c.get("description", "") or "").upper()
+        id_and_desc = f"{id_str} {desc}"
+
+        detected_families: set[str] = set()
+        for fam, keywords in _MCU_FAMILY_KEYWORDS.items():
+            if any(kw in id_and_desc for kw in keywords):
+                detected_families.add(fam)
+
+        if not detected_families:
+            continue
+
+        mentioned_without_wireless = mentioned_families - {"ESP32"}
+        detected_without_wireless = detected_families - {"ESP32"}
+
+        if mentioned_without_wireless and detected_without_wireless:
+            if mentioned_without_wireless != detected_without_wireless:
+                errors.append(
+                    f"Prompt-integrity: user requested {', '.join(sorted(mentioned_families))} "
+                    f"but {c.get('ref_des', '?')} ({c.get('id_str', '?')}) "
+                    f"is a {', '.join(sorted(detected_families))} family part — "
+                    f"family mismatch"
+                )
+        elif "ESP32" in mentioned_families and "ESP32" not in detected_families and detected_families:
+            errors.append(
+                f"Prompt-integrity: user requested ESP32 (wireless MCU) "
+                f"but {c.get('ref_des', '?')} ({c.get('id_str', '?')}) "
+                f"is a {', '.join(sorted(detected_families))} family part — "
+                f"lacks wireless capability"
+            )
+
+    return errors
+
+
+_BARE_RF_PATTERNS = re.compile(
+    r'(ESP32|ESP8266|NRF24[L]?[012]|NRF52[345]|CC1101|CC1310|CC1352|SX126[128]|LR1110|LR1120)',
+    re.IGNORECASE,
+)
+_MODULE_MARKERS = re.compile(
+    r'(WROOM|MINI|MOD|DEVKIT|MODULE|DK|DONGLE|BOARD|BREAKOUT)',
+    re.IGNORECASE,
+)
+_MODULE_LIBRARIES = ("RF_MODULE", "MODULE_")
+
+
+def _check_module_preference(comps: list[dict]) -> list[str]:
+    """Detect bare RF ICs (QFN/BGA chips) that should be replaced with
+    pre-certified modules for easier PCB routing.
+
+    Returns error messages; empty list means no violations.
+    """
+    errors: list[str] = []
+    for c in comps:
+        id_str = (c.get("id_str", "") or "").upper()
+        library = id_str.split(":")[0] if ":" in id_str else ""
+
+        # Skip if already a module
+        if any(lib in library for lib in _MODULE_LIBRARIES):
+            continue
+        if _MODULE_MARKERS.search(id_str):
+            continue
+
+        # Check if it's a bare RF IC
+        if _BARE_RF_PATTERNS.search(id_str):
+            errors.append(
+                f"Module preference: {c.get('ref_des', '?')} ({c.get('id_str', '?')}) "
+                f"is a bare RF IC — replace with a pre-certified module "
+                f"(search for named modules with WROOM/DEVKIT suffix) "
+                f"for easier PCB routing and FCC compliance"
+            )
+    return errors
+
+
 def validate_node(state, config):
     _emit(config, "agent:thinking", {"message": "Validating component selections..."})
     _emit_activity(config, "validate", "Validation", "start")
@@ -69,13 +191,33 @@ def validate_node(state, config):
         _emit(config, "agent:log", {"message": "No components to validate."})
         return _stage_result(state, "validate", {"selected_components": comps, "validation_errors": []})
     components_list = "\n".join(
-        f'  {c["ref_des"]}: {c["id_str"]}  [{c.get("category", "?")}]  "{c.get("description", "")[:80]}"'
+        (
+            f'  {c["ref_des"]}: {c["id_str"]}  [{c.get("category", "?")}]'
+            f'  "{c.get("description", "")[:80]}"'
+            + (f'  [DATASHEET] {c.get("datasheet_text", "")[:300]}' if c.get("datasheet_text") else '')
+        )
         for c in comps
     )
     subsystems = "\n".join(
         f'  {a.get("subsystem", "?")}: {a.get("function", "")}'
         for a in analysis
     )
+
+    # Deterministic prompt-integrity pre-check runs BEFORE the LLM validation
+    # so that part-family mismatches are caught even if the LLM hallucinates.
+    integrity_errors = _check_prompt_integrity(prompt, comps)
+    if integrity_errors:
+        _emit(config, "agent:log", {
+            "message": f"  Prompt-integrity pre-check found {len(integrity_errors)} issue(s)"
+        })
+
+    # Module preference check: bare RF ICs should be replaced with modules.
+    module_errors = _check_module_preference(comps)
+    if module_errors:
+        _emit(config, "agent:log", {
+            "message": f"  Module preference pre-check found {len(module_errors)} issue(s)"
+        })
+
     try:
         text = _call_llm(VALIDATE_SYSTEM, VALIDATE_USER.format(
             prompt=prompt,
@@ -90,6 +232,24 @@ def validate_node(state, config):
     except json.JSONDecodeError:
         print(f"Failed to parse validation JSON: {text[:200]}")
         result = {"valid": True, "issues": []}
+
+    # Inject deterministic pre-check errors into LLM result
+    for err in integrity_errors:
+        result.setdefault("issues", []).append({
+            "id_str": "",
+            "severity": "error",
+            "message": err,
+            "suggestion": "Reselect using a part matching the originally specified family",
+        })
+        result["valid"] = False
+    for err in module_errors:
+        result.setdefault("issues", []).append({
+            "id_str": "",
+            "severity": "error",
+            "message": err,
+            "suggestion": "Replace bare RF IC with a pre-certified module",
+        })
+        result["valid"] = False
     issues = result.get("issues", [])
     missing = result.get("missing_components", [])
     errors = [i for i in issues if i.get("severity") == "error"]

@@ -255,7 +255,7 @@ def route_board(
     ``(traces, violations)`` where *traces* is the full routed path list
     and *violations* is the DRC violation list.
     """
-    traces = engine.route_traces(netlist, pin_matrix)
+    traces, _ = engine.route_traces(netlist, pin_matrix)
     traces, n_fixed, n_conflicts = engine.check_and_fix_overlaps(traces)
     violations = drc(traces, engine.components, rules)
     return traces, violations

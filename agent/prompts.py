@@ -126,6 +126,23 @@ check each component for correctness:
    - If a USB-C connector needs CC resistors, create ONE entry for the
      connector and separate entries for the resistors.
 
+6. PART FAMILY INTEGRITY: If the user's prompt names a specific part number or
+   family (ESP32, STM32, ATmega, RP2040, etc.), verify the selected component
+   belongs to the SAME family or a direct superset. For example:
+   - Prompt says "ESP32-C3" → component must be ESP32-family (wireless MCU).
+     Flag "ATmega32U4" as a MISMATCH (AVR ≠ ESP32).
+   - Prompt says "ATmega328P" → component must be AVR-family. Flag "STM32F411"
+     as a MISMATCH (ARM ≠ AVR).
+   - Exception: bare chips replaced by modules that include them (e.g., ESP32
+     replaced by ESP32-WROOM module) are acceptable.
+
+7. WIRELESS-FEATURE CHECK: If the user prompt specifies wireless capability
+   (WiFi, Bluetooth, BLE, LoRa, Zigbee, etc.) in any form — either by naming
+   an ESP32 or by explicitly mentioning wireless — the selected MCU MUST
+   support that wireless protocol. A non-wireless MCU (ATmega, bare STM32,
+   RP2040) is a FATAL MISMATCH unless a separate wireless transceiver IC
+   (e.g., NRF24L01, ESP8266, RFM95) is also in the component list.
+
 COMMON COMPONENT CHEAT SHEET:
 Use EXACTLY these KiCad symbols for generic supporting parts:
 - Resistors: "Device:R_Small"
@@ -189,6 +206,13 @@ Net naming rules:
 - The ground net MUST be named "GND" — put ALL ground pins (GND, VSS, AGND, DGND, EP, EPAD) in it
 - Power nets MUST be named by voltage: "3V3", "5V", "VBAT", "VIN"
 - Signal nets get short descriptive names: "SDA", "SCL", "UART_TX", "CHG_EN", "XTAL1", etc.
+
+Label scope rules (determines how signals connect across the design):
+- POWER RAILS (VCC, 3V3, GND, VBUS) are GLOBAL labels — they connect across all sheets automatically.
+- CROSS-SHEET SIGNALS (I2C_SDA, UART_TX, RESET, etc.) must be GLOBAL labels if they need to reach multiple sheets.
+- INTRA-SHEET SIGNALS (local connections like decoupling cap nets, crystal pin nets) are LOCAL net labels.
+- NEVER use two LOCAL labels with the same name on different sheets to create a connection — THAT CONNECTION DOES NOT EXIST.
+- In this single-sheet design, all nets are rendered as global labels or local wires. Keep signal names descriptive so they can be promoted to global labels when the design grows hierarchical.
 
 Connection rules:
 - Each decoupling capacitor: one pin in a power net, the other pin in GND

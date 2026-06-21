@@ -6,7 +6,7 @@ imports (e.g. ``from agent.graph import agent_graph``) continue to work.
 from agent.builder import agent_graph, build_graph
 from agent.nodes import (
     analyze_node, research_node, select_node, validate_node,
-    dispatch_node, netlist_node, layout_route_node,
+    dispatch_node, netlist_node, schematic_layout_node, pcb_layout_node,
 )
 from agent.utils import (
     MAX_LLM_RETRIES, MAX_VALIDATION_RETRIES, MAX_BATCH_PINS,
@@ -27,7 +27,8 @@ from agent.utils import (
 __all__ = [
     "agent_graph", "build_graph",
     "analyze_node", "research_node", "select_node", "validate_node",
-    "dispatch_node", "netlist_node", "layout_route_node",
+    "dispatch_node", "netlist_node",
+    "schematic_layout_node", "pcb_layout_node",
     "MAX_LLM_RETRIES", "MAX_VALIDATION_RETRIES", "MAX_BATCH_PINS",
     "GND_NET_NAMES", "POWER_NET_NAMES", "POWER_ETYPES",
     "AgentLLMError",
