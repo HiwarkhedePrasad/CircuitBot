@@ -17,6 +17,40 @@ const isValidWirePath = (pts, maxLen) => {
     return true;
 };
 
+// Repair a wire path by converting diagonal segments into L-shaped bends.
+// Mirrors Python repair_wire_path() in pcb_design/coord_validator.py.
+const repairWirePath = (pts) => {
+    if (!pts || pts.length < 2) return null;
+    // Step 1: orthogonalize — split diagonals into L-shapes
+    const out = [{ x: pts[0].x, y: pts[0].y }];
+    for (let i = 1; i < pts.length; i++) {
+        const a = out[out.length - 1];
+        const b = pts[i];
+        if (Math.abs(a.x - b.x) < 0.001 || Math.abs(a.y - b.y) < 0.001) {
+            out.push({ x: b.x, y: b.y });
+            continue;
+        }
+        // Diagonal — insert corner (horizontal first, then vertical)
+        out.push({ x: b.x, y: a.y });
+        out.push({ x: b.x, y: b.y });
+    }
+    // Step 2: drop consecutive duplicates
+    const cleaned = [{ x: out[0].x, y: out[0].y }];
+    for (let i = 1; i < out.length; i++) {
+        const last = cleaned[cleaned.length - 1];
+        if (Math.abs(last.x - out[i].x) > 0.001 || Math.abs(last.y - out[i].y) > 0.001) {
+            cleaned.push({ x: out[i].x, y: out[i].y });
+        }
+    }
+    // Step 3: verify no diagonal remains
+    for (let i = 0; i < cleaned.length - 1; i++) {
+        const dx = Math.abs(cleaned[i].x - cleaned[i+1].x);
+        const dy = Math.abs(cleaned[i].y - cleaned[i+1].y);
+        if (dx > 0.001 && dy > 0.001) return null; // still diagonal — unrepairable
+    }
+    return cleaned;
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const searchBtn = document.getElementById('searchBtn');
@@ -35,9 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const routePrompt = document.getElementById('routePrompt');
     const agentBtn = document.getElementById('agentBtn');
     const agentPrompt = document.getElementById('agentPrompt');
-    const agentLog = document.getElementById('agentLog');
+    const agentConversation = document.getElementById('agentConversation');
     const agentThinking = document.getElementById('agentThinking');
-    const activityLogEl = document.getElementById('activityLog');
     const coordDisplay = document.getElementById('coordDisplay');
     const zoomLevelDisplay = document.getElementById('zoomLevel');
 
@@ -186,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
             agentBusy = false;
             updateAgentButton();
             showAgentStatus('');
-            addLogEntry(data.message || 'Design complete.', 'success');
+            addConversationMessage('system', data.message || 'Design complete.');
             updateComponentListUI();
             updateSchematicButtons();
             const exportBtn = document.getElementById('exportSchBtn');
@@ -206,19 +239,23 @@ document.addEventListener('DOMContentLoaded', () => {
             showAgentStatus('');
             addLogEntry('Error: ' + (data.message || 'Unknown error'), 'error');
         });
-        socket.on('agent:activity', (data) => {
-            handleActivity(data);
+        socket.on('agent:conversation', (data) => {
+            handleConversationEvent(data);
         });
     }
 
     function addLogEntry(text, type) {
-        const empty = agentLog.querySelector('.agent-log-empty');
+        addConversationMessage(type || 'log', text);
+    }
+
+    function addConversationMessage(type, text) {
+        const empty = agentConversation.querySelector('.conv-empty');
         if (empty) empty.remove();
         const entry = document.createElement('div');
-        entry.className = 'agent-log-entry ' + (type || 'log');
+        entry.className = 'conv-message conv-' + (type || 'log');
         entry.textContent = text;
-        agentLog.appendChild(entry);
-        agentLog.scrollTop = agentLog.scrollHeight;
+        agentConversation.appendChild(entry);
+        agentConversation.scrollTop = agentConversation.scrollHeight;
     }
 
     function showAgentStatus(text) {
@@ -231,109 +268,66 @@ document.addEventListener('DOMContentLoaded', () => {
         agentBtn.textContent = agentBusy ? 'Building...' : 'Build';
     }
 
-    const PHASES = [
-        { phase: 'analyze', title: 'Analyze Design', icon: '⚡' },
-        { phase: 'research', title: 'Component Research', icon: '🔍' },
-        { phase: 'select', title: 'Component Selection', icon: '✓' },
-        { phase: 'validate', title: 'Validation', icon: '✓' },
-        { phase: 'netlist', title: 'Netlist Generation', icon: '⚡' },
-        { phase: 'layout', title: 'PCB Layout', icon: '⚡' },
-    ];
-    const activityPhases = {}; // { phase: { title, element, updates, startedAt, card } }
+    const conversation = []; // append-only conversation log
 
-    const ACTIVITY_ICONS = { info: '○', success: '✓', warning: '⚠', error: '✖' };
+    function handleConversationEvent(data) {
+        if (!data || !data.type) return;
+        conversation.push(data);
+        const empty = agentConversation.querySelector('.conv-empty');
+        if (empty) empty.remove();
 
-    function preCreateActivityCards() {
-        activityLogEl.innerHTML = '';
-        for (const p of PHASES) {
+        if (data.type === 'assistant') {
+            const bubble = document.createElement('div');
+            bubble.className = 'conv-assistant';
+            bubble.textContent = data.content || '';
+            agentConversation.appendChild(bubble);
+        } else if (data.type === 'tool_card') {
             const card = document.createElement('div');
-            card.className = 'activity-card';
-            card.dataset.phase = p.phase;
+            card.className = `conv-tool-card ${data.status || 'running'}`;
+
+            let detailsHtml = '';
+            if (data.details) {
+                const detailStr = typeof data.details === 'object'
+                    ? Object.entries(data.details).map(([k, v]) => `${k}: ${v}`).join('\n')
+                    : data.details;
+                detailsHtml = `<div class="tc-details" hidden>${escapeHtml(detailStr)}</div>`;
+            }
+
             card.innerHTML = `
-                <div class="activity-header">
-                    <span class="activity-icon">${p.icon}</span>
-                    <div class="activity-body">
-                        <span class="activity-title">${p.title}</span>
-                    </div>
-                    <span class="activity-timing"></span>
+                <div class="tc-header">
+                    <span class="tc-dot ${data.status || 'running'}"></span>
+                    <span class="tc-title">${escapeHtml(data.title)}</span>
+                    <span class="tc-status">${data.status || 'running'}</span>
                 </div>
-                <div class="activity-updates"></div>
+                ${data.summary ? `<div class="tc-summary">${escapeHtml(data.summary)}</div>` : ''}
+                ${detailsHtml}
             `;
-            activityLogEl.appendChild(card);
-            activityPhases[p.phase] = { title: p.title, element: card, updates: [], startedAt: null };
+
+            const header = card.querySelector('.tc-header');
+            const detailsDiv = card.querySelector('.tc-details');
+            if (detailsDiv) {
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', () => {
+                    detailsDiv.hidden = !detailsDiv.hidden;
+                    card.classList.toggle('expanded', !detailsDiv.hidden);
+                });
+            }
+
+            agentConversation.appendChild(card);
         }
+
+        agentConversation.scrollTop = agentConversation.scrollHeight;
     }
 
-    function handleActivity(data) {
-        const { runId, phase, title, status, level, kind, detail } = data;
-        let entry = activityPhases[phase];
-        if (!entry) {
-            // Lazy create if phase not in the predefined list
-            const card = document.createElement('div');
-            card.className = 'activity-card';
-            card.dataset.phase = phase;
-            card.innerHTML = `
-                <div class="activity-header">
-                    <span class="activity-icon">⚡</span>
-                    <div class="activity-body">
-                        <span class="activity-title">${title || phase}</span>
-                    </div>
-                    <span class="activity-timing"></span>
-                </div>
-                <div class="activity-updates"></div>
-            `;
-            activityLogEl.appendChild(card);
-            entry = { title: title || phase, element: card, updates: [], startedAt: null };
-            activityPhases[phase] = entry;
-        }
-
-        if (status === 'start') {
-            entry.startedAt = Date.now();
-            entry.updates = [];
-            const updatesEl = entry.element.querySelector('.activity-updates');
-            updatesEl.innerHTML = '';
-            entry.element.classList.add('active');
-            entry.element.classList.remove('done');
-            // Collapse all other cards
-            for (const [p, e] of Object.entries(activityPhases)) {
-                if (p !== phase && e.element) {
-                    e.element.classList.remove('active');
-                }
-            }
-        }
-
-        if (status === 'update' && detail) {
-            const lvl = level || 'info';
-            const updatesEl = entry.element.querySelector('.activity-updates');
-            const line = document.createElement('div');
-            line.className = `activity-update ${lvl}`;
-            line.innerHTML = `<span class="update-icon">${ACTIVITY_ICONS[lvl] || '○'}</span> ${escapeHtml(Array.isArray(detail) ? detail.join(', ') : detail)}`;
-            updatesEl.appendChild(line);
-            entry.updates.push({ detail, level: lvl });
-            entry.element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-
-        if (status === 'done') {
-            entry.element.classList.remove('active');
-            entry.element.classList.add('done');
-            if (entry.startedAt) {
-                const elapsed = ((Date.now() - entry.startedAt) / 1000).toFixed(1);
-                entry.element.querySelector('.activity-timing').textContent = elapsed + 's';
-            }
-        }
+    function clearConversation() {
+        conversation.length = 0;
+        agentConversation.innerHTML = '';
     }
 
     function escapeHtml(str) {
         const div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
         return div.innerHTML;
-    }
-
-    function clearActivities() {
-        activityLogEl.innerHTML = '';
-        for (const key of Object.keys(activityPhases)) {
-            delete activityPhases[key];
-        }
     }
 
     function handleAgentComponent(data) {
@@ -370,6 +364,13 @@ document.addEventListener('DOMContentLoaded', () => {
             enterSchematicMode();
             addLogEntry(`Laid out ${placements.length} components (${label}).`, 'success');
         };
+
+        // Skip WireBender for large designs — WASM router reliability degrades.
+        if (traces.length > 20) {
+            addLogEntry(`Skipping WireBender (${traces.length} wires > 20 threshold), using backend layout.`, 'log');
+            applyBackendLayout();
+            return;
+        }
 
         // Preferred: WireBender WASM — advanced placement + orthogonal routing.
         addLogEntry('Running WireBender layout...', 'log');
@@ -540,7 +541,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isValidWirePath(w.path, MAX_WIRE_LEN)) {
                 validWires.push(w);
             } else {
-                nDropped++;
+                // Try to repair diagonal segments before giving up
+                const repaired = repairWirePath(w.path);
+                if (repaired && isValidWirePath(repaired, MAX_WIRE_LEN)) {
+                    validWires.push({ ...w, path: repaired });
+                } else {
+                    nDropped++;
+                }
             }
         }
         // If too many wires are bad (> 50%), abort WireBender and use backend traces.
@@ -878,9 +885,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!prompt || agentBusy) return;
         agentBusy = true;
         updateAgentButton();
-        clearActivities();
-        preCreateActivityCards();
-        agentLog.innerHTML = '';
+        clearConversation();
+        agentConversation.innerHTML = '';
         showAgentStatus('Starting agent...');
         if (!currentSchematic) currentSchematic = new Schematic();
         socket.emit('agent:generate', { prompt });

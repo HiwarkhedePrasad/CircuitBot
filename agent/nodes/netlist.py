@@ -3,16 +3,17 @@ import json
 from agent.bus_checker import check_bus_topology
 from agent.prompts import NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER
 from agent.utils import (
-    _emit, _emit_activity, _make_signal_batches, _merge_net, _generate_nets_fallback,
+    _emit, emit_assistant_message, emit_tool_event, _make_signal_batches, _merge_net, _generate_nets_fallback,
     _clean_json, _call_llm_with_tools,
     _is_gnd_net, _is_power_net, _canonical_signal_name, _resolve_hallucinated_pin,
-    PIN_ALIASES, POWER_ETYPES, MAX_BATCH_PINS,
+    PIN_ALIASES, POWER_ETYPES, MAX_BATCH_PINS, _parse_sexpr_to_ops, _extract_pins_from_ops,
 )
 
 
 def netlist_node(state, config):
     _emit(config, "agent:thinking", {"message": "Planning pin connections..."})
-    _emit_activity(config, "netlist", "Netlist Generation", "start")
+    emit_assistant_message(config, "Generating the netlist — connecting all selected components into a wiring topology...")
+    emit_tool_event(config, "Netlist Generation", "running", "Connecting pins...")
     comps = state.get("selected_components", [])
     pins = state.get("pin_matrix", {})
     if not comps or not pins:
@@ -46,6 +47,7 @@ def netlist_node(state, config):
         _emit(config, "agent:log", {
             "message": f"  Wiring {len(signal_keys)} signal pins in {len(batches)} batches"
         })
+    trace_constraints: dict = {}
     for bi, batch_refs in enumerate(batches, 1):
         batch_keys = sorted(
             k for k in signal_keys
@@ -72,12 +74,19 @@ def netlist_node(state, config):
         ))
         text = _clean_json(text)
         try:
-            batch_nets = json.loads(text) if text else []
+            batch_data = json.loads(text) if text else []
         except json.JSONDecodeError:
             print(f"Batch {bi}: failed to parse nets JSON: {text[:200]}")
-            batch_nets = []
-        if not isinstance(batch_nets, list):
+            batch_data = []
+        batch_tc = {}
+        if isinstance(batch_data, dict):
+            batch_tc = batch_data.get("trace_constraints", {})
+            batch_data = batch_data.get("nets", [])
+        if batch_tc:
+            trace_constraints.update(batch_tc)
+        if not isinstance(batch_data, list):
             continue
+        batch_nets = batch_data
         n_dropped = 0
         batch_key_set = set(batch_keys)
         for net in batch_nets:
@@ -136,12 +145,15 @@ def netlist_node(state, config):
             valid_nets.append({"net": name, "pins": clean})
     for net in valid_nets:
         if _is_gnd_net(net["net"]):
+            keep = []
             for p in net["pins"]:
                 pname = pins[p].get("name", "").upper()
                 if _is_power_net(pname):
-                    net["pins"].remove(p)
                     used_pins.discard(p)
                     _emit(config, "agent:log", {"message": f"  ERC: removed power pin {p} ({pname}) from GND net"})
+                else:
+                    keep.append(p)
+            net["pins"] = keep
     power_pins = []
     netlist = []
     n_power_nets = 0
@@ -230,11 +242,82 @@ def netlist_node(state, config):
                 _emit(config, "agent:log", {
                     "message": f"  Auto-routed {ref_pin} ({pins[ref_pin]['name']}) -> {hub_pin} ({pins[hub_pin]['name']})"
                 })
+    n_power_nets = len(power_groups)
     _emit(config, "agent:log", {
         "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "
                    f"{n_signal_nets} signal ({len(netlist)} wire connections)"
     })
-    _emit_activity(config, "netlist", "Netlist Generation", "update", level="success", kind="netlist",
-                   detail=f"Generated {len(netlist)} connections across {n_power_nets + n_signal_nets} nets")
-    _emit_activity(config, "netlist", "Netlist Generation", "done")
-    return {"netlist": netlist, "nets": valid_nets, "power_pins": power_pins}
+    emit_tool_event(config, "Netlist Generation", "completed",
+                    f"{len(netlist)} connections across {n_power_nets + n_signal_nets} nets")
+    emit_assistant_message(config, f"Generated {len(netlist)} connections across {n_power_nets + n_signal_nets} nets.")
+    if trace_constraints:
+        _emit(config, "agent:log", {
+            "message": f"  Trace constraints from LLM: {len(trace_constraints)} net(s) with custom widths/impedances"
+        })
+    # ── Inject PWR_FLAG for power nets without a power-output driver ──
+    result = {"netlist": netlist, "nets": valid_nets, "power_pins": power_pins,
+              "trace_constraints": trace_constraints}
+    try:
+        import copy
+        from agent.tools import fetch_sexpr as _fetch_sexpr
+
+        _POWER_RAILS = frozenset({
+            "VBUS", "VIN", "VSYS", "3V3", "5V", "VCC", "VDD",
+            "VOUT", "V+", "V-", "3.3V", "1.8V", "1.2V", "VUSB",
+        })
+        need_flag = []
+        for net in valid_nets:
+            name = net["net"].upper().lstrip("+")
+            if _is_gnd_net(name):
+                continue
+            if name in _POWER_RAILS or _is_power_net(name):
+                has_po = any(
+                    pins[p].get("etype", "").lower() == "power_out"
+                    for p in net["pins"] if p in pins
+                )
+                if not has_po:
+                    need_flag.append(name)
+        if need_flag:
+            sexpr = _fetch_sexpr("power:PWR_FLAG")
+            flag_ops = _parse_sexpr_to_ops(sexpr, "power")
+            flag_pin_raw = _extract_pins_from_ops(flag_ops, "_PWRF")
+            selected = state.get("selected_components", [])
+            comp_ops = state.get("component_ops", {})
+            pm = state.get("pin_matrix", {})
+            for i, net_name in enumerate(sorted(need_flag)):
+                ref = f"#FLG{i+1:02d}"
+                selected.append({
+                    "id_str": "power:PWR_FLAG",
+                    "ref_des": ref,
+                    "category": "Power_Management",
+                    "description": f"Power flag for {net_name}",
+                    "footprint": "", "pads": [],
+                    "justification": f"PWR_FLAG: net {net_name} has no power-output pin",
+                    "datasheet_text": "",
+                })
+                comp_ops[ref] = copy.deepcopy(flag_ops)
+                if flag_pin_raw:
+                    pk = list(flag_pin_raw.keys())[0]
+                    pv = flag_pin_raw[pk]
+                    adj_key = f"{ref}:{pv['pin_num']}"
+                    adj_pv = dict(pv)
+                    adj_pv["ref_des"] = ref
+                    pm[adj_key] = adj_pv
+                    power_pins.append({"pin": adj_key, "net": net_name})
+                else:
+                    pm[f"{ref}:1"] = {
+                        "x": 0, "y": 0, "name": "",
+                        "num": "1", "pin_num": "1",
+                        "ref_des": ref, "angle": 90, "etype": "power_out",
+                    }
+                    power_pins.append({"pin": f"{ref}:1", "net": net_name})
+            result["selected_components"] = selected
+            result["component_ops"] = comp_ops
+            result["pin_matrix"] = pm
+            _emit(config, "agent:log", {
+                "message": (f"  Injected PWR_FLAG on {len(need_flag)} net(s): "
+                           f"{', '.join(sorted(need_flag))}")
+            })
+    except Exception as e:
+        print(f"PWR_FLAG injection failed: {e}")
+    return result

@@ -20,7 +20,9 @@ from kicad_rag.constants import (
 def _con() -> sqlite3.Connection:
     if not SQLITE_PATH.is_file():
         sys.exit(f"sqlite not found at {SQLITE_PATH}; run `kicad-rag build` first")
-    return sqlite3.connect(SQLITE_PATH)
+    con = sqlite3.connect(SQLITE_PATH)
+    con.execute("PRAGMA busy_timeout = 5000")
+    return con
 
 
 # ── public helpers ──────────────────────────────────────────────────────────

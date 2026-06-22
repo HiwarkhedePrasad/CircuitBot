@@ -6,8 +6,10 @@ Reciprocal Rank Fusion formula from ``constants.py``.
 """
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
+import threading
 from typing import List, Tuple
 
 import numpy as np
@@ -71,24 +73,52 @@ def bm25_search(query: str, k: int = FANOUT) -> list[Tuple[int, float]]:
 
 _embedding_model = None
 _turbovec_index = None
+_dense_load_failed = False
+
+_DENSE_LOAD_TIMEOUT = 30  # seconds max to download model + load index
 
 
 def _get_dense_resources():
-    """Lazy-load and cache the embedding model + TurboVec index at module level."""
-    global _embedding_model, _turbovec_index
-    if _embedding_model is None:
-        from fastembed import TextEmbedding
-        _embedding_model = TextEmbedding(model_name=EMBED_MODEL)
-    if _turbovec_index is None:
-        from turbovec import IdMapIndex
-        from kicad_rag.constants import INDEX_PATH
-        _turbovec_index = IdMapIndex.load(str(INDEX_PATH))
+    """Lazy-load and cache the embedding model + TurboVec index at module level.
+
+    Uses a daemon thread so a hung HuggingFace download never blocks the
+    caller's shutdown.  On timeout, ``_dense_load_failed`` is set permanently
+    so subsequent calls fail fast instead of retrying.
+    """
+    global _embedding_model, _turbovec_index, _dense_load_failed
+    if _dense_load_failed:
+        raise RuntimeError("Dense resources previously failed to load")
+    if os.environ.get("DISABLE_DENSE_SEARCH", "").lower() in ("1", "true", "yes"):
+        _dense_load_failed = True
+        raise RuntimeError("Dense search disabled via DISABLE_DENSE_SEARCH env var")
+    if _embedding_model is None or _turbovec_index is None:
+        t = threading.Thread(target=_init_dense_resources, daemon=True)
+        t.start()
+        t.join(timeout=_DENSE_LOAD_TIMEOUT)
+        if t.is_alive():
+            _dense_load_failed = True
+            raise TimeoutError(
+                f"Dense resources loading timed out after {_DENSE_LOAD_TIMEOUT}s"
+            )
     return _embedding_model, _turbovec_index
+
+
+def _init_dense_resources():
+    global _embedding_model, _turbovec_index
+    from fastembed import TextEmbedding
+    _embedding_model = TextEmbedding(model_name=EMBED_MODEL)
+    from turbovec import IdMapIndex
+    from kicad_rag.constants import INDEX_PATH
+    _turbovec_index = IdMapIndex.load(str(INDEX_PATH))
 
 
 def dense_search(query: str, k: int = FANOUT) -> list[Tuple[int, float]]:
     """Return ``[(id_int, cosine_score)]`` from the quantised TurboVec index."""
-    model, idx = _get_dense_resources()
+    try:
+        model, idx = _get_dense_resources()
+    except Exception as e:
+        print(f"[retrieval] dense_search unavailable: {e}")
+        return []
 
     qvec = np.asarray(next(model.embed([query])), dtype=np.float32)[None, :]
     if not qvec.flags["C_CONTIGUOUS"]:

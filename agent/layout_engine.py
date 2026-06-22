@@ -26,8 +26,11 @@ Two-phase layout:
 from __future__ import annotations
 
 import math
+import random
 import re
 from typing import Optional
+
+import networkx as nx
 
 GRID_SIZE  = 1.27
 BBOX_PAD   = 1.5
@@ -48,6 +51,125 @@ MATRIX_SIZE   = 300
 MATRIX_OFFSET = 150
 COLUMN_SPACING = 20.32
 ROW_CLEARANCE  = 6.35
+
+# Placement engine mode — flip to "legacy" for A/B comparison
+PLACEMENT_MODE = "blocks_v2"    # "legacy" | "graph" | "blocks_v2"
+OVERLAP_PULLBACK = 0.30     # pull toward spring position after overlap removal
+
+
+# ── Net classification & criticality tables ──────────────────────────────
+
+_NET_CLASSES: dict[str, str] = {
+    "XTAL":   "CRYSTAL", "XIN":  "CRYSTAL", "XOUT": "CRYSTAL",
+    "XI":     "CRYSTAL", "XO":   "CRYSTAL", "OSC":  "CRYSTAL",
+    "CLK":    "CRYSTAL",
+    "SCL":    "I2C",     "SDA":  "I2C",
+    "MOSI":   "SPI",     "MISO": "SPI",     "SCK":  "SPI",
+    "CS":     "SPI",     "SS":   "SPI",
+    "TX":     "UART",    "RX":   "UART",
+    "USB_DP": "USB",     "USB_DM": "USB",
+    "VCC":    "POWER",   "VDD":  "POWER",   "VIN":  "POWER",
+    "VBUS":   "POWER",   "3V3":  "POWER",   "5V":   "POWER",
+    "GND":    "POWER",   "VSS":  "POWER",
+    "RESET":  "RESET",   "EN":   "RESET",   "RST":  "RESET",
+}
+
+_NET_CRITICALITY: dict[str, float] = {
+    "CRYSTAL": 5.0,
+    "USB":     4.0,
+    "SPI":     3.0,
+    "UART":    2.5,
+    "I2C":     2.0,
+    "POWER":   1.5,
+    "RESET":   1.5,
+}
+
+_PAIR_CONSTRAINTS: dict[tuple[str, str], float] = {
+    ("MCU", "CRYSTAL"):       10.0,
+    ("MCU", "CAPACITOR"):      8.0,
+    ("LDO", "CAPACITOR"):      7.0,
+    ("USB", "ESD_IC"):         8.0,
+    ("MCU", "SENSOR"):         6.0,
+    ("MCU", "RF_MODULE"):      5.0,
+    ("REGULATOR", "CAPACITOR"): 7.0,
+    ("MCU", "RESISTOR"):       3.0,
+    ("SENSOR", "RESISTOR"):    4.0,
+    ("RF_MODULE", "CAPACITOR"): 4.0,
+}
+
+
+# ── Block detection seeds (signal pattern → block role) ──────────────────
+# Used by _seed_block_assignments() to tag components with block IDs based
+# on shared netname patterns. These are merged with Louvain community
+# detection results to form the final block map.
+
+_BLOCK_SEEDS: dict[str, str] = {
+    "RESET": "RESET_BLOCK",
+    "EN":    "RESET_BLOCK",
+    "ENABLE": "RESET_BLOCK",
+    "RST":   "RESET_BLOCK",
+    "NRST":  "RESET_BLOCK",
+    "BOOT0": "BOOT_BLOCK",
+    "BOOT1": "BOOT_BLOCK",
+    "MODE":  "BOOT_BLOCK",
+    "USB_DP": "USB_BLOCK",
+    "USB_DM": "USB_BLOCK",
+    "VBUS":  "USB_BLOCK",
+    "XTAL":  "CRYSTAL_BLOCK",
+    "XIN":   "CRYSTAL_BLOCK",
+    "XOUT":  "CRYSTAL_BLOCK",
+    "XI":    "CRYSTAL_BLOCK",
+    "XO":    "CRYSTAL_BLOCK",
+    "OSC":   "CRYSTAL_BLOCK",
+    "OSC_IN":  "CRYSTAL_BLOCK",
+    "OSC_OUT": "CRYSTAL_BLOCK",
+    "MOSI":  "SPI_BLOCK",
+    "MISO":  "SPI_BLOCK",
+    "SCK":   "SPI_BLOCK",
+    "CS":    "SPI_BLOCK",
+    "SS":    "SPI_BLOCK",
+    "NSS":   "SPI_BLOCK",
+    "SCL":   "I2C_BLOCK",
+    "SDA":   "I2C_BLOCK",
+    "TX":    "UART_BLOCK",
+    "RX":    "UART_BLOCK",
+    "TXD":   "UART_BLOCK",
+    "RXD":   "UART_BLOCK",
+    "CANH":  "CAN_BLOCK",
+    "CANL":  "CAN_BLOCK",
+    "SWDIO": "DEBUG_BLOCK",
+    "SWCLK": "DEBUG_BLOCK",
+    "SWO":   "DEBUG_BLOCK",
+    "TMS":   "DEBUG_BLOCK",
+    "TCK":   "DEBUG_BLOCK",
+    "TDI":   "DEBUG_BLOCK",
+    "TDO":   "DEBUG_BLOCK",
+}
+
+
+# Canonical role for each detected block, used by _block_grid_layout()
+# to pick the (grid_x, grid_y) target position. Order matters:
+# the first match wins for blocks with ambiguous seed tags.
+_BLOCK_ROLE: dict[str, str] = {
+    "POWER_BLOCK":  "power",
+    "USB_BLOCK":    "power",
+    "REGULATOR_BLOCK": "regulator",
+    "CRYSTAL_BLOCK": "mcu",
+    "RESET_BLOCK":  "mcu",
+    "BOOT_BLOCK":   "mcu",
+    "MCU_BLOCK":    "mcu",
+    "RF_MODULE_BLOCK": "mcu",
+    "SPI_BLOCK":    "peripheral",
+    "I2C_BLOCK":    "peripheral",
+    "UART_BLOCK":   "peripheral",
+    "CAN_BLOCK":    "peripheral",
+    "DEBUG_BLOCK":  "mcu",
+    "SENSOR_BLOCK": "peripheral",
+    "DISPLAY_BLOCK": "peripheral",
+    "LED_BLOCK":    "peripheral",
+    "DECOUPLING_BLOCK": "mcu",
+    "ORPHAN_BLOCK": "peripheral",
+}
 
 
 _IDSTR_HINTS: dict[str, str] = {
@@ -87,9 +209,10 @@ _TIER_RULES: list[tuple[str, int]] = [
     ('STM32',      2), ('FPGA',      2), ('CPU',     2),
     ('RF_MODULE',  2), ('DSP',       2), ('MEMORY',  2),
     ('SENSOR',     3), ('DISPLAY',   3), ('DRIVER',  3),
-    ('INDICATOR',  3), ('LED',       3),
+    ('INDICATOR',  3),
     ('ESD_IC',     0), ('DIODE',     0), ('ZENER',   0),
-    ('CAPACITOR',  -1), ('RESISTOR', -1),
+    ('SW_',        -1), ('SWITCH',    0), ('BUTTON',   -1),
+    ('LED',        -1), ('CAPACITOR', -1), ('RESISTOR', -1),
 ]
 
 
@@ -119,6 +242,12 @@ def _tier(category: str, id_str: str = '') -> int:
     sem = _sem_type(category, id_str)
     for kw, t in _TIER_RULES:
         if kw in sem:
+            return t
+    # Also check id_str (part name) against tier keywords
+    id_name = id_str.split(':')[-1] if ':' in id_str else id_str
+    id_up = id_name.upper().replace(' ', '_')
+    for kw, t in _TIER_RULES:
+        if kw.upper() in id_up:
             return t
     return 2
 
@@ -400,14 +529,21 @@ def _candidate_Z(s_pos, s_stub, t_pos, t_stub, components):
     return cands
 
 
-def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref):
+def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
+               blocked_vertices: set[tuple[float, float]] | None = None):
     """Generate, score, and pick the best orthogonal path.
+
+    ``blocked_vertices`` — intermediate (non-pin-endpoint) coordinates from
+    *already-routed* traces.  Any candidate whose intermediate vertices land
+    on a blocked coordinate is penalised to prevent accidental electrical
+    shorts in KiCad (two unrelated nets sharing a wire vertex = junction).
 
     Returns None if no candidate satisfies the length cap and collision
     limit — caller must DROP the wire in that case (do NOT fallback).
     """
     s_stub = _stub_point(*s_pos, s_dir)
     t_stub = _stub_point(*t_pos, t_dir)
+    blocked = blocked_vertices or set()
 
     candidates = []
     candidates += _candidate_straight(s_pos, s_stub, t_pos, t_stub)
@@ -429,6 +565,17 @@ def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref):
         if collisions > MAX_COLLISIONS:
             continue
         bends = _bend_count(path)
+        # Vertex overlap penalty: if any INTERMEDIATE (non-pin-endpoint)
+        # vertex of this path lands on a coordinate already occupied by an
+        # already-routed trace, skip entirely — even one overlap would
+        # create an accidental electrical short in KiCad's wire model.
+        vertex_overlap = False
+        for v in path[1:-1]:  # skip first and last (pin endpoints)
+            if v in blocked:
+                vertex_overlap = True
+                break
+        if vertex_overlap:
+            continue
         # Score: zero-collision paths first, then shortest, then fewest bends
         score = collisions * 10000 + length + bends * 2
         if score < best_score:
@@ -448,6 +595,8 @@ class BackendLayoutEngine:
         self.components: list[dict] = []
         self.matrix: list | None = None
         self.grid = None
+        self._spring_pos: dict[str, tuple[float, float]] | None = None
+        self._last_block_map: dict[str, str] | None = None
 
     def add_component(self, ref_des: str, ops: list, category: str,
                       id_str: str = '',
@@ -515,31 +664,174 @@ class BackendLayoutEngine:
         for t in tiers:
             tiers[t].sort(key=lambda c: -c['height'])
 
-        x_cursor = 0.0
-        for tier_idx in sorted(tiers):
-            comps = tiers[tier_idx]
-            if not comps:
-                continue
-            tier_w = max(c['width'] for c in comps) + BBOX_PAD * 2
+        x_cursor = 0.0  # used by orphan satellite placement below
 
-            col_count = max(1, math.ceil(len(comps) / MAX_COMPS_PER_COLUMN))
-            col_w = tier_w + TIER_GAP
+        if PLACEMENT_MODE == "graph" and netlist:
+            # ── Graph-based placement ───────────────────────────────────
+            graph = self._build_weighted_graph(netlist, pin_matrix)
+            mains = [c for c in self.components if c['tier'] >= 0]
 
-            # Group components by column
-            cols = [[] for _ in range(col_count)]
-            for i, c in enumerate(comps):
-                col_idx = i // MAX_COMPS_PER_COLUMN
-                cols[col_idx].append(c)
+            if len(mains) < 2:
+                # Fall through to tier-column for trivial circuits
+                pass
+            else:
+                # Extract subgraph of main (non-satellite) components
+                main_nodes = [c['ref_des'] for c in mains]
+                sub = graph.subgraph(main_nodes).copy()
 
-            for col_idx, col_comps in enumerate(cols):
-                y_cursor = 0.0
-                for c in col_comps:
-                    c['x'] = _snap(x_cursor + col_idx * col_w +
-                                   (tier_w - c['width']) / 2)
-                    c['y'] = _snap(y_cursor - c['bbox']['y'])
-                    y_cursor += c['height'] + BBOX_PAD * 2 + COMP_V_GAP
+                if sub.number_of_nodes() < 2:
+                    pass  # fall through
+                else:
+                    # Compute optimal k proportional to component area
+                    total_area = sum(
+                        sub.nodes[n].get('bbox_area', 100.0)
+                        for n in sub.nodes
+                    )
+                    optimal_k = 3.0 * math.sqrt(total_area / max(len(sub.nodes), 1))
 
-            x_cursor += col_count * col_w + TIER_GAP
+                    # Degree anchoring: top-3 heaviest nodes get fixed_weight=0.3
+                    sorted_nodes = sorted(
+                        sub.nodes(data=True),
+                        key=lambda nd: nd[1].get('weighted_degree',
+                                                  sub.degree(nd[0], weight='weight')),
+                        reverse=True,
+                    )
+                    fixed_nodes = set(n for n, _ in sorted_nodes[:3])
+
+                    # Run spring layout (no seed — variance across retries)
+                    pos = nx.spring_layout(
+                        sub,
+                        weight='weight',
+                        iterations=500,
+                        k=optimal_k,
+                    )
+
+                    # Apply fixed_weight=0.3 for anchors (not a hard lock)
+                    for _ in range(3):
+                        pos2 = nx.spring_layout(
+                            sub,
+                            weight='weight',
+                            iterations=100,
+                            k=optimal_k,
+                            pos=pos,
+                            fixed=fixed_nodes if False else None,  # never hard-lock
+                        )
+                        # Blend: 70% new position, 30% fixed back toward prior
+                        for n in fixed_nodes:
+                            if n in pos2 and n in pos:
+                                pos2[n] = (
+                                    pos2[n][0] * 0.7 + pos[n][0] * 0.3,
+                                    pos2[n][1] * 0.7 + pos[n][1] * 0.3,
+                                )
+                        pos = pos2
+
+                    # Scale to physical coordinates (grid)
+                    min_x = min(p[0] for p in pos.values())
+                    min_y = min(p[1] for p in pos.values())
+                    max_x = max(p[0] for p in pos.values())
+                    max_y = max(p[1] for p in pos.values())
+                    range_x = max(max_x - min_x, 1.0)
+                    range_y = max(max_y - min_y, 1.0)
+
+                    # Map to physical scale: adapt to component count
+                    n_nodes = sub.number_of_nodes()
+                    target_span = 200.0 if n_nodes >= 10 else max(range_x, range_y) * 50.0
+                    scale = target_span / max(range_x, range_y)
+                    for ref, (px, py) in pos.items():
+                        comp = self._get_comp(ref)
+                        if comp:
+                            sx = _snap((px - min_x) * scale - min_x * 0.5)
+                            sy = _snap((py - min_y) * scale - min_y * 0.5)
+                            # Tier soft-offset: 20% push left/right by tier
+                            tier_push = comp.get('tier', 2) - 1.5  # -1.5 to +1.5
+                            sx = _snap(sx + tier_push * 10.0 * 0.2)
+                            comp['x'] = sx
+                            comp['y'] = sy
+
+                    # Store spring positions for overlap removal to pull back to
+                    self._spring_pos = {
+                        ref: (comp['x'], comp['y'])
+                        for ref, comp in
+                        ((c['ref_des'], c) for c in self.components
+                         if c['ref_des'] in pos)
+                    }
+        elif PLACEMENT_MODE == "blocks_v2" and netlist:
+            # ── Block-aware placement (Louvain + local spring) ────────
+            graph = self._build_weighted_graph(netlist, pin_matrix)
+
+            # 1. Detect functional blocks via Louvain + seed signals
+            block_of = self._detect_blocks_louvain(graph, netlist)
+            self._last_block_map = block_of
+
+            # 2. Group component refs by block
+            blocks: dict[str, list[str]] = {}
+            for c in self.components:
+                bid = block_of.get(c['ref_des'], "ORPHAN_BLOCK")
+                blocks.setdefault(bid, []).append(c['ref_des'])
+
+            # 3. Assign grid positions to each block
+            grid_cells = self._block_grid_layout(blocks)
+
+            # 4. Place each block (local spring layout + pin-side satellites)
+            all_placed: set[str] = set()
+            # Process MCU block first, then power, then the rest
+            block_order = sorted(blocks.keys(),
+                                 key=lambda b: (
+                                     0 if _BLOCK_ROLE.get(b, "") == "mcu" else
+                                     1 if _BLOCK_ROLE.get(b, "") == "power" else
+                                     2 if _BLOCK_ROLE.get(b, "peripheral") == "power" else
+                                     3,
+                                     b
+                                 ))
+            for bid in block_order:
+                refs = blocks[bid]
+                bbox = grid_cells.get(bid, {
+                    'x': 0, 'y': len(all_placed) * 200.0,
+                    'width': 200.0, 'height': 150.0,
+                })
+                self._place_block(refs, bbox, parent_map, pin_matrix,
+                                  netlist, graph, all_placed)
+
+            # Store spring positions for overlap removal
+            self._spring_pos = {
+                c['ref_des']: (c['x'], c['y'])
+                for c in self.components
+                if c['ref_des'] in all_placed
+            }
+
+            # Any unplaced orphans: fall through to legacy satellite handler
+            unplaced = [c for c in self.components
+                        if c['ref_des'] not in all_placed]
+            if unplaced:
+                sats = [c for c in unplaced if c['tier'] == -1]
+
+        else:
+
+            # ── Fallback tier-column placement for unhandled modes ──
+            x_cursor = 0.0
+            for tier_idx in sorted(tiers):
+                comps = tiers[tier_idx]
+                if not comps:
+                    continue
+                tier_w = max(c['width'] for c in comps) + BBOX_PAD * 2
+
+                col_count = max(1, math.ceil(len(comps) / MAX_COMPS_PER_COLUMN))
+                col_w = tier_w + TIER_GAP
+
+                cols = [[] for _ in range(col_count)]
+                for i, c in enumerate(comps):
+                    col_idx = i // MAX_COMPS_PER_COLUMN
+                    cols[col_idx].append(c)
+
+                for col_idx, col_comps in enumerate(cols):
+                    y_cursor = 0.0
+                    for c in col_comps:
+                        c['x'] = _snap(x_cursor + col_idx * col_w +
+                                       (tier_w - c['width']) / 2)
+                        c['y'] = _snap(y_cursor - c['bbox']['y'])
+                        y_cursor += c['height'] + BBOX_PAD * 2 + COMP_V_GAP
+
+                x_cursor += col_count * col_w + TIER_GAP
 
         # ── Satellites (caps, resistors) placed next to parent IC ──
         sat_groups: dict[str, list] = {}
@@ -613,18 +905,33 @@ class BackendLayoutEngine:
                     s['y'] = _snap(y_cursor)
                     y_cursor += s['height'] + SAT_V_GAP
 
-        # Centre everything around (0, 0)
-        xs = [c['x'] for c in self.components]
-        ys = [c['y'] for c in self.components]
-        if xs:
-            ox = _snap((max(xs) + min(xs)) / 2)
-            oy = _snap((max(ys) + min(ys)) / 2)
-            for c in self.components:
-                c['x'] = _snap(c['x'] - ox)
-                c['y'] = _snap(c['y'] - oy)
+        # Centre everything around (0, 0) — only needed for non-graph modes
+        if PLACEMENT_MODE != "graph":
+            xs = [c['x'] for c in self.components]
+            ys = [c['y'] for c in self.components]
+            if xs:
+                ox = _snap((max(xs) + min(xs)) / 2)
+                oy = _snap((max(ys) + min(ys)) / 2)
+                for c in self.components:
+                    c['x'] = _snap(c['x'] - ox)
+                    c['y'] = _snap(c['y'] - oy)
+            # Update spring positions after centering so that overlap
+            # removal's pullback pulls toward the centred coordinates,
+            # not the far-away block-grid positions.
+            if PLACEMENT_MODE == "blocks_v2":
+                self._spring_pos = {
+                    c['ref_des']: (c['x'], c['y'])
+                    for c in self.components
+                }
+
+        # Overlap removal — run for both modes
+        self._remove_overlaps()
 
         # Post-pass: move satellites that are still too far from their parent
-        n_moved = self._enforce_satellite_distance(parent_map)
+        # Skipped in blocks_v2 mode — _place_block already handles satellite
+        # proximity with pin-side awareness, and this pass would overwrite it.
+        if PLACEMENT_MODE != "blocks_v2":
+            n_moved = self._enforce_satellite_distance(parent_map)
 
     def _build_parent_map(self, netlist: list) -> dict[str, str]:
         scores: dict[tuple[str, str], int] = {}
@@ -716,6 +1023,522 @@ class BackendLayoutEngine:
 
         return n_moved
 
+    def _remove_overlaps(self, max_iters: int = 20) -> int:
+        """Push apart overlapping component bounding boxes.
+
+        After spring layout (or legacy placement), components may overlap.
+        This uses a simple force-directed repulsion: each iteration
+        identifies all overlapping pairs and pushes them apart along
+        the axis of minimum overlap.  If ``_spring_pos`` is available,
+        components are also pulled back toward their spring position
+        at ``OVERLAP_PULLBACK`` strength to prevent unbounded drift.
+
+        Returns the number of overlap pairs remaining after ``max_iters``.
+        """
+        if len(self.components) < 2:
+            return 0
+
+        for iteration in range(max_iters):
+            remaining = 0
+            for i in range(len(self.components)):
+                for j in range(i + 1, len(self.components)):
+                    a = self.components[i]
+                    b = self.components[j]
+
+                    ax1 = a['x'] - 0.5
+                    ay1 = a['y'] - 0.5
+                    ax2 = ax1 + a['width'] + 0.5
+                    ay2 = ay1 + a['height'] + 0.5
+
+                    bx1 = b['x'] - 0.5
+                    by1 = b['y'] - 0.5
+                    bx2 = bx1 + b['width'] + 0.5
+                    by2 = by1 + b['height'] + 0.5
+
+                    if ax2 <= bx1 or ax1 >= bx2 or ay2 <= by1 or ay1 >= by2:
+                        continue  # no overlap
+
+                    remaining += 1
+
+                    # Compute overlap on each axis
+                    ox = min(ax2, bx2) - max(ax1, bx1)
+                    oy = min(ay2, by2) - max(ay1, by1)
+
+                    if ox <= 0 and oy <= 0:
+                        continue
+
+                    # Determine push direction: push apart on the smaller overlap axis
+                    if ox < oy or (ox == oy and ox == 0):
+                        # Horizontal separation
+                        if a['x'] <= b['x']:
+                            a['x'] -= ox / 2
+                            b['x'] += ox / 2
+                        else:
+                            a['x'] += ox / 2
+                            b['x'] -= ox / 2
+                    else:
+                        # Vertical separation
+                        if a['y'] <= b['y']:
+                            a['y'] -= oy / 2
+                            b['y'] += oy / 2
+                        else:
+                            a['y'] += oy / 2
+                            b['y'] -= oy / 2
+
+            if remaining == 0:
+                break
+
+        # Pull back toward spring positions (prevents unbounded drift)
+        if self._spring_pos:
+            pullback = OVERLAP_PULLBACK
+            for c in self.components:
+                ref = c['ref_des']
+                if ref in self._spring_pos:
+                    sx, sy = self._spring_pos[ref]
+                    c['x'] = _snap(c['x'] + (sx - c['x']) * pullback)
+                    c['y'] = _snap(c['y'] + (sy - c['y']) * pullback)
+
+        return remaining
+
+    def _build_weighted_graph(self, netlist: list,
+                                pin_matrix: dict) -> nx.Graph:
+        """Build a weighted connectivity graph from the netlist.
+
+        Nodes = component ref_des.
+        Edge weight = sum of net criticalities for all nets shared by the
+        pair, plus pair-constraint bonus if the component types match.
+
+        Returns a ``networkx.Graph`` with node attributes ``sem``, ``tier``,
+        ``degree``, ``bbox_area`` set for downstream layout use.
+        """
+        # Raw connection count per component pair
+        raw_weights: dict[tuple[str, str], float] = {}
+        for conn in netlist:
+            sr = conn['source'].split(':')[0]
+            tr = conn['target'].split(':')[0]
+            if sr == tr:
+                continue
+
+            # Classify the net via pin name
+            pin_key = conn.get('source', '')
+            pin_name = pin_key.split(':')[-1] if ':' in pin_key else pin_key
+            pin_up = pin_name.upper().replace(' ', '_')
+            net_cls = "GPIO"
+            for kw, cls in _NET_CLASSES.items():
+                if kw in pin_up:
+                    net_cls = cls
+                    break
+
+            weight = _NET_CRITICALITY.get(net_cls, 1.0)
+            key = (sr, tr) if sr <= tr else (tr, sr)
+            raw_weights[key] = raw_weights.get(key, 0.0) + weight
+
+        g = nx.Graph()
+        for c in self.components:
+            ref = c['ref_des']
+            sem = _sem_type(c['category'], c.get('id_str', ''))
+            g.add_node(ref, sem=sem, tier=c['tier'],
+                       bbox_area=c['width'] * c['height'])
+
+        for (a, b), w in raw_weights.items():
+            if not g.has_node(a) or not g.has_node(b):
+                continue
+            # Add pair-constraint bonus
+            sem_a = g.nodes[a].get('sem', '')
+            sem_b = g.nodes[b].get('sem', '')
+            bonus = _PAIR_CONSTRAINTS.get((sem_a, sem_b), 0.0) or \
+                    _PAIR_CONSTRAINTS.get((sem_b, sem_a), 0.0)
+
+            effective = w + bonus
+            if g.has_edge(a, b):
+                g[a][b]['weight'] += effective
+            else:
+                g.add_edge(a, b, weight=effective)
+
+        # Annotate degree
+        for node in g.nodes:
+            g.nodes[node]['degree'] = g.degree(node, weight='weight')
+
+        return g
+
+    # ── Block-aware placement helpers ──────────────────────────────────
+
+    def _detect_blocks_louvain(self, graph: nx.Graph,
+                               netlist: list) -> dict[str, str]:
+        """Detect functional blocks via Louvain modularity + seed signals.
+
+        Returns a dict {ref_des: block_name} for every component.
+        Seed-named signals (RESET, USB, XTAL, …) are matched first;
+        Louvain partitions fill in the remaining components.
+        """
+        block_of: dict[str, str] = {}
+        seeded = self._seed_block_assignments(netlist)
+        block_of.update(seeded)
+
+        assigned = set(seeded)
+        unassigned = [n for n in graph.nodes if n not in assigned]
+        if len(unassigned) >= 3:
+            sub = graph.subgraph(unassigned).copy()
+            try:
+                communities = nx.algorithms.community.louvain_communities(
+                    sub, weight='weight', seed=42
+                )
+            except AttributeError:
+                communities = nx.algorithms.community.greedy_modularity_communities(
+                    sub, weight='weight'
+                )
+            for i, comm in enumerate(communities):
+                block_name = f"LOUVAIN_BLOCK_{i}"
+                for r in comm:
+                    if r in seeded:
+                        block_name = seeded[r]
+                        break
+                for ref in comm:
+                    block_of[ref] = block_name
+
+        for ref in graph.nodes:
+            if ref not in block_of:
+                block_of[ref] = "ORPHAN_BLOCK"
+
+        return block_of
+
+    def _seed_block_assignments(self, netlist: list) -> dict[str, str]:
+        """Tag component pairs with a block ID based on signal names.
+
+        Scans the netlist for pin names matching ``_BLOCK_SEEDS`` keys and
+        tags *both* endpoints of the net with the corresponding block ID.
+        Both source and target pin names are checked.
+        """
+        block_of: dict[str, str] = {}
+        for conn in netlist:
+            for side in ('source', 'target'):
+                pin_key = conn.get(side, '')
+                pin_name = pin_key.split(':')[-1] if ':' in pin_key else pin_key
+                pin_up = pin_name.upper().replace(' ', '_')
+                block_id = None
+                for kw, bid in _BLOCK_SEEDS.items():
+                    if kw == pin_up or pin_up.startswith(kw + '_') or pin_up.endswith('_' + kw):
+                        block_id = bid
+                        break
+                if block_id is None:
+                    continue
+                sr = conn['source'].split(':')[0]
+                tr = conn['target'].split(':')[0]
+                block_of.setdefault(sr, block_id)
+                block_of.setdefault(tr, block_id)
+        return block_of
+
+    def _block_grid_layout(self, blocks: dict[str, list[str]]
+                           ) -> dict[str, dict]:
+        """Assign a target grid cell to each block based on its role.
+
+        Returns ``{block_name: {x, y, width, height}}`` bounding-box dicts.
+        """
+        cell_w = 200.0
+        cell_h = 150.0
+        grid_map: dict[str, tuple[int, int]] = {}
+        peripheral_count = 0
+        for block_name in blocks:
+            role = _BLOCK_ROLE.get(block_name, "peripheral")
+            if role == "mcu":
+                grid_map[block_name] = (1, 1)
+            elif role == "power":
+                grid_map[block_name] = (0, 0)
+            elif role == "regulator":
+                grid_map[block_name] = (1, 0)
+            else:
+                grid_map[block_name] = (3, peripheral_count)
+                peripheral_count += 1
+
+        result: dict[str, dict] = {}
+        for block_name, (gx, gy) in grid_map.items():
+            result[block_name] = {
+                'x': gx * cell_w,
+                'y': gy * cell_h,
+                'width': cell_w,
+                'height': cell_h,
+            }
+        return result
+
+    def _pin_side(self, comp_ref: str, parent_ref: str,
+                  pin_matrix: dict, netlist: list) -> str:
+        """Determine which side of the parent IC the component connects to.
+
+        Examines all nets between *comp_ref* and *parent_ref*, retrieves
+        the **parent's** pin angle from *pin_matrix*, and returns
+        ``"right"``, ``"left"``, ``"top"``, or ``"bottom"``
+        (default: ``"right"``).
+        """
+        angles: list[float] = []
+        for conn in netlist:
+            sr = conn['source'].split(':')[0]
+            tr = conn['target'].split(':')[0]
+            if {sr, tr} != {comp_ref, parent_ref}:
+                continue
+            # Pick the pin key that belongs to the parent
+            parent_pin_key = None
+            if sr == parent_ref:
+                parent_pin_key = conn['source']
+            else:
+                parent_pin_key = conn['target']
+            pin_info = pin_matrix.get(parent_pin_key)
+            if pin_info:
+                angles.append(float(pin_info.get('angle', 0)))
+        if not angles:
+            return "right"
+        avg = (sum(angles) / len(angles)) % 360
+        if 45 <= avg < 135:
+            return "top"
+        elif 135 <= avg < 225:
+            return "left"
+        elif 225 <= avg < 315:
+            return "bottom"
+        return "right"
+
+    def _place_block(self, block_refs: list[str], block_bbox: dict,
+                     parent_map: dict, pin_matrix: dict,
+                     netlist: list, graph: nx.Graph,
+                     all_placed: set[str]) -> None:
+        """Place all components in a single block.
+
+        Main components (tier ≥ 0) receive a local spring layout inside
+        the block's bounding box.  Satellites (tier == -1) orbit their
+        parent with ``_pin_side`` awareness.  Already-placed components
+        in *all_placed* are skipped.
+        """
+        mains = [r for r in block_refs
+                 if self._get_comp(r) and self._get_comp(r)['tier'] >= 0]
+        sats  = [r for r in block_refs
+                 if self._get_comp(r) and self._get_comp(r)['tier'] == -1]
+
+        bx = block_bbox['x']
+        by = block_bbox['y']
+        bw = block_bbox['width']
+        bh = block_bbox['height']
+        margin = 20.0
+        inner_w = bw - 2 * margin
+        inner_h = bh - 2 * margin
+
+        if len(mains) >= 2:
+            sub = graph.subgraph(mains).copy()
+            if sub.number_of_nodes() >= 2:
+                pos = nx.spring_layout(sub, weight='weight', iterations=50,
+                                       k=1.5, seed=42)
+                px_vals = [p[0] for p in pos.values()]
+                py_vals = [p[1] for p in pos.values()]
+                rng_x = max(max(px_vals) - min(px_vals), 1.0)
+                rng_y = max(max(py_vals) - min(py_vals), 1.0)
+                for ref, (lx, ly) in pos.items():
+                    comp = self._get_comp(ref)
+                    if comp:
+                        sx = bx + margin + (lx - min(px_vals)) / rng_x * inner_w
+                        sy = by + margin + (ly - min(py_vals)) / rng_y * inner_h
+                        comp['x'] = _snap(sx)
+                        comp['y'] = _snap(sy)
+                all_placed.update(mains)
+        elif len(mains) == 1:
+            ref = mains[0]
+            comp = self._get_comp(ref)
+            if comp:
+                comp['x'] = _snap(bx + bw / 2 - comp['width'] / 2)
+                comp['y'] = _snap(by + bh / 2 - comp['height'] / 2)
+                all_placed.add(ref)
+
+        # ── Satellites: pin-side-aware orbit ───────────────────────
+        side_counts: dict[str, int] = {}
+        for sat_ref in sats:
+            if sat_ref in all_placed:
+                continue
+            par_ref = parent_map.get(sat_ref)
+            if not par_ref:
+                continue
+            par_c = self._get_comp(par_ref)
+            sat_c = self._get_comp(sat_ref)
+            if not par_c or not sat_c:
+                continue
+
+            side = self._pin_side(sat_ref, par_ref, pin_matrix, netlist)
+            gap = SAT_H_GAP
+            idx = side_counts.get(side, 0)
+            side_counts[side] = idx + 1
+
+            pcx = par_c['x'] + par_c['bbox']['x']
+            pcy = par_c['y'] + par_c['bbox']['y']
+            pcw = par_c['width']
+            pch = par_c['height']
+            scx = sat_c['bbox']['x']
+            scy = sat_c['bbox']['y']
+            scw = sat_c['width']
+            sch = sat_c['height']
+
+            # Vertical offset to spread multiple satellites on the same side
+            v_offset = idx * (sch + SAT_V_GAP)
+
+            if side == "right":
+                sx = pcx + pcw + gap - scx
+                sy = pcy + pch / 2 - scy - sch / 2 + v_offset
+            elif side == "left":
+                sx = pcx - gap - scw - scx
+                sy = pcy + pch / 2 - scy - sch / 2 + v_offset
+            elif side == "top":
+                sx = pcx + pcw / 2 - scx - scw / 2
+                sy = pcy - gap - sch - scy + v_offset
+            else:
+                sx = pcx + pcw / 2 - scx - scw / 2
+                sy = pcy + pch + gap - scy + v_offset
+
+            sat_c['x'] = _snap(sx)
+            sat_c['y'] = _snap(sy)
+            all_placed.add(sat_ref)
+
+        # Fallback: satellites whose parent is outside the block
+        for sat_ref in sats:
+            if sat_ref in all_placed:
+                continue
+            par_ref = parent_map.get(sat_ref)
+            if not par_ref:
+                continue
+            sat_c = self._get_comp(sat_ref)
+            par_c = self._get_comp(par_ref)
+            if not sat_c or not par_c:
+                continue
+
+            side = self._pin_side(sat_ref, par_ref, pin_matrix, netlist)
+            gap = SAT_H_GAP
+            idx = side_counts.get(side, 0)
+            side_counts[side] = idx + 1
+            v_offset = idx * (sat_c['height'] + SAT_V_GAP)
+
+            pcx = par_c['x'] + par_c['bbox']['x']
+            pcy = par_c['y'] + par_c['bbox']['y']
+            pcw = par_c['width']
+            pch = par_c['height']
+            scx = sat_c['bbox']['x']
+            scy = sat_c['bbox']['y']
+            scw = sat_c['width']
+
+            if side == "right":
+                sx = pcx + pcw + gap - scx
+                sy = pcy + pch / 2 - scy - sat_c['height'] / 2 + v_offset
+            elif side == "left":
+                sx = pcx - gap - scw - scx
+                sy = pcy + pch / 2 - scy - sat_c['height'] / 2 + v_offset
+            elif side == "top":
+                sx = pcx + pcw / 2 - scx - scw / 2
+                sy = pcy - gap - sat_c['height'] - scy + v_offset
+            else:
+                sx = pcx + pcw / 2 - scx - scw / 2
+                sy = pcy + pch + gap - scy + v_offset
+
+            sat_c['x'] = _snap(sx)
+            sat_c['y'] = _snap(sy)
+            all_placed.add(sat_ref)
+
+    def _count_crossings(self, routes: list[dict]) -> int:
+        """Count wire-segment crossings (O(n²) segment intersection).
+
+        Ignores shared endpoints and T-junctions (where segments share
+        an endpoint but do not cross).  Uses orientation-based segment
+        intersection test.
+
+        Returns the integer number of crossing pairs.
+        """
+        segments: list[tuple[float, float, float, float]] = []
+        for r in routes:
+            pts = r.get('points', [])
+            for i in range(len(pts) - 1):
+                segments.append((pts[i][0], pts[i][1],
+                                 pts[i + 1][0], pts[i + 1][1]))
+
+        def _orient(ax, ay, bx, by, cx, cy) -> int:
+            v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+            if abs(v) < 1e-12:
+                return 0
+            return 1 if v > 0 else -1
+
+        def _on_seg(ax, ay, bx, by, cx, cy) -> bool:
+            return (min(ax, bx) <= cx <= max(ax, bx) and
+                    min(ay, by) <= cy <= max(ay, by))
+
+        count = 0
+        for i in range(len(segments)):
+            ax1, ay1, ax2, ay2 = segments[i]
+            for j in range(i + 1, len(segments)):
+                bx1, by1, bx2, by2 = segments[j]
+
+                # Skip shared endpoints
+                if (abs(ax2 - bx1) < 1e-9 and abs(ay2 - by1) < 1e-9) or \
+                   (abs(ax1 - bx2) < 1e-9 and abs(ay1 - by2) < 1e-9):
+                    continue
+                if (abs(ax1 - bx1) < 1e-9 and abs(ay1 - by1) < 1e-9) or \
+                   (abs(ax2 - bx2) < 1e-9 and abs(ay2 - by2) < 1e-9):
+                    continue
+
+                o1 = _orient(ax1, ay1, ax2, ay2, bx1, by1)
+                o2 = _orient(ax1, ay1, ax2, ay2, bx2, by2)
+                o3 = _orient(bx1, by1, bx2, by2, ax1, ay1)
+                o4 = _orient(bx1, by1, bx2, by2, ax2, ay2)
+
+                if o1 != o2 and o3 != o4:
+                    count += 1
+                elif o1 == 0 and _on_seg(ax1, ay1, ax2, ay2, bx1, by1):
+                    continue  # T-junction — ignore
+                elif o2 == 0 and _on_seg(ax1, ay1, ax2, ay2, bx2, by2):
+                    continue
+                elif o3 == 0 and _on_seg(bx1, by1, bx2, by2, ax1, ay1):
+                    continue
+                elif o4 == 0 and _on_seg(bx1, by1, bx2, by2, ax2, ay2):
+                    continue
+
+        return count
+
+    def _log_placement_metrics(self, routes: list[dict],
+                               dropped_pairs: list[tuple[str, str]]) -> dict:
+        """Compute and log placement quality metrics.
+
+        Metrics returned:
+        - total_wire_length: sum of Manhattan distances across all routes
+        - crossings: number of wire-segment intersections
+        - dropped_wires: count of failed routes
+        - n_components: number of placed components
+
+        Also logs via ``__import__('logging').getLogger(...)``.
+        """
+        total_wire_len = 0.0
+        pts_routes: list[list] = []
+        for r in routes:
+            pts = r.get('points') or r.get('path', [])
+            if pts and isinstance(pts[0], dict):
+                pts = [(p['x'], p['y']) for p in pts]
+            pts_routes.append(pts)
+            for i in range(len(pts) - 1):
+                dx = abs(pts[i + 1][0] - pts[i][0])
+                dy = abs(pts[i + 1][1] - pts[i][1])
+                total_wire_len += dx + dy
+
+        crossings = self._count_crossings(
+            [{'points': p} for p in pts_routes])
+
+        metrics = {
+            'total_wire_length': round(total_wire_len, 2),
+            'crossings': crossings,
+            'dropped_wires': len(dropped_pairs),
+            'n_components': len(self.components),
+        }
+
+        logger = __import__('logging').getLogger(__name__)
+        logger.info(
+            '[PLACEMENT METRICS]  %s  |  drops=%d  cross=%d  '
+            'wire=%.1f  n=%d',
+            PLACEMENT_MODE,
+            metrics['dropped_wires'],
+            metrics['crossings'],
+            metrics['total_wire_length'],
+            metrics['n_components'],
+        )
+
+        return metrics
+
     def _repair_placement_for_routing(self,
                                       dropped_pairs: list[tuple[str, str]]
                                       ) -> int:
@@ -775,6 +1598,12 @@ class BackendLayoutEngine:
         traces: list[dict] = []
         dropped_pairs: list[tuple[str, str]] = []
 
+        # Track intermediate vertices of ALL successfully routed traces so
+        # that no two different nets share a non-pin-endpoint coordinate.
+        # This prevents KiCad from merging unrelated nets into accidental
+        # shorts through shared junction points.
+        used_vertices: set[tuple[float, float]] = set()
+
         def _abs(key: str) -> Optional[tuple[float, float]]:
             ref = key.split(':')[0]
             if not ref:
@@ -817,7 +1646,8 @@ class BackendLayoutEngine:
             tgt_ref = conn['target'].split(':')[0]
 
             path = _make_path(s_pos, s_dir, t_pos, t_dir,
-                              self.components, src_ref, tgt_ref)
+                              self.components, src_ref, tgt_ref,
+                              blocked_vertices=used_vertices)
 
             # HARD final guards — drop the wire if ANY check fails
             dropped = False
@@ -841,6 +1671,12 @@ class BackendLayoutEngine:
                 'target': conn['target'],
                 'path':   [{'x': p[0], 'y': p[1]} for p in path],
             })
+
+            # Record all intermediate vertices (not first/last = pin endpoints)
+            # as used — prevents subsequent nets from creating overlapping
+            # wire vertices that KiCad would interpret as electrical junctions.
+            for v in path[1:-1]:
+                used_vertices.add(v)
 
         # Deduplicate dropped pairs
         seen: set[tuple[str, str]] = set()

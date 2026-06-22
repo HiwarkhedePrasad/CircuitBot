@@ -89,6 +89,26 @@ RULES: list[Rule] = [
             {"search_query": "small capacitor",   "preferred_id_str": "Device:C_Small",  "library_filter": "Device", "ref_des_prefix": "C", "description": "10µF bulk decoupling cap for AVR MCU",                    "count": 1},
         ],
     ),
+    # ── ESP32 / wireless MCU: USB-UART programming bridge ──
+    # Must come BEFORE generic MCU rule — first match wins.
+    # EXEMPT: DevKit/dev-board modules (DEVKIT, MINI, WEMOS, NODEMCU) —
+    # these already integrate the bridge, regulator, and USB connector.
+    (
+        lambda c: (
+            any(kw in (c.get("id_str", "") or "").upper()
+                for kw in ["ESP32", "ESP8266"])
+            and not any(kw in (c.get("id_str", "") or "").upper()
+                        for kw in ["WEMOS", "NODEMCU", "DEVKIT", "MINI"])
+        ),
+        [
+            {"search_query": "USB to UART bridge CP2102N", "preferred_id_str": "Interface_USB:CP2102N",
+             "library_filter": "Interface_USB", "ref_des_prefix": "U",
+             "description": "CP2102N USB-to-UART bridge for ESP32 programming", "count": 1},
+            {"search_query": "small capacitor", "preferred_id_str": "Device:C_Small",
+             "library_filter": "Device", "ref_des_prefix": "C",
+             "description": "0.1µF decoupling cap for USB-UART bridge", "count": 2},
+        ],
+    ),
     # ── Microcontrollers / MCU modules: decoupling caps ──
     (
         lambda c: (

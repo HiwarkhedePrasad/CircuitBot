@@ -6,7 +6,7 @@ auto-corrects by re-emitting agent:layout_ready with fixed data.
 """
 
 from agent.layout_engine import BackendLayoutEngine
-from agent.utils import _emit, _emit_activity
+from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 
 def schematic_audit_node(state, config):
@@ -34,7 +34,8 @@ def schematic_audit_node(state, config):
         return {}
 
     _emit(config, "agent:thinking", {"message": "Auditing schematic connectivity..."})
-    _emit_activity(config, "schematic_audit", "Schematic Audit", "start")
+    emit_assistant_message(config, "Running schematic audit — validating wiring integrity and connectivity...")
+    emit_tool_event(config, "Schematic Audit", "running", "Validating wiring...")
 
     # ── 1. Rebuild engine ──────────────────────────────────────────────
     engine = BackendLayoutEngine()
@@ -50,7 +51,7 @@ def schematic_audit_node(state, config):
         )
 
     if not engine.components:
-        _emit_activity(config, "schematic_audit", "Schematic Audit", "done")
+        emit_tool_event(config, "Schematic Audit", "completed", "No components to audit")
         return {}
 
     # ── 2. Run definitive placement + routing ──────────────────────────
@@ -245,7 +246,8 @@ def schematic_audit_node(state, config):
         _emit(config, "agent:log", {
             "message": "  Schematic audit: all OK, no corrections needed"
         })
-        _emit_activity(config, "schematic_audit", "Schematic Audit", "done")
+        emit_tool_event(config, "Schematic Audit", "completed", "No corrections needed")
+        emit_assistant_message(config, "Schematic audit passed — all wiring is correct.")
         return {}
 
     _emit(config, "agent:layout_ready", {
@@ -261,7 +263,8 @@ def schematic_audit_node(state, config):
             f"{len(clean_traces)} wires, {len(power_labels)} labels"
         ),
     })
-    _emit_activity(config, "schematic_audit", "Schematic Audit", "done")
+    emit_tool_event(config, "Schematic Audit", "completed", f"Corrections applied: {len(clean_traces)} wires")
+    emit_assistant_message(config, f"Schematic corrections applied — {len(clean_traces)} wires, {len(power_labels)} power labels.")
 
     return {
         "component_placements": placements,

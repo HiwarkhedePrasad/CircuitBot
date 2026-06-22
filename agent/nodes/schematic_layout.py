@@ -9,13 +9,16 @@ Extracted from the former monolithic layout_route_node. Handles:
   5. Emit agent:layout_ready event for the frontend.
 """
 
+import random
+
 from agent.layout_engine import BackendLayoutEngine
-from agent.utils import _emit, _emit_activity
+from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 
 def schematic_layout_node(state, config):
     _emit(config, "agent:thinking", {"message": "Computing schematic layout and routing wires..."})
-    _emit_activity(config, "schematic_layout", "Schematic Layout", "start")
+    emit_assistant_message(config, "Placing components on the schematic sheet and routing wires between them...")
+    emit_tool_event(config, "Schematic Layout", "running", "Placing components and routing wires...")
 
     comp_ops = state.get("component_ops", {})
     comps = state.get("selected_components", [])
@@ -24,7 +27,7 @@ def schematic_layout_node(state, config):
     power_pins = state.get("power_pins", [])
 
     if not comps or not comp_ops:
-        _emit(config, "agent:log", {"message": "No components to place."})
+        emit_tool_event(config, "Schematic Layout", "failed", "No components to place.")
         return {}
 
     # ── 1. Build engine ────────────────────────────────────────────
@@ -39,19 +42,97 @@ def schematic_layout_node(state, config):
                              comp.get("for_component", ""))
 
     if not engine.components:
-        _emit(config, "agent:log", {"message": "No components could be placed."})
+        emit_tool_event(config, "Schematic Layout", "failed", "No components could be placed.")
         return {}
 
-    # ── 2/3. Schematic placement + routing with retry loop ─────────
+    # ── 2/3. Schematic placement + routing with score-based retry loop ──
     MAX_WIRE_LEN = 150.0
-    MAX_ROUTE_RETRIES = 3
+    MAX_ROUTE_RETRIES = 5
+
+    best_score = float('inf')
+    best_traces: list | None = None
+    best_placements: list | None = None
     all_dropped_pairs: list[tuple[str, str]] = []
+
+    def _trace_to_points(tr: dict) -> list[tuple[float, float]]:
+        path = tr.get('path') or tr.get('points', [])
+        if path and isinstance(path[0], dict):
+            return [(p['x'], p['y']) for p in path]
+        return path  # already list of tuples
+
+    def _compute_score(pts_list: list[list[tuple[float, float]]],
+                       n_dropped: int, n_dropped_pairs: int) -> tuple[float, int]:
+        total_len = 0.0
+        crossings = 0
+        segments: list = []
+        for pts in pts_list:
+            for i in range(len(pts) - 1):
+                dx = abs(pts[i + 1][0] - pts[i][0])
+                dy = abs(pts[i + 1][1] - pts[i][1])
+                total_len += dx + dy
+                segments.append((pts[i][0], pts[i][1],
+                                 pts[i + 1][0], pts[i + 1][1]))
+
+        def _orient(ax, ay, bx, by, cx, cy):
+            v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+            if abs(v) < 1e-12:
+                return 0
+            return 1 if v > 0 else -1
+
+        def _on_seg(ax, ay, bx, by, cx, cy):
+            return (min(ax, bx) <= cx <= max(ax, bx) and
+                    min(ay, by) <= cy <= max(ay, by))
+
+        for i in range(len(segments)):
+            for j in range(i + 1, len(segments)):
+                ax1, ay1, ax2, ay2 = segments[i]
+                bx1, by1, bx2, by2 = segments[j]
+                if (abs(ax2 - bx1) < 1e-9 and abs(ay2 - by1) < 1e-9) or \
+                   (abs(ax1 - bx2) < 1e-9 and abs(ay1 - by2) < 1e-9):
+                    continue
+                if (abs(ax1 - bx1) < 1e-9 and abs(ay1 - by1) < 1e-9) or \
+                   (abs(ax2 - bx2) < 1e-9 and abs(ay2 - by2) < 1e-9):
+                    continue
+                o1 = _orient(ax1, ay1, ax2, ay2, bx1, by1)
+                o2 = _orient(ax1, ay1, ax2, ay2, bx2, by2)
+                o3 = _orient(bx1, by1, bx2, by2, ax1, ay1)
+                o4 = _orient(bx1, by1, bx2, by2, ax2, ay2)
+                if o1 != o2 and o3 != o4:
+                    crossings += 1
+
+        return (float(n_dropped_pairs * 10000 + n_dropped * 10000 +
+                      crossings * 1000 + total_len),
+                crossings)
+
+    def _save_placement(e) -> list:
+        return [{'x': c['x'], 'y': c['y']} for c in e.components]
+
+    def _restore_placement(e, snap: list) -> None:
+        for c, s in zip(e.components, snap):
+            c['x'] = s['x']
+            c['y'] = s['y']
 
     for retry in range(MAX_ROUTE_RETRIES):
         engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
+
+        # Block-detection logging (blocks_v2 mode)
+        if retry == 0 and engine._last_block_map:
+            from collections import Counter
+            block_counts: dict[str, int] = Counter(engine._last_block_map.values())
+            blocks_str = "; ".join(f"{b}({n})" for b, n in
+                                   sorted(block_counts.items(),
+                                          key=lambda kv: -kv[1]))
+            emit_tool_event(config, "Block Detection", "completed",
+                            f"Detected {len(block_counts)} blocks: {blocks_str}")
+
+        # Save placement after first layout (for score-based revert)
+        if retry == 0:
+            prev_placement = _save_placement(engine)
+
         raw_traces, dropped_pairs = engine.route_traces(netlist, pin_matrix)
         all_dropped_pairs = dropped_pairs
 
+        # Filter traces
         clean_traces = []
         n_dropped = 0
         for tr in raw_traces:
@@ -77,27 +158,65 @@ def schematic_layout_node(state, config):
             clean_traces.append(tr)
 
         total_pre = len(raw_traces) + n_dropped + len(dropped_pairs)
-        n_retry_dropped = len(all_dropped_pairs) + n_dropped
-        no_dropped = n_retry_dropped == 0 or (
-            retry > 0 and n_retry_dropped < (total_pre * 0.1)
-        )
 
-        if no_dropped or retry == MAX_ROUTE_RETRIES - 1:
-            sch_traces = clean_traces
-            _emit(config, "agent:log", {
-                "message": (f"  Schematic: routed {len(clean_traces)}/{total_pre} signal wires "
-                            f"(retry {retry+1}, dropped {n_dropped}+{len(all_dropped_pairs)})")
-            })
-            break
+        # Compute score
+        pts_list = [_trace_to_points(tr) for tr in clean_traces]
+        score, crossings = _compute_score(pts_list, n_dropped, len(dropped_pairs))
 
-        n_moved = engine._repair_placement_for_routing(all_dropped_pairs)
+        total_wire = (sum(sum(abs(pts[i+1][0]-pts[i][0])+abs(pts[i+1][1]-pts[i][1])
+                             for i in range(len(pts)-1))
+                         for pts in pts_list)
+                      if pts_list else 0.0)
+
         _emit(config, "agent:log", {
-            "message": (f"  Schematic retry {retry+1}/{MAX_ROUTE_RETRIES}: "
-                        f"{len(all_dropped_pairs)} wire(s) dropped, "
-                        f"tightened {n_moved} component(s)")
+            "message": (f"  Retry {retry+1}/{MAX_ROUTE_RETRIES}: "
+                        f"score={score:.0f} (drops={n_dropped}+{len(dropped_pairs)} "
+                        f"cross={crossings} "
+                        f"wire={total_wire:.1f})")
         })
 
-    placements = engine.get_placements()
+        # Accept or reject based on score
+        if score <= best_score:
+            best_score = score
+            best_traces = clean_traces
+            best_placements = engine.get_placements()
+            prev_placement = _save_placement(engine)
+
+            dropped_total = n_dropped + len(dropped_pairs)
+            summary = f"score={score:.0f}, {len(clean_traces)} wires routed"
+            if dropped_total:
+                summary += f", {dropped_total} dropped"
+            emit_tool_event(config, f"Routing retry {retry+1}/{MAX_ROUTE_RETRIES}",
+                            "completed" if dropped_total == 0 else "running",
+                            summary,
+                            details=f"Crossings: {crossings}\nWire length: {total_wire:.1f}mm\nDropped: {dropped_total}")
+
+            no_dropped = dropped_total == 0
+            if no_dropped or retry == MAX_ROUTE_RETRIES - 1:
+                sch_traces = best_traces
+                break
+        else:
+            # Score got worse — revert to best placement and repair
+            _restore_placement(engine, prev_placement)
+            n_moved = engine._repair_placement_for_routing(all_dropped_pairs)
+            engine._enforce_satellite_distance(
+                engine._build_parent_map(netlist))
+
+            # Inject random jitter (±2.5mm) to break deterministic layout
+            mains = [c for c in engine.components if c['tier'] >= 0]
+            for c in mains:
+                c['x'] += random.uniform(-2.5, 2.5)
+                c['y'] += random.uniform(-2.5, 2.5)
+
+            emit_tool_event(config, f"Routing retry {retry+1}/{MAX_ROUTE_RETRIES}",
+                            "failed",
+                            f"Score {score:.0f} ≥ best {best_score:.0f}, reverted + tightened {n_moved}",
+                            details=f"Previous best: {best_score:.0f}\nAttempt: {score:.0f}")
+
+    if best_traces is not None:
+        sch_traces = best_traces
+
+    placements = best_placements if best_placements is not None else engine.get_placements()
 
     # ── 4. Power labels ────────────────────────────────────────────
     power_labels = []
@@ -136,7 +255,8 @@ def schematic_layout_node(state, config):
         "power_pins": power_pins,
     })
 
-    _emit_activity(config, "schematic_layout", "Schematic Layout", "done")
+    emit_tool_event(config, "Schematic Layout", "completed", f"Laid out {len(placements)} components, routed {len(sch_traces)} wires")
+    emit_assistant_message(config, f"Layout complete — {len(placements)} components placed, {len(sch_traces)} wires routed on the schematic.")
 
     return {
         "component_placements": placements,

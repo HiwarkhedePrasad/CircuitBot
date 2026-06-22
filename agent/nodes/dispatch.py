@@ -61,6 +61,18 @@ def dispatch_node(state, config):
             "message": f"  ⚠ WARNING: {len(skipped_refs)} component(s) could not be loaded "
                        f"and will be ABSENT from the design: {skipped_msg}"
         })
+
+    # Netlist freeze check: components removed by validator after last validation
+    # pass (e.g. redundant crystal + load caps) will be MISSING from the layout.
+    final_count = len(state.get("selected_components", []))
+    validated_count = state.get("_last_validated_component_count", 0)
+    if validated_count and final_count != validated_count:
+        diff = final_count - validated_count
+        _emit(config, "agent:log", {
+            "message": f"  ⚠ NETLIST FREEZE: {validated_count} components validated → "
+                       f"{final_count} dispatched ({diff:+d}) — "
+                       f"{'extra' if diff > 0 else 'missing'} component(s) in layout"
+        })
     result = {
         "pin_matrix": pin_matrix,
         "component_ops": component_ops,

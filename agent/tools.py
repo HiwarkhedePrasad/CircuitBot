@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
 from kicad_rag.client import KicadRAG
@@ -135,9 +136,50 @@ def calculate_via_current(outer_diameter_mm: float, hole_diameter_mm: float,
     }
 
 
+_SEARCH_TIMEOUT = 30
+
+
+def _run_with_timeout(fn, args, timeout_ms):
+    """Run ``fn(*args)`` in a daemon thread; return ``(result, exc, timed_out)``.
+
+    If the thread is still alive after ``timeout_ms`` seconds it is **not**
+    joined — the daemon flag ensures it never blocks shutdown.
+    """
+    result_holder = {}
+    def target():
+        try:
+            result_holder["result"] = fn(*args)
+        except BaseException as e:
+            result_holder["exception"] = e
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout=timeout_ms)
+    if t.is_alive():
+        return None, None, True
+    if "exception" in result_holder:
+        return None, result_holder["exception"], False
+    return result_holder.get("result"), None, False
+
+
 @register_tool
 def search_components(query: str, k: int = 8,
                      library_filter: str | None = None) -> list[dict]:
+    result, exc, timed_out = _run_with_timeout(
+        _search_components_impl,
+        (query, k, library_filter),
+        _SEARCH_TIMEOUT,
+    )
+    if timed_out:
+        print(f"[tools] search_components timed out after {_SEARCH_TIMEOUT}s for query='{query[:60]}'")
+        return []
+    if exc is not None:
+        print(f"[tools] search_components failed for query='{query[:60]}': {exc}")
+        return []
+    return result if result is not None else []
+
+
+def _search_components_impl(query: str, k: int,
+                            library_filter: str | None) -> list[dict]:
     results = rag.search(query, k=k)
     if library_filter:
         results = [r for r in results

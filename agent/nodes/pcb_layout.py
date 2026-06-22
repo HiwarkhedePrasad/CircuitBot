@@ -9,7 +9,7 @@ Extracted from the former monolithic layout_route_node. Handles:
   6. Emit agent:pcb_ready + agent:done events.
 """
 
-from agent.utils import _emit, _emit_activity
+from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 from pcb_design.board_model import (
     BoardModel, BoardComponent, PadDef, BoardTrace, BoardVia, DRCConfig,
@@ -23,7 +23,8 @@ from pcb_design.pour import pour_ground
 
 def pcb_layout_node(state, config):
     _emit(config, "agent:thinking", {"message": "Routing PCB traces..."})
-    _emit_activity(config, "pcb_layout", "PCB Layout", "start")
+    emit_assistant_message(config, "Laying out components on the PCB and routing traces...")
+    emit_tool_event(config, "PCB Layout", "running", "Force-directed placement...")
 
     comps = state.get("selected_components", [])
     pin_matrix = state.get("pin_matrix", {})
@@ -76,13 +77,14 @@ def pcb_layout_node(state, config):
              for c in model.components]
         )
 
-    _emit_activity(config, "pcb_layout", "PCB Layout", "update", kind="placement",
-                   detail=f"Placed {len(model.components)} components (force-directed)")
+    emit_tool_event(config, "PCB Layout", "running", f"Placed {len(model.components)} components (force-directed)")
 
     drc_config = DRCConfig()
 
     # ── 3. Route PCB traces (A* with rip-up & reroute) ─────────────
-    traces_new = route_board_new(model, netlist, pin_matrix, drc=drc_config)
+    trace_constraints = state.get("trace_constraints", {})
+    traces_new = route_board_new(model, netlist, pin_matrix, drc=drc_config,
+                                 trace_constraints=trace_constraints)
     if traces_new:
         model.traces = traces_new
         n_power = sum(1 for t in traces_new if t.net.upper() in
@@ -95,8 +97,7 @@ def pcb_layout_node(state, config):
                         f"({n_power} power, {n_gnd} GND, {n_sig} signal) "
                         f"with {len(model.vias)} vias")
         })
-        _emit_activity(config, "pcb_layout", "PCB Layout", "update", kind="routing",
-                       detail=f"Routed {len(traces_new)} connections ({len(model.vias)} vias)")
+        emit_tool_event(config, "PCB Layout", "running", f"Routed {len(traces_new)} connections ({len(model.vias)} vias)")
     else:
         _emit(config, "agent:log", {
             "message": "  ⚠ Router2 returned 0 traces — falling back to old router..."
@@ -169,6 +170,8 @@ def pcb_layout_node(state, config):
                     f"{len(model.traces)} PCB traces, {len(model.vias)} vias, "
                     f"{zone_count} GND zones, DRC: {n_err} err / {n_warn} warn")
     })
-    _emit_activity(config, "pcb_layout", "PCB Layout", "done")
+    emit_tool_event(config, "PCB Layout", "completed",
+                    f"{len(model.components)} components, {len(model.traces)} traces, {zone_count} GND zones, DRC: {n_err} err / {n_warn} warn")
+    emit_assistant_message(config, f"PCB complete — {len(model.components)} components, {len(model.traces)} traces, DRC: {n_err} errors / {n_warn} warnings.")
 
     return {"board_model": board_dict, "_board_model": board_dict}

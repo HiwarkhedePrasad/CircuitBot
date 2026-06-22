@@ -111,7 +111,7 @@ def _check_power_isolation(
             )
         if clean:
             corrected.append({"net": name, "pins": clean})
-        elif clean or len(pins) == 0:
+        elif len(pins) == 0:
             corrected.append({"net": name, "pins": clean})
     return corrected
 

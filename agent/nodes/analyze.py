@@ -2,7 +2,7 @@ import json
 import re
 
 from agent.prompts import ANALYZE_SYSTEM, ANALYZE_USER
-from agent.utils import _emit, _emit_activity, _check_stage_contract, _stage_result, _call_llm, _clean_json
+from agent.utils import _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result, _call_llm, _clean_json
 
 
 _SUBSYSTEM_KEYWORDS = [
@@ -76,7 +76,8 @@ def _detect_bus(subsystem: str, function: str) -> str:
 
 def analyze_node(state, config):
     _emit(config, "agent:thinking", {"message": "Analyzing your design request..."})
-    _emit_activity(config, "analyze", "Analyze Design", "start")
+    emit_assistant_message(config, "Parsing the design prompt to identify subsystems and requirements...")
+    emit_tool_event(config, "Analyze Design", "running", "Parsing design prompt...")
     contract = _check_stage_contract("analyze", state, ["prompt"])
     if contract:
         _emit(config, "agent:log", {"message": contract})
@@ -133,6 +134,6 @@ def analyze_node(state, config):
     _emit(config, "agent:log", {
         "message": f"Identified {len(analysis)} subsystems: " + ", ".join(subsystems)
     })
-    _emit_activity(config, "analyze", "Analyze Design", "update", kind="detection", detail=[f"Detected {s}" for s in subsystems])
-    _emit_activity(config, "analyze", "Analyze Design", "done")
+    emit_tool_event(config, "Analyze Design", "completed", f"{len(analysis)} subsystems found")
+    emit_assistant_message(config, f"Identified {len(analysis)} subsystems: {', '.join(subsystems)}.")
     return _stage_result(state, "analyze", {"analysis": analysis})

@@ -1,5 +1,5 @@
 from agent.tools import search_components
-from agent.utils import _emit, _emit_activity, _check_stage_contract, _stage_result, _extract_part_numbers, _sanitize_data
+from agent.utils import _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result, _extract_part_numbers, _sanitize_data
 
 
 def research_node(state, config):
@@ -11,7 +11,8 @@ def research_node(state, config):
     if not analysis:
         _emit(config, "agent:log", {"message": "No subsystems to research."})
         return {"research_results": []}
-    _emit_activity(config, "research", "Component Research", "start")
+    emit_assistant_message(config, "Searching for components across all subsystems...")
+    emit_tool_event(config, "Component Research", "running", "Searching for components...")
     all_results = []
     user_parts = _extract_part_numbers(state.get("prompt", ""))
     if user_parts:
@@ -44,7 +45,7 @@ def research_node(state, config):
             examples = [examples]
         queries = (examples[:2] if isinstance(examples, list) else []) + [name]
         _emit(config, "agent:thinking", {"message": f"Searching components for {name}..."})
-        _emit_activity(config, "research", "Component Research", "update", kind="search", detail=f"Searching {name}")
+        emit_tool_event(config, f"Research: {name}", "running", f"Searching {name}...")
         results = []
         for q in queries:
             try:
@@ -65,11 +66,11 @@ def research_node(state, config):
             "bus": sub.get("bus", "any"),
             "results": deduped[:4],
         })
+        emit_tool_event(config, f"Research: {name}", "completed", f"Found {len(deduped)} {name} candidates")
         _emit(config, "agent:log", {
             "message": f"  {name}: found {len(deduped)} candidates"
         })
-        _emit_activity(config, "research", "Component Research", "update", level="success", kind="search", detail=f"Found {len(deduped)} {name} candidates")
     total = sum(len(r.get("results", [])) for r in all_results)
-    _emit_activity(config, "research", "Component Research", "update", kind="search", detail=f"Found {total} candidates across {len(analysis)} subsystems")
-    _emit_activity(config, "research", "Component Research", "done")
+    emit_tool_event(config, "Component Research", "completed", f"Found {total} candidates across {len(analysis)} subsystems")
+    emit_assistant_message(config, f"Found {total} component candidates across {len(analysis)} subsystems.")
     return {"research_results": all_results}

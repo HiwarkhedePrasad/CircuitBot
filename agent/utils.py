@@ -4,14 +4,15 @@ import random
 import re
 import time
 import traceback
+import uuid
 from typing import Any
 
 from agent.tools import llm_call, execute_tool, TOOL_DESCRIPTIONS
 
 
 MAX_LLM_RETRIES = 5
-MAX_VALIDATION_RETRIES = 2
-MAX_BATCH_PINS = 36
+MAX_VALIDATION_RETRIES = 3
+MAX_BATCH_PINS = 24
 
 # Global rate limiter — tracks last N call timestamps to avoid 429s
 _LLM_CALL_HISTORY: list[float] = []
@@ -48,6 +49,35 @@ def _emit(config, event, data):
     emit_fn = config["configurable"].get("emit")
     if emit_fn:
         emit_fn(event, data)
+
+
+def emit_assistant_message(config, text: str) -> None:
+    """Emit an agent message to the conversation stream (primary content)."""
+    _emit(config, "agent:conversation", {
+        "type": "assistant",
+        "content": text,
+        "ts": time.time(),
+    })
+
+
+def emit_tool_event(config, title: str, status: str = "running",
+                    summary: str = "", details: dict | None = None) -> None:
+    """Emit a tool execution card (collapsible, secondary to assistant msgs).
+
+    Status must be one of: ``"running"`` | ``"completed"`` | ``"failed"``.
+    Every call appends a *new* card — never mutates past cards.
+    """
+    payload: dict = {
+        "id": uuid.uuid4().hex[:8],
+        "type": "tool_card",
+        "ts": time.time(),
+        "title": title,
+        "status": status,
+        "summary": summary,
+    }
+    if details is not None:
+        payload["details"] = details
+    _emit(config, "agent:conversation", payload)
 
 
 def _emit_activity(config, phase, title, status, level="info", kind="", detail=None):
@@ -174,13 +204,19 @@ def _record_call() -> None:
         _LLM_CALL_HISTORY = _LLM_CALL_HISTORY[-_LLM_CALL_HISTORY_MAX:]
 
 
-_LLM_TOTAL_TIMEOUT = 90.0  # seconds — max total time for one LLM call (incl. retries)
+_LLM_TOTAL_TIMEOUT = 180.0  # seconds — max total time for one LLM call (incl. retries)
 
 
 def _retry_llm_call(system: str, user: str, stage: str = "") -> str:
     global _LAST_429_TIME
     t0 = time.time()
     for attempt in range(MAX_LLM_RETRIES):
+        elapsed = time.time() - t0
+        if elapsed > _LLM_TOTAL_TIMEOUT:
+            raise AgentLLMError(
+                f"LLM call timed out after {elapsed:.0f}s "
+                f"({attempt} attempts){': ' + stage if stage else ''}"
+            )
         try:
             _rate_limit()
             result = llm_call(system, user)
@@ -583,9 +619,15 @@ def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
         pin_num = num_node[1].replace('"', '').strip()
         if not pin_num:
             continue
-        # etype (electrical type) — used by netlist generation
+        # etype (electrical type) — positional in KiCad v10+ format,
+        # or wrapped in (electrical_type ...) in older formats.
         etype_node = _get_attr(op, "electrical_type")
-        etype = etype_node[1] if etype_node else "passive"
+        if etype_node:
+            etype = etype_node[1]
+        elif len(op) > 1 and isinstance(op[1], str):
+            etype = op[1]
+        else:
+            etype = "passive"
         key = f"{ref_des}:{pin_num}"
         if key in pin_matrix:
             continue

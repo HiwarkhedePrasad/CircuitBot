@@ -33,6 +33,12 @@ part with a generic term ("Microcontroller") or a different part family (e.g.,
 never substitute AT89S52 when the user asked for ESP32-C3). Generic terms are
 only allowed when the user did NOT name a specific part.
 
+CRITICAL — DO NOT SUBSTITUTE USER-SPECIFIED PARTS:
+Even if a newer/modern equivalent exists, you MUST NOT replace a part the user
+explicitly named. "DS18B20" must remain "DS18B20", not TMP117. "ATmega328P"
+must remain "ATmega328P", not ATmega4809. The generation-preference table is
+a tiebreaker for general requirements only — NEVER for user-named parts.
+
 IMPORTANT: Besides the main functional blocks, ALWAYS include essential supporting passive subsystems:
 - DO NOT create subsystems for generic pull-up resistors or decoupling capacitors — these are injected automatically by the supporting parts generator.
 - A "Clock/Oscillator" subsystem IF any MCU/IC needs an external clock source.
@@ -51,6 +57,13 @@ When defining a clock/oscillator subsystem, you MUST dynamically determine wheth
 - Passive crystal (e.g., ATmega, basic STM32): use "Device:Crystal" in the example_components.
 - Active oscillator module (e.g., FPGAs, high-speed PHYs): use the library filter "Oscillator".
 
+ESP32 PROGRAMMING RULE:
+ESP32/ESP8266 designs MUST include a "Programming & Debug" subsystem with USB-to-UART
+bridge ICs (CP2102N, CH340G/E, FT230X) in its example_components. These parts are what
+actually appears in KiCad databases as "Interface_USB:CP2102N". Do NOT use generic
+"programmer" or "AVR" keywords — they will fetch AVR ISP headers instead.
+Dev boards with native USB (ESP32-S3, ESP32-C6, ESP32-P4) are exempt.
+
 COMMON COMPONENT CHEAT SHEET:
 Use EXACTLY these KiCad symbols for generic supporting parts:
 - Resistors: "Device:R_Small"
@@ -62,6 +75,7 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
 - I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
 - 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
+- USB-UART Bridge ICs: "Interface_USB:CP2102N", "Interface_USB:CH340G"
 - AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
 - Overcurrent PTC Fuses: "Device:Polyfuse"
 
@@ -118,6 +132,8 @@ check each component for correctness:
    dev board), do NOT flag missing USB connectors or voltage regulators — they
    are integrated into the module. "RF_Module" is a perfectly valid library for
    ESP32/wireless microcontrollers. Do not flag it as an error.
+   BUTTONS AND LEDS ARE NEVER INTEGRATED — a push-button, tactile switch, or
+   status LED is always a separate external component regardless of the module.
 
 5. ATOMIC COMPONENT RULE: When listing missing components, you MUST break them
    down into single, atomic parts. NEVER bundle components together (e.g., do
@@ -136,12 +152,23 @@ check each component for correctness:
    - Exception: bare chips replaced by modules that include them (e.g., ESP32
      replaced by ESP32-WROOM module) are acceptable.
 
-7. WIRELESS-FEATURE CHECK: If the user prompt specifies wireless capability
+7. BUS/CONNECTOR CHECK: Each component has a "Pins" summary showing its pin count, types, and supported hardware interfaces (I2C, UART, SPI, etc.). Verify the main controller supports the buses required by connected peripherals. For example, if a sensor needs I2C, the MCU's pin summary must list I2C support.
+
+8. WIRELESS-FEATURE CHECK: If the user prompt specifies wireless capability
    (WiFi, Bluetooth, BLE, LoRa, Zigbee, etc.) in any form — either by naming
    an ESP32 or by explicitly mentioning wireless — the selected MCU MUST
    support that wireless protocol. A non-wireless MCU (ATmega, bare STM32,
    RP2040) is a FATAL MISMATCH unless a separate wireless transceiver IC
    (e.g., NRF24L01, ESP8266, RFM95) is also in the component list.
+
+9. ESP32 PROGRAMMING INTERFACE: ESP32-family designs (ESP32, ESP32-C3, ESP32-S3,
+   ESP8266) MUST include either:
+   - A USB-UART bridge IC (Interface_USB:CP2102N, Interface_USB:CH340G, or FT230X)
+   - OR a header with access to UART0 TX/RX pins for external programming
+   EXEMPT: dev boards with native USB (ESP32-S3, ESP32-C6, ESP32-P4) that have
+   built-in USB-serial-JTAG peripheral.
+   Flag the missing bridge as an error with suggested_query="USB to UART bridge CP2102N"
+   and library_filter="Interface_USB" so the auto-correct can inject it.
 
 COMMON COMPONENT CHEAT SHEET:
 Use EXACTLY these KiCad symbols for generic supporting parts:
@@ -154,6 +181,7 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
 - I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
 - 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
+- USB-UART Bridge ICs: "Interface_USB:CP2102N", "Interface_USB:CH340G"
 - AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
 - Overcurrent PTC Fuses: "Device:Polyfuse"
 
@@ -345,9 +373,25 @@ The tool result will be returned and you can continue. Available tools:
 - calculate_voltage_drop(current_a, trace_length_mm, trace_width_mm, copper_oz=1)
 - calculate_via_current(outer_diameter_mm, hole_diameter_mm, temp_rise_c=10, copper_oz=1)
 
-Output ONLY a JSON array of net objects:
-[{"net": "I2C_SDA", "pins": ["U1:3", "U2:5"]}, ...]
-Do NOT include coordinates or wire paths. No markdown, no explanation, just the JSON array."""
+Output format: a JSON object (or for backward compat, just the array).
+{
+  "nets": [{"net": "I2C_SDA", "pins": ["U1:3", "U2:5"]}, ...],
+  "trace_constraints": {}
+}
+
+IMPORTANT: If you used a PCB calculation tool to determine trace width, impedance,
+or current capacity for a net, include the results in trace_constraints:
+  "trace_constraints": {
+    "5V":  {"width_mm": 0.5, "max_current_a": 2.0},
+    "USB_DP": {"impedance": 90},
+    "VBAT": {"width_mm": 0.8}
+  }
+- Power nets (5V, 3V3, VBAT, VIN, VSYS) should have width_mm based on current draw
+- High-speed nets (USB D+/D-) should have impedance target if applicable
+- Omit trace_constraints or use {} if you didn't run any calculations
+- For backward compat, you may also output JUST the array without trace_constraints
+
+Do NOT include coordinates or wire paths. No markdown, no explanation, just the JSON."""
 
 NETLIST_BATCH_USER = """User's design intent: {prompt}
 

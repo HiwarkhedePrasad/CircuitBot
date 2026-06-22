@@ -5,8 +5,8 @@ from agent.reranker import rank_candidates
 from agent.support_rules import get_supporting_components, resolve_fallback_symbol
 from agent.tools import search_components, fetch_footprint
 from agent.utils import (
-    _emit, _emit_activity, _check_stage_contract, _stage_result,
-    _is_passive, _sanitize_data,
+    _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result,
+    _extract_part_numbers, _is_passive, _sanitize_data,
 )
 
 _PREFIX_RULES: list[tuple[str, str]] = [
@@ -22,6 +22,12 @@ _PREFIX_RULES: list[tuple[str, str]] = [
     ('ESP32',      'U'), ('STM32', 'U'), ('FPGA', 'U'), ('MEMORY', 'U'),
     ('DRIVER',     'U'), ('AMS', 'U'), ('DS18', 'U'), ('ATMEGA', 'U'),
     ('OLED',       'U'), ('SSD', 'U'), ('ESD', 'U'), ('TPD', 'U'),
+    ('SWITCH',     'SW'), ('BUTTON', 'SW'), ('TACTILE', 'SW'),
+    ('SPEAKER',    'LS'), ('BUZZER', 'LS'),
+    ('RELAY',      'K'),
+    ('MOTOR',      'M'), ('FAN', 'M'),
+    ('BATTERY',    'BT'),
+    ('CRYSTAL',    'Y'), ('OSCILLATOR', 'Y'), ('RESONATOR', 'Y'),
 ]
 
 
@@ -103,7 +109,8 @@ def _assign_ref_des(components: list[dict], sheet_map: dict[str, int] | None = N
 
 def select_node(state, config):
     _emit(config, "agent:thinking", {"message": "Selecting best components..."})
-    _emit_activity(config, "select", "Component Selection", "start")
+    emit_assistant_message(config, "Scoring and ranking candidates to select the best components for each subsystem...")
+    emit_tool_event(config, "Component Selection", "running", "Scoring and ranking candidates...")
     contract = _check_stage_contract("select", state, ["research_results", "prompt"])
     if contract:
         _emit(config, "agent:log", {"message": contract})
@@ -139,7 +146,8 @@ def select_node(state, config):
         match = next(
             (c for c in state.get("selected_components", [])
              if c.get("subsystem") == sub_name
-             and c.get("id_str") not in _GENERIC_PASSIVES),
+             and c.get("id_str") not in _GENERIC_PASSIVES
+             and c.get("id_str") not in rejected_ids),
             None
         )
         if match:
@@ -155,8 +163,10 @@ def select_node(state, config):
     for sub in research:
         candidates = sub.get("results", [])
         if not candidates:
+            rj = state.get("rejected_ids", [])
+            reason = "all candidates rejected by validator — no substitute available" if rj else "no candidates found"
             _emit(config, "agent:log", {
-                "message": f"  No candidates for '{sub.get('subsystem', '')}' — skipping"
+                "message": f"  No candidates for '{sub.get('subsystem', '')}' — {reason}"
             })
             continue
         ranked = rank_candidates(
@@ -165,6 +175,22 @@ def select_node(state, config):
             user_prompt=state.get("prompt", ""),
             config=config,
         )
+        # Deterministic user-requested part override: if the user named a
+        # specific part number (e.g. "DS18B20") and it exists somewhere in
+        # the ranked list but wasn't picked, promote it to #1.  This ensures
+        # user-requested parts are never ignored regardless of LLM behavior.
+        user_parts = _extract_part_numbers(state.get("prompt", ""))
+        if user_parts and ranked:
+            up_upper = [p.strip().upper() for p in user_parts]
+            for rank_idx, cand in enumerate(ranked):
+                cid = cand.get("id_str", "").upper()
+                if rank_idx > 0 and any(p in cid for p in up_upper):
+                    _emit(config, "agent:log", {
+                        "message": f"  User-requested part {cand['id_str']} at rank #{rank_idx+1} "
+                                   f"— promoting to #1 (user named this part in prompt)"
+                    })
+                    ranked.insert(0, ranked.pop(rank_idx))
+                    break
         best = ranked[0] if ranked else None
         if not best:
             if existing_ids:
@@ -222,6 +248,8 @@ def select_node(state, config):
     carried = 0
     for c in prev_selected:
         if c["id_str"] in current_ids:
+            continue
+        if c.get("id_str", "") in rejected_ids:
             continue
         if c.get("justification", "").startswith("Auto-added by validator"):
             selected.append(c)
@@ -361,6 +389,44 @@ def select_node(state, config):
                                 chosen = c
                                 break
                 if chosen:
+                    # Dedup guard: skip if a non-passive IC with same library +
+                    # base part number already exists in selected (e.g.,
+                    # Interface_USB:CP2102N injected when CP2102N-Axx-xQFN20
+                    # was already selected by the reranker).
+                    _chosen_id = chosen["id_str"]
+                    _ci = _chosen_id.rfind(":")
+                    _chosen_lib = _chosen_id[:_ci] if _ci >= 1 else ""
+                    _chosen_base = _chosen_id[_ci+1:].split("-")[0] if _ci >= 1 else _chosen_id
+
+                    # Same-library-is-duplicate: if injecting into a library
+                    # where ANY component of that library already exists in
+                    # selected, treat it as a duplicate.  This catches
+                    # different-variant USB-UART bridges (CP2102N vs CP2102C),
+                    # regulators, and other interface ICs from the same
+                    # functional library.
+                    _DUPE_LIBS = frozenset(["Interface_USB", "Interface_UART",
+                        "Regulator_Linear", "Regulator_Switching"])
+                    if _chosen_lib in _DUPE_LIBS:
+                        if any(
+                            s.get("id_str", "").startswith(f"{_chosen_lib}:")
+                            for s in selected
+                        ):
+                            _emit(config, "agent:log", {
+                                "message": f"  Skipped {_chosen_id} — {_chosen_lib} already selected"
+                            })
+                            continue
+
+                    # Exact base-part match guard (existing logic):
+                    if _chosen_lib and _chosen_lib != "Device" and _chosen_lib not in _DUPE_LIBS:
+                        if any(
+                            s.get("id_str", "").startswith(f"{_chosen_lib}:") and
+                            s["id_str"].split(":")[-1].split("-")[0] == _chosen_base
+                            for s in selected
+                        ):
+                            _emit(config, "agent:log", {
+                                "message": f"  Skipped {_chosen_id} — {_chosen_lib} {_chosen_base} already selected"
+                            })
+                            continue
                     _infer_category = {
                         "Device:C_Small": "CAPACITOR", "Device:R_Small": "RESISTOR",
                         "Device:Polyfuse": "POLYFUSE", "Device:L_Small": "INDUCTOR",
@@ -429,8 +495,8 @@ def select_node(state, config):
                    ", ".join(f'{s["ref_des"]}={s["id_str"].split(":")[-1][:20]}' for s in selected)
     })
     part_names = [f'{s["ref_des"]}={s["id_str"].split(":")[-1]}' for s in selected if s.get("id_str")]
-    _emit_activity(config, "select", "Component Selection", "update", level="success", kind="selection", detail=part_names)
-    _emit_activity(config, "select", "Component Selection", "done")
+    emit_tool_event(config, "Component Selection", "completed", f"Selected {len(selected)} components")
+    emit_assistant_message(config, f"Selected {len(selected)} components: {', '.join(part_names)}.")
     return _stage_result(state, "select", {
         "selected_components": selected,
         "retry_count": retry_count + 1,

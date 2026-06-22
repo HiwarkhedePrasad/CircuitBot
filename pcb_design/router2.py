@@ -89,7 +89,12 @@ def _net_priority(net: str) -> int:
     return 3
 
 
-def _width_for(net_name: str, drc: DRCConfig) -> float:
+def _width_for(net_name: str, drc: DRCConfig,
+               trace_constraints: Optional[dict] = None) -> float:
+    if trace_constraints:
+        tc = trace_constraints.get(net_name) or trace_constraints.get(net_name.upper())
+        if isinstance(tc, dict) and "width_mm" in tc:
+            return float(tc["width_mm"])
     if _is_power(net_name):
         # Ground can be even wider (will become pour anyway)
         if net_name.upper() in ("GND", "GROUND", "AGND", "DGND"):
@@ -297,7 +302,8 @@ def _route_one(
 def route_nets(model: BoardModel,
                netlist: list[dict],
                pin_matrix: dict,
-               drc: Optional[DRCConfig] = None) -> list[BoardTrace]:
+               drc: Optional[DRCConfig] = None,
+               trace_constraints: Optional[dict] = None) -> list[BoardTrace]:
     """Route all nets using weighted A* with rip-up & reroute.
 
     Args:
@@ -351,7 +357,7 @@ def route_nets(model: BoardModel,
         if not src_pos or not tgt_pos:
             continue
         net_name = conn.get("net", conn.get("source", ""))
-        width = _width_for(net_name, drc)
+        width = _width_for(net_name, drc, trace_constraints)
 
         trace = None
         for layer in layers:
@@ -396,7 +402,7 @@ def route_nets(model: BoardModel,
             if not src_pos or not tgt_pos:
                 continue
             net_name = conn.get("net", conn.get("source", ""))
-            width = _width_for(net_name, drc)
+            width = _width_for(net_name, drc, trace_constraints)
 
             # Find the shortest existing trace whose bbox intersects our
             # intended path's bounding box — rip it up, route us, then it.

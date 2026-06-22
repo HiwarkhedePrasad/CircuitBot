@@ -21,6 +21,7 @@ rag = KicadRAG()
 # Last completed agent design — used by /api/export_sch
 design_lock = threading.Lock()
 LAST_DESIGN = {}
+_WIREBENDER_LAYOUT = {}  # Preserved across agent-result overwrite
 
 
 def _generate_netlist_llm(pin_matrix, prompt):
@@ -143,6 +144,12 @@ def api_save_layout():
     with design_lock:
         if not LAST_DESIGN.get('selected_components'):
             return jsonify({'ok': False, 'error': 'No design to update'}), 404
+        _WIREBENDER_LAYOUT['component_placements'] = data.get('placements', _WIREBENDER_LAYOUT.get('component_placements', []))
+        _WIREBENDER_LAYOUT['wire_paths'] = data.get('wire_paths', _WIREBENDER_LAYOUT.get('wire_paths', []))
+        _WIREBENDER_LAYOUT['power_labels'] = data.get('power_labels', _WIREBENDER_LAYOUT.get('power_labels', []))
+        if 'board_model' in data and data['board_model'] is not None:
+            _WIREBENDER_LAYOUT['board_model'] = data['board_model']
+        # Also write through to LAST_DESIGN for immediate use
         if 'placements' in data:
             LAST_DESIGN['component_placements'] = data['placements']
         if 'wire_paths' in data:
@@ -255,15 +262,18 @@ def _run_agent(prompt: str, sid: str):
         result = agent_graph.invoke({"prompt": prompt}, config)
 
         # Persist the final design state for .kicad_sch / .kicad_pcb export
+        # WireBender's frontend-computed layout takes priority over the
+        # backend router's layout (saved via /api/save_layout → _WIREBENDER_LAYOUT).
         board_model = result.get('board_model', None) or result.get('_board_model', None)
         with design_lock:
+            wb = _WIREBENDER_LAYOUT
             LAST_DESIGN.clear()
             LAST_DESIGN.update({
                 'selected_components': result.get('selected_components', []),
                 'component_ops': result.get('component_ops', {}),
-                'component_placements': result.get('component_placements', []),
-                'wire_paths': result.get('wire_paths', []),
-                'power_labels': result.get('power_labels', []),
+                'component_placements': wb.get('component_placements') or result.get('component_placements', []),
+                'wire_paths': wb.get('wire_paths') or result.get('wire_paths', []),
+                'power_labels': wb.get('power_labels') or result.get('power_labels', []),
                 'nets': result.get('nets', []),
                 'power_pins': result.get('power_pins', []),
                 'board_model': board_model,

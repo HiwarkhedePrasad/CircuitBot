@@ -14,6 +14,7 @@ engineering data (voltage ranges, pin functions) rather than marketing fluff.
 
 import io
 import re
+import threading
 import requests
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
@@ -21,6 +22,7 @@ from pypdf import PdfReader
 MAX_TOTAL = 500
 _cached_texts: dict[str, str] = {}
 _FETCH_TIMEOUT = 5
+_DATASHEET_TIMEOUT = 15  # seconds max for a full fetch + parse + fallback
 _BAD_DOMAINS = {"buydisplay.com"}
 _KNOWN_FAIL: set[str] = set()
 
@@ -226,6 +228,26 @@ def _extract_critical_block(text: str) -> str:
 
 
 def extract_critical_specs(url: str) -> str:
+    """Return targeted engineering text from a datasheet URL (max _DATASHEET_TIMEOUT s)."""
+    result_holder = {}
+    def target():
+        try:
+            result_holder["result"] = _extract_critical_specs_impl(url)
+        except BaseException as e:
+            result_holder["exception"] = e
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout=_DATASHEET_TIMEOUT)
+    if t.is_alive():
+        print(f"[datasheet] extract_critical_specs timed out after {_DATASHEET_TIMEOUT}s for {url[:60]}")
+        return ""
+    if "exception" in result_holder:
+        print(f"[datasheet] extract_critical_specs failed for {url[:60]}: {result_holder['exception']}")
+        return ""
+    return result_holder.get("result") or ""
+
+
+def _extract_critical_specs_impl(url: str) -> str:
     """Return targeted engineering text from a datasheet URL.
 
     Strategy:

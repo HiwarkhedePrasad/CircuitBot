@@ -56,4 +56,5 @@ class AgentState(TypedDict, total=False):
     retry_count: int
     validation_errors: List[str]
     rejected_ids: Optional[List[str]]
+    trace_constraints: Optional[dict]  # {"net_name": {"width_mm": 0.5, "impedance": 90}}
     _stage: str
