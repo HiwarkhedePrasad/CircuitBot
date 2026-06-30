@@ -57,4 +57,9 @@ class AgentState(TypedDict, total=False):
     validation_errors: List[str]
     rejected_ids: Optional[List[str]]
     trace_constraints: Optional[dict]  # {"net_name": {"width_mm": 0.5, "impedance": 90}}
+    pcb_approved: bool
     _stage: str
+    _placement_locked: bool             # True after placement node runs once
+    _erc_results: Optional[dict]        # ERC output from kicad-cli
+    _erc_retries: int                   # how many ERC→repair loops so far
+    _erc_pending_connections: Optional[List[dict]]  # [{pin, net}] — attach requests for routing

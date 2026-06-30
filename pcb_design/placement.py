@@ -210,11 +210,6 @@ def _detect_decoupling_caps(comps: list[dict], netlist: list[dict],
         pin_to_net.setdefault(conn["source"], net)
         pin_to_net.setdefault(conn["target"], net)
 
-    # Also pull from power_pins (the agent's primary power-channel)
-    for c in comps:
-        for pp in c.get("_power_pins", []) or []:
-            pin_to_net.setdefault(pp.get("pin", ""), pp.get("net", ""))
-
     # core_ref → (power_nets, gnd_nets)
     core_refs = {c["ref_des"] for c in comps if _classify(c) == CORE_IC}
     core_power: dict[str, set] = {r: set() for r in core_refs}

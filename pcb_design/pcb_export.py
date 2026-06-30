@@ -219,8 +219,12 @@ def _simplify_path(points: list) -> list:
 
 
 def generate_kicad_pcb(design: dict) -> str:
-    # If board_model is present, use BoardModel export instead
+    # Prefer pcbnew-generated content when available
     board_model = design.get("board_model")
+    if board_model and board_model.get("_pcbnew_content"):
+        return board_model["_pcbnew_content"]
+
+    # Fall back to BoardModel export
     if board_model:
         try:
             return _generate_from_board_model(board_model)

@@ -454,7 +454,7 @@ def select_node(state, config):
                         "message": f"  WARNING: no suitable component found for {sp['description']} (query='{sp['search_query']}', filter={lib_filter})"
                     })
             except Exception as e:
-                print(f"Support component search failed: {e}")
+                _emit(config, "agent:log", {"message": f"Support component search failed (skipped): {e}"})
     if injected:
         selected.extend(injected)
         selected = _assign_ref_des(selected, subsystem_sheet_map)

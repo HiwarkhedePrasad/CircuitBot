@@ -41,9 +41,9 @@ SAT_H_GAP      = 12.70
 SAT_V_GAP      = 3.81
 PIN_STUB_LEN   = 2.54          # one grid step out from the symbol body
 
-MAX_WIRE_MANHATTAN = 150.0     # HARD cap — anything longer is DROPPED
+MAX_WIRE_MANHATTAN = 200.0     # HARD cap — anything longer is DROPPED
 MAX_COMPS_PER_COLUMN = 4       # grid placement: max components per column
-MAX_COLLISIONS = 2             # allow up to 2 component-body intersections (wire typically exits source component's own bbox)
+MAX_COLLISIONS = 5             # allow up to 5 component-body intersections (exit source, enter target, plus 1-3 intervening)
 BBOX_CLEARANCE = 1.27          # extra clearance margin around symbol bodies (1 grid step)
 MAX_SAT_DISTANCE = 30.0        # HARD cap: satellites must be within 30mm Manhattan of parent center
 
@@ -55,6 +55,7 @@ ROW_CLEARANCE  = 6.35
 # Placement engine mode — flip to "legacy" for A/B comparison
 PLACEMENT_MODE = "blocks_v2"    # "legacy" | "graph" | "blocks_v2"
 OVERLAP_PULLBACK = 0.30     # pull toward spring position after overlap removal
+SMALL_CIRCUIT_MAX_COMPONENTS = 20
 
 
 # ── Net classification & criticality tables ──────────────────────────────
@@ -529,6 +530,35 @@ def _candidate_Z(s_pos, s_stub, t_pos, t_stub, components):
     return cands
 
 
+def _candidate_U(s_pos, s_stub, t_pos, t_stub, components):
+    """3-bend (U-shape) paths that route around component clusters."""
+    cands = []
+    x_levels = {_snap(s_stub[0]), _snap(t_stub[0])}
+    y_levels = {_snap(s_stub[1]), _snap(t_stub[1])}
+
+    for c in components:
+        bbox = c.get('bbox') or c.get('geom_bbox')
+        if not bbox:
+            continue
+        cx, cy = c['x'], c['y']
+        x_levels.add(_snap(cx + bbox['x'] - BBOX_CLEARANCE - 2.54))
+        x_levels.add(_snap(cx + bbox['x'] + bbox['w'] + BBOX_CLEARANCE + 2.54))
+        y_levels.add(_snap(cy + bbox['y'] - BBOX_CLEARANCE - 2.54))
+        y_levels.add(_snap(cy + bbox['y'] + bbox['h'] + BBOX_CLEARANCE + 2.54))
+
+    for bypass_x in x_levels:
+        for bypass_y in y_levels:
+            # Horizontal-first: source up/down, across, back up/down, across to target
+            cands.append([s_pos, s_stub,
+                          (s_stub[0], bypass_y), (bypass_x, bypass_y),
+                          (bypass_x, t_stub[1]), t_stub, t_pos])
+            # Vertical-first: source left/right, across, back left/right, across to target
+            cands.append([s_pos, s_stub,
+                          (bypass_x, s_stub[1]), (bypass_x, bypass_y),
+                          (t_stub[0], bypass_y), t_stub, t_pos])
+    return cands
+
+
 def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
                blocked_vertices: set[tuple[float, float]] | None = None):
     """Generate, score, and pick the best orthogonal path.
@@ -549,6 +579,7 @@ def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
     candidates += _candidate_straight(s_pos, s_stub, t_pos, t_stub)
     candidates += _candidate_L(s_pos, s_stub, t_pos, t_stub)
     candidates += _candidate_Z(s_pos, s_stub, t_pos, t_stub, components)
+    candidates += _candidate_U(s_pos, s_stub, t_pos, t_stub, components)
 
     best_path = None
     best_score = float('inf')
@@ -556,31 +587,96 @@ def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
         path = _clean_path(raw)
         if len(path) < 2:
             continue
-        # HARD length cap — drop candidate, do not fallback
         length = _path_length(path)
         if length > MAX_WIRE_MANHATTAN:
             continue
-        # Collision cap — drop candidate if it hits ANY component body
         collisions = _path_collisions(path, components, src_ref, tgt_ref)
         if collisions > MAX_COLLISIONS:
             continue
         bends = _bend_count(path)
-        # Vertex overlap penalty: if any INTERMEDIATE (non-pin-endpoint)
-        # vertex of this path lands on a coordinate already occupied by an
-        # already-routed trace, skip entirely — even one overlap would
-        # create an accidental electrical short in KiCad's wire model.
         vertex_overlap = False
-        for v in path[1:-1]:  # skip first and last (pin endpoints)
+        for v in path[1:-1]:
             if v in blocked:
                 vertex_overlap = True
                 break
         if vertex_overlap:
             continue
-        # Score: zero-collision paths first, then shortest, then fewest bends
         score = collisions * 10000 + length + bends * 2
         if score < best_score:
             best_score = score
             best_path = path
+
+    # Relaxed second pass: if strict routing found nothing, retry with
+    # double the collision limit. This prevents silent wire drops for
+    # moderately dense schematics where every path clips a few bodies.
+    if best_path is None:
+        relaxed_collisions = MAX_COLLISIONS * 2
+        for raw in candidates:
+            path = _clean_path(raw)
+            if len(path) < 2:
+                continue
+            length = _path_length(path)
+            if length > MAX_WIRE_MANHATTAN * 1.5:
+                continue
+            collisions = _path_collisions(path, components, src_ref, tgt_ref)
+            if collisions > relaxed_collisions:
+                continue
+            bends = _bend_count(path)
+            vertex_overlap = False
+            for v in path[1:-1]:
+                if v in blocked:
+                    vertex_overlap = True
+                    break
+            if vertex_overlap:
+                continue
+            score = collisions * 10000 + length + bends * 2
+            if score < best_score:
+                best_score = score
+                best_path = path
+
+    # Tertiary pass: if still no path, try offsetting intermediate vertices
+    # by ±GRID_SIZE to create parallel lanes avoiding exact coordinate
+    # collisions with already-routed traces.
+    if best_path is None:
+        offsets = [(GRID_SIZE, 0), (-GRID_SIZE, 0), (0, GRID_SIZE), (0, -GRID_SIZE)]
+        for raw in candidates:
+            path = _clean_path(raw)
+            if len(path) < 2:
+                continue
+            base_length = _path_length(path)
+            if base_length > MAX_WIRE_MANHATTAN * 1.5:
+                continue
+            # For each intermediate vertex that's blocked, try offsetting it
+            fully_repaired = True
+            for i in range(1, len(path) - 1):
+                if path[i] in blocked:
+                    repaired = False
+                    for ox, oy in offsets:
+                        shifted = _snap(path[i][0] + ox), _snap(path[i][1] + oy)
+                        if shifted not in blocked:
+                            path[i] = shifted
+                            repaired = True
+                            break
+                    if not repaired:
+                        fully_repaired = False
+                        break
+            if not fully_repaired:
+                continue
+            # Re-validate after repair
+            new_path = _clean_path(path)
+            if len(new_path) < 2:
+                continue
+            length = _path_length(new_path)
+            if length > MAX_WIRE_MANHATTAN * 1.5:
+                continue
+            collisions = _path_collisions(new_path, components, src_ref, tgt_ref)
+            if collisions > relaxed_collisions:
+                continue
+            bends = _bend_count(new_path)
+            score = collisions * 10000 + length + bends * 2
+            if score < best_score:
+                best_score = score
+                best_path = new_path
 
     return best_path
 
@@ -1171,6 +1267,9 @@ class BackendLayoutEngine:
         Seed-named signals (RESET, USB, XTAL, …) are matched first;
         Louvain partitions fill in the remaining components.
         """
+        if graph.number_of_nodes() <= SMALL_CIRCUIT_MAX_COMPONENTS:
+            return {ref: "SMALL_CIRCUIT_BLOCK" for ref in graph.nodes}
+
         block_of: dict[str, str] = {}
         seeded = self._seed_block_assignments(netlist)
         block_of.update(seeded)
@@ -1234,6 +1333,17 @@ class BackendLayoutEngine:
 
         Returns ``{block_name: {x, y, width, height}}`` bounding-box dicts.
         """
+        if set(blocks) == {"SMALL_CIRCUIT_BLOCK"}:
+            span_factor = math.sqrt(len(blocks["SMALL_CIRCUIT_BLOCK"]))
+            return {
+                "SMALL_CIRCUIT_BLOCK": {
+                    'x': 0.0,
+                    'y': 0.0,
+                    'width': max(80.0, span_factor * 25.0),
+                    'height': max(60.0, span_factor * 20.0),
+                }
+            }
+
         cell_w = 200.0
         cell_h = 150.0
         grid_map: dict[str, tuple[int, int]] = {}

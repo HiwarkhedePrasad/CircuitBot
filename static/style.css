@@ -348,6 +348,17 @@ canvas {
     display: block;
 }
 
+#canvasContainer {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#canvasContainer canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
 .mode-indicator {
     position: absolute;
     top: 15px;
@@ -619,6 +630,34 @@ textarea {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.conv-approval-buttons {
+    display: flex;
+    gap: 8px;
+    padding: 6px 0;
+    justify-content: center;
+}
+.conv-approval-buttons button {
+    padding: 6px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+.btn-approve {
+    background: #1b5e20;
+    color: #fff;
+    border-color: #2e7d32;
+}
+.btn-approve:hover { background: #2e7d32; }
+.btn-skip {
+    background: #333;
+    color: #ccc;
+    border-color: #555;
+}
+.btn-skip:hover { background: #444; }
 
 .hidden { display: none !important; }
 

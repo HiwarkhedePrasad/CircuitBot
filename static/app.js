@@ -90,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
         viewSymbolBtn.addEventListener('click', () => {
             if (currentPreviewOps) {
                 setActiveTab('viewSymbolBtn');
+                showViewport('symbol');
                 renderOps(currentPreviewOps);
                 modeIndicator.classList.add('hidden');
             }
@@ -106,8 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
         viewSchematicBtn.addEventListener('click', () => {
             if (currentSchematic && currentSchematic.components.length > 0) {
                 setActiveTab('viewSchematicBtn');
-                enterSchematicMode();
-                modeIndicator.classList.remove('hidden');
+                enterSchematicView();
                 pcbUploadArea.classList.add('hidden');
                 document.getElementById('routePrompt').classList.remove('hidden');
             }
@@ -117,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (viewPCBBtn) {
         viewPCBBtn.addEventListener('click', () => {
             setActiveTab('viewPCBBtn');
-            modeIndicator.classList.add('hidden');
+            showViewport('pcb');
             document.getElementById('routePrompt').classList.add('hidden');
             if (pcbState.boardModel) {
                 pcbUploadArea.classList.add('hidden');
@@ -135,63 +135,88 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Canvas Coordinates ────────────────────────────────────────────────────
+    // ── Renderer (PixiJS) ────────────────────────────────────────────────────
 
-    const canvas = document.getElementById('compCanvas');
+    let renderer = null;
+    let _initialRenderZoom = 1;
+
+    function getRenderer() {
+        if (!renderer) {
+            renderer = new SchematicRenderer('canvasContainer', {
+                onSelect: (comp) => {
+                    if (comp) {
+                        componentInfo.innerHTML = `<div class="prop-group">
+                            <div class="prop-row"><span class="prop-key">Ref</span><span class="prop-val">${comp.refDesignator}</span></div>
+                            <div class="prop-row"><span class="prop-key">Name</span><span class="prop-val">${comp.name.split(':').pop()}</span></div>
+                            <div class="prop-row"><span class="prop-key">Category</span><span class="prop-val">${comp.category}</span></div>
+                            <div class="prop-row"><span class="prop-key">Position</span><span class="prop-val">${comp.x.toFixed(2)}, ${comp.y.toFixed(2)} mm</span></div>
+                        </div>`;
+                    } else {
+                        componentInfo.innerHTML = '<div class="empty-state">No component selected</div>';
+                    }
+                },
+                onCoordChange: (wx, wy) => {
+                    if (coordDisplay) coordDisplay.textContent = `X: ${wx.toFixed(2)} Y: ${wy.toFixed(2)}`;
+                },
+                onZoomChange: (zoom) => {
+                    const pct = Math.round(zoom / (_initialRenderZoom || zoom) * 100);
+                    if (zoomLevelDisplay) zoomLevelDisplay.textContent = `${pct}%`;
+                },
+            });
+            _initialRenderZoom = renderer.zoom;
+        }
+        return renderer;
+    }
 
     function isPCBMode() {
         return document.getElementById('viewPCBBtn').classList.contains('active');
     }
 
-    canvas.addEventListener('mousemove', (e) => {
-        if (isPCBMode()) {
-            pcbHandleMouseMove(e);
-            return;
-        }
-        if (!currentTransform) return;
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
-        const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
-        
-        // Inverse transform to get mm coords
-        const t = currentTransform;
-        const s = t.baseScale * zoomLevel;
-        const mmX = (mouseX - t.cx - panX) / s + t.midX;
-        const mmY = -((mouseY - t.cy - panY) / s) + t.midY;
-        
-        if (coordDisplay) {
-            coordDisplay.textContent = `X: ${mmX.toFixed(2)} Y: ${mmY.toFixed(2)}`;
-        }
-    });
+    function isSymbolPreviewMode() {
+        return document.getElementById('viewSymbolBtn').classList.contains('active');
+    }
 
-    canvas.addEventListener('mousedown', (e) => {
-        if (isPCBMode()) {
-            pcbHandleMouseDown(e);
-            return;
-        }
-        handleMouseDown(e);
-    });
+    function showViewport(active) {
+        const container = document.getElementById('canvasContainer');
+        const pcbCanvas = document.getElementById('pcbCanvas');
+        const symbolCanvas = document.getElementById('symbolCanvas');
+        container.style.display = active === 'schematic' ? '' : 'none';
+        pcbCanvas.style.display = active === 'pcb' ? '' : 'none';
+        symbolCanvas.style.display = active === 'symbol' ? '' : 'none';
+    }
 
-    canvas.addEventListener('mouseup', (e) => {
-        if (isPCBMode()) {
-            pcbHandleMouseUp(e);
-            return;
+    function enterSchematicView() {
+        showViewport('schematic');
+        if (currentSchematic) {
+            currentSchematic.mode = 'schematic';
+            if (currentSchematic.components.length > 0) {
+                getRenderer().load(currentSchematic);
+                getRenderer().zoomToFit();
+            }
         }
-        handleMouseUp(e);
-    });
+        modeIndicator.classList.remove('hidden');
+    }
 
-    canvas.addEventListener('wheel', (e) => {
-        if (isPCBMode()) {
-            pcbHandleWheel(e);
-            return;
-        }
-        handleWheel(e);
-    }, { passive: false });
+    // ── PCB Canvas Events (keep for pcb_viewer.js) ──────────────────────────
 
-    canvas.addEventListener('mouseleave', (e) => {
-        if (isPCBMode()) pcbHandleMouseUp(e);
-        else handleMouseUp(e);
-    });
+    const pcbCanvas = document.getElementById('pcbCanvas');
+    if (pcbCanvas) {
+        pcbCanvas.addEventListener('mousemove', (e) => {
+            if (isPCBMode()) pcbHandleMouseMove(e);
+        });
+        pcbCanvas.addEventListener('mousedown', (e) => {
+            if (isPCBMode()) pcbHandleMouseDown(e);
+        });
+        pcbCanvas.addEventListener('mouseup', (e) => {
+            if (isPCBMode()) pcbHandleMouseUp(e);
+        });
+        pcbCanvas.addEventListener('wheel', (e) => {
+            if (isPCBMode()) { e.preventDefault(); pcbHandleWheel(e); }
+        }, { passive: false });
+        pcbCanvas.addEventListener('mouseleave', (e) => {
+            if (isPCBMode()) pcbHandleMouseUp(e);
+        });
+    }
 
     // ── SocketIO ──────────────────────────────────────────────────────────────
 
@@ -224,6 +249,17 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSchematicButtons();
             const exportBtn = document.getElementById('exportSchBtn');
             if (exportBtn) exportBtn.disabled = false;
+        });
+        socket.on('agent:pcb_approval', (data) => {
+            addConversationMessage('assistant', data.message || 'Schematic complete. Proceed to PCB layout?');
+            const btnDiv = document.createElement('div');
+            btnDiv.className = 'conv-approval-buttons';
+            btnDiv.innerHTML = `
+                <button class="btn-approve" onclick="socket.emit('agent:pcb_approve', {approved: true})">Proceed to PCB</button>
+                <button class="btn-skip" onclick="socket.emit('agent:pcb_approve', {approved: false})">Skip PCB</button>
+            `;
+            agentConversation.appendChild(btnDiv);
+            agentConversation.scrollTop = agentConversation.scrollHeight;
         });
         socket.on('agent:pcb_ready', (data) => {
             if (data.board_model) {
@@ -361,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             currentSchematic.wirePaths = traces;
             currentSchematic.powerLabels = powerLabels;
-            enterSchematicMode();
+            enterSchematicView();
             addLogEntry(`Laid out ${placements.length} components (${label}).`, 'success');
         };
 
@@ -377,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
         runWireBenderLayout(netlist, powerPins)
             .then(() => {
                 setActiveTab('viewSchematicBtn');
-                enterSchematicMode();
+                enterSchematicView();
                 addLogEntry(
                     `WireBender: placed ${currentSchematic.components.length} components, ` +
                     `routed ${(currentSchematic.wirePaths || []).length} wires, ` +
@@ -756,6 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentPreviewOps = ops;
             if (currentSchematic) currentSchematic.mode = 'single';
             setActiveTab('viewSymbolBtn');
+            showViewport('symbol');
             renderOps(ops);
             componentInfo.innerHTML = `<div class="prop-group">
                 <div class="prop-row"><span class="prop-key">ID</span><span class="prop-val">${id_str}</span></div>
@@ -802,7 +839,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentSchematic.removeComponent(comp.id);
                 updateComponentListUI();
                 updateSchematicButtons();
-                if (currentSchematic.mode === 'schematic') enterSchematicMode();
+                if (currentSchematic.mode === 'schematic') enterSchematicView();
             });
             componentList.appendChild(li);
         });
@@ -816,7 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentSchematic) currentSchematic = new Schematic();
         const comp = currentSchematic.addComponent(id_str, id_str.split(':').pop(), ops, category, textDesc);
         setActiveTab('viewSchematicBtn');
-        enterSchematicMode();
+        enterSchematicView();
         updateComponentListUI();
         updateSchematicButtons();
     });
@@ -840,11 +877,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             currentSchematic.autoRoute(netlist);
-            if (currentSchematic.mode === 'schematic') {
-                drawSchematic();
+            if (currentSchematic.mode === 'schematic' || document.getElementById('viewSchematicBtn').classList.contains('active')) {
+                enterSchematicView();
             } else {
                 setActiveTab('viewSchematicBtn');
-                enterSchematicMode();
+                enterSchematicView();
             }
             addLogEntry(`Auto-routed ${netlist.length} connections.`, 'success');
         } catch (err) {
@@ -857,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
     autoLayoutBtn.addEventListener('click', () => {
         if (!currentSchematic || currentSchematic.components.length === 0) return;
         currentSchematic.autoLayout();
-        if (currentSchematic.mode === 'schematic') enterSchematicMode();
+        if (currentSchematic.mode === 'schematic') enterSchematicView();
         addLogEntry(`Auto-layout applied to ${currentSchematic.components.length} components.`, 'success');
     });
 
@@ -866,15 +903,14 @@ document.addEventListener('DOMContentLoaded', () => {
     clearBtn.addEventListener('click', () => {
         if (!currentSchematic) return;
         currentSchematic.clear();
-        currentTransform = null;
-        zoomLevel = 1;
-        panX = 0;
-        panY = 0;
         modeIndicator.classList.add('hidden');
+        showViewport('schematic');
+        if (renderer) {
+            renderer.destroy();
+            renderer = null;
+        }
         updateComponentListUI();
         updateSchematicButtons();
-        const { canvas, ctx } = getCanvasAndCtx();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
         componentInfo.innerHTML = '<div class="empty-state">Schematic cleared.</div>';
     });
 
@@ -919,29 +955,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('zoomInBtn').addEventListener('click', () => {
         if (isPCBMode()) { pcbState.zoom = Math.min(pcbState.zoom * 1.3, 50); pcbDraw(); }
-        else zoomIn();
+        else if (renderer) renderer.setZoom(renderer.zoom * 1.3);
     });
     document.getElementById('zoomOutBtn').addEventListener('click', () => {
         if (isPCBMode()) { pcbState.zoom = Math.max(pcbState.zoom / 1.3, 0.05); pcbDraw(); }
-        else zoomOut();
+        else if (renderer) renderer.setZoom(renderer.zoom / 1.3);
     });
     document.getElementById('zoomResetBtn').addEventListener('click', () => {
         if (isPCBMode()) { pcbComputeTransform(); pcbDraw(); }
-        else resetZoom();
+        else if (currentSchematic && currentSchematic.components.length > 0) { enterSchematicView(); }
     });
 
     let resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-            setupCanvasSize();
             if (isPCBMode()) {
                 pcbSetupCanvas();
                 if (pcbState.boardModel) pcbDraw();
-            } else if (currentSchematic && currentSchematic.mode === 'schematic' && currentSchematic.components.length > 0) {
-                enterSchematicMode();
-            } else if (currentPreviewOps) {
+            } else if (isSymbolPreviewMode() && currentPreviewOps) {
+                setupCanvasSize();
                 renderOps(currentPreviewOps);
+            } else if (currentSchematic && currentSchematic.components.length > 0) {
+                enterSchematicView();
             }
         }, 150);
     });

@@ -22,7 +22,7 @@ _LLM_WINDOW_SEC = 60.0        # sliding window for rate calculation
 _LLM_MAX_PER_WINDOW = 999     # local endpoint — no rate limit
 _LAST_429_TIME: float = 0.0   # when we last hit a 429; enforce cooldown
 
-GND_NET_NAMES = {"GND", "GROUND", "VSS", "AGND", "DGND", "PGND", "GNDA", "GNDD", "EP", "EPAD", "0V"}
+GND_NET_NAMES = {"GND", "GROUND", "VSS", "AGND", "DGND", "PGND", "GNDA", "GNDD", "EP", "EPAD", "0V", "SHIELD"}
 POWER_NET_NAMES = {"VCC", "VDD", "VBAT", "VIN", "VBUS", "V+", "V-", "VSYS", "VOUT", "VEE", "PWR"}
 POWER_ETYPES = {"power_in", "power_out"}
 
@@ -34,18 +34,29 @@ class AgentLLMError(Exception):
     """Raised when an LLM call fails after exhausting all retries."""
 
 
+def _safe_print(text: str) -> None:
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        ascii_text = text.encode("ascii", errors="replace").decode("ascii")
+        print(ascii_text)
+
+
 def _emit(config, event, data):
     msg = data.get("message", "")
     if event == "agent:thinking":
-        print(f"[THINKING] {msg} [THINKING]")
+        _safe_print(f"[THINKING] {msg} [THINKING]")
     elif event == "agent:log":
-        print(f"  {msg}")
+        _safe_print(f"  {msg}")
     elif event == "agent:component":
-        print(f"  [COMPONENT] {data.get('ref_des', '')} = {data.get('id_str', '')}")
+        ref = data.get("ref_des", "")
+        id_ = data.get("id_str", "")
+        _safe_print(f"  [COMPONENT] {ref} = {id_}")
     elif event in ("agent:done", "agent:layout_ready", "agent:pcb_ready", "agent:error"):
-        print(f"[{event.split(':')[-1].upper()}] {msg}" if msg else f"[{event.split(':')[-1].upper()}] {data}")
+        label = event.split(":")[-1].upper()
+        _safe_print(f"[{label}] {msg}" if msg else f"[{label}] {data}")
     elif msg:
-        print(f"[{event}] {msg}")
+        _safe_print(f"[{event}] {msg}")
     emit_fn = config["configurable"].get("emit")
     if emit_fn:
         emit_fn(event, data)
@@ -654,7 +665,7 @@ def _get_attr(node, name):
     return None
 
 
-def _route_after_validate(state) -> str:
+def _route_after_validate(state, config=None) -> str:
     if state.get("error"):
         return "error_end"
     errors = state.get("validation_errors", [])
@@ -664,6 +675,26 @@ def _route_after_validate(state) -> str:
     if errors:
         return "error_end"
     return "dispatch"
+
+
+def _route_after_pcb_approval(state, config=None) -> str:
+    if state.get("pcb_approved", False):
+        return "pcb_layout"
+    return "end"
+
+
+def _route_after_erc(state, config=None) -> str:
+    erc = state.get("_erc_results", {})
+    errors = erc.get("errors", []) if erc else []
+    fixable_types = {"pin_not_connected", "unconnected_wire_endpoint",
+                     "wire_dangling", "power_pin_not_driven"}
+    has_fixable = any(
+        e.get("type") in fixable_types for e in errors
+    )
+    retries = state.get("_erc_retries", 0)
+    if has_fixable and retries < 3:
+        return "schematic_repair"
+    return "ask_pcb_approval"
 
 
 PIN_ALIASES = {

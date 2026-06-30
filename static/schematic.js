@@ -43,6 +43,14 @@ function snapToGrid(value) {
     return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
 
+function getAttr(node, name) {
+    if (!Array.isArray(node)) return null;
+    for (let i = 1; i < node.length; i++) {
+        if (Array.isArray(node[i]) && node[i][0] === name) return node[i];
+    }
+    return null;
+}
+
 // --- Bounding Box Calculation ---
 function calculateOpsBBox(ops) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -487,87 +495,4 @@ class Schematic {
         return this.pinMatrix;
     }
 
-    // --- Compute transform for rendering all components ---
-    computeTransform(canvasW, canvasH) {
-        if (this.components.length === 0) return null;
-
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        this.components.forEach(comp => {
-            const g = comp.geomBBox;
-            minX = Math.min(minX, comp.x + g.x);
-            minY = Math.min(minY, comp.y + g.y);
-            maxX = Math.max(maxX, comp.x + g.x + g.w);
-            maxY = Math.max(maxY, comp.y + g.y + g.h);
-        });
-
-        const margin = 20;
-        minX -= margin; minY -= margin; maxX += margin; maxY += margin;
-        const w = maxX - minX;
-        const h = maxY - minY;
-
-        const scale = Math.min(canvasW / w, canvasH / h) * 0.9;
-        const cx = canvasW / 2;
-        const cy = canvasH / 2;
-        const midX = (minX + maxX) / 2;
-        const midY = (minY + maxY) / 2;
-
-        return { baseScale: scale, cx, cy, midX, midY };
-    }
-
-    // Draw the 1.27mm grid in schematic mode
-    static drawGrid(ctx, transform, zoomLevel, canvasW, canvasH) {
-        const t = transform;
-        if (!t) return;
-
-        const s = t.baseScale * zoomLevel;
-
-        const visLeft = t.midX - (canvasW / 2 - t.cx - panX) / s;
-        const visRight = t.midX + (canvasW / 2 - t.cx + panX) / s;
-        const visTop = t.midY - (canvasH / 2 - t.cy - panY) / s;
-        const visBottom = t.midY + (canvasH / 2 - t.cy + panY) / s;
-
-        const gridMm = GRID_SIZE;
-        const startGridX = Math.floor(visLeft / gridMm) * gridMm;
-        const endGridX = Math.ceil(visRight / gridMm) * gridMm;
-        const startGridY = Math.floor(visTop / gridMm) * gridMm;
-        const endGridY = Math.ceil(visBottom / gridMm) * gridMm;
-
-        ctx.save();
-        ctx.translate(t.cx + panX, t.cy + panY);
-        ctx.scale(s, -s);
-        ctx.translate(-t.midX, -t.midY);
-
-        ctx.fillStyle = 'rgba(100, 160, 200, 0.15)';
-        const dotRadius = 0.06;
-        for (let x = startGridX; x <= endGridX; x += gridMm) {
-            for (let y = startGridY; y <= endGridY; y += gridMm) {
-                ctx.beginPath();
-                ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-
-        const majorGrid = gridMm * 10;
-        const majorStartX = Math.floor(visLeft / majorGrid) * majorGrid;
-        const majorEndX = Math.ceil(visRight / majorGrid) * majorGrid;
-        const majorStartY = Math.floor(visTop / majorGrid) * majorGrid;
-        const majorEndY = Math.ceil(visBottom / majorGrid) * majorGrid;
-
-        ctx.strokeStyle = 'rgba(100, 160, 200, 0.08)';
-        ctx.lineWidth = 0.04;
-        for (let x = majorStartX; x <= majorEndX; x += majorGrid) {
-            ctx.beginPath();
-            ctx.moveTo(x, visTop - 100);
-            ctx.lineTo(x, visBottom + 100);
-            ctx.stroke();
-        }
-        for (let y = majorStartY; y <= majorEndY; y += majorGrid) {
-            ctx.beginPath();
-            ctx.moveTo(visLeft - 100, y);
-            ctx.lineTo(visRight + 100, y);
-            ctx.stroke();
-        }
-
-        ctx.restore();
-    }
 }

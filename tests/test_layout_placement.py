@@ -84,8 +84,8 @@ def test_placement_blocks_v2_no_crash():
         )
 
 
-def test_block_detection_seeds_reset_block():
-    """Components connected via EN/RESET signals get RESET_BLOCK."""
+def test_seed_assignments_identify_reset_block():
+    """Components connected via EN/RESET signals seed RESET_BLOCK."""
     e = BackendLayoutEngine()
     _make_comp(e, "U1", _make_rect(10, 6), "MCU", "MCU:ESP32")
     _make_comp(e, "R1", _make_rect(4, 2), "Device", "Device:R", for_component="U1")
@@ -102,18 +102,47 @@ def test_block_detection_seeds_reset_block():
         "SW1:1":  {"x": 1, "y": 0, "angle": 0},
     }
 
-    graph = e._build_weighted_graph(netlist, pin_matrix)
-    block_of = e._detect_blocks_louvain(graph, netlist)
+    block_of = e._seed_block_assignments(netlist)
 
-    assert block_of.get("U1") == "RESET_BLOCK", (
-        f"MCU should be RESET_BLOCK, got {block_of.get('U1')}"
-    )
-    assert block_of.get("R1") == "RESET_BLOCK", (
-        f"Pull-up resistor should be RESET_BLOCK, got {block_of.get('R1')}"
-    )
-    assert block_of.get("SW1") == "RESET_BLOCK", (
-        f"Reset switch should be RESET_BLOCK, got {block_of.get('SW1')}"
-    )
+    assert set(block_of.values()) == {"RESET_BLOCK"}
+
+
+def test_small_power_chain_stays_compact():
+    """Small connected designs must not be expanded into fixed block cells."""
+    e = BackendLayoutEngine()
+    _make_comp(e, "U1", _make_rect(10, 6), "MCU", "MCU:ESP32")
+    _make_comp(e, "U2", _make_rect(6, 4), "Regulator_Linear", "Regulator_Linear:AMS1117")
+    _make_comp(e, "J1", _make_rect(8, 4), "Connector_USB", "Connector_USB:USB_C_Receptacle")
+    _make_comp(e, "C1", _make_rect(4, 2), "Device", "Device:C_Small", for_component="U2")
+
+    netlist = [
+        {"source": "J1:VBUS", "target": "U2:VIN"},
+        {"source": "U2:VOUT", "target": "U1:3V3"},
+        {"source": "C1:1", "target": "U2:VOUT"},
+    ]
+    pin_matrix = {
+        "J1:VBUS": {"x": -4, "y": 0, "angle": 180},
+        "U2:VIN": {"x": -3, "y": -1, "angle": 180},
+        "U2:VOUT": {"x": 3, "y": -1, "angle": 0},
+        "U1:3V3": {"x": -5, "y": 0, "angle": 180},
+        "C1:1": {"x": 1, "y": 0, "angle": 0},
+    }
+
+    e.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
+    by_ref = {c["ref_des"]: c for c in e.components}
+    x_span = (max(c["x"] + c["width"] for c in e.components) -
+              min(c["x"] for c in e.components))
+    y_span = (max(c["y"] + c["height"] for c in e.components) -
+              min(c["y"] for c in e.components))
+
+    assert set(e._last_block_map.values()) == {"SMALL_CIRCUIT_BLOCK"}
+    assert x_span <= 150.0, f"small-circuit width exploded to {x_span:.1f}mm"
+    assert y_span <= 120.0, f"small-circuit height exploded to {y_span:.1f}mm"
+
+    for a, b in (("J1", "U2"), ("U2", "U1")):
+        distance = (abs(by_ref[a]["x"] - by_ref[b]["x"]) +
+                    abs(by_ref[a]["y"] - by_ref[b]["y"]))
+        assert distance <= 100.0, f"{a} -> {b} is {distance:.1f}mm apart"
 
 
 def test_place_block_compact():

@@ -6,7 +6,9 @@ imports (e.g. ``from agent.graph import agent_graph``) continue to work.
 from agent.builder import agent_graph, build_graph
 from agent.nodes import (
     analyze_node, research_node, select_node, validate_node,
-    dispatch_node, netlist_node, schematic_layout_node, pcb_layout_node,
+    dispatch_node, netlist_node,
+    placement_node, routing_node, pcb_layout_node,
+    schematic_audit_node, ask_pcb_approval_node,
 )
 from agent.utils import (
     MAX_LLM_RETRIES, MAX_VALIDATION_RETRIES, MAX_BATCH_PINS,
@@ -28,7 +30,7 @@ __all__ = [
     "agent_graph", "build_graph",
     "analyze_node", "research_node", "select_node", "validate_node",
     "dispatch_node", "netlist_node",
-    "schematic_layout_node", "pcb_layout_node",
+    "placement_node", "routing_node", "pcb_layout_node",
     "MAX_LLM_RETRIES", "MAX_VALIDATION_RETRIES", "MAX_BATCH_PINS",
     "GND_NET_NAMES", "POWER_NET_NAMES", "POWER_ETYPES",
     "AgentLLMError",
@@ -40,6 +42,6 @@ __all__ = [
     "_merge_net", "_make_signal_batches",
     "_generate_nets_fallback",
     "_parse_sexpr_to_ops", "_extract_pins_from_ops", "_get_attr",
-    "_route_after_validate", "_sanitize_data",
+    "_route_after_validate", "_route_after_pcb_approval", "_sanitize_data",
     "PIN_ALIASES", "COMPLEMENTARY_PAIRS",
 ]

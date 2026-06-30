@@ -97,17 +97,28 @@ def netlist_node(state, config):
             if not name or not isinstance(raw, list):
                 continue
             clean = []
+            n_resolved = 0
             for p in raw:
-                if p not in batch_key_set or p in assigned:
-                    n_dropped += 1
-                    continue
-                assigned.add(p)
-                clean.append(p)
+                if p in batch_key_set:
+                    if p in assigned:
+                        n_dropped += 1
+                        continue
+                    assigned.add(p)
+                    clean.append(p)
+                else:
+                    resolved = _resolve_hallucinated_pin(p, pins, assigned)
+                    if resolved and resolved not in assigned:
+                        assigned.add(resolved)
+                        clean.append(resolved)
+                        n_resolved += 1
+                    else:
+                        n_dropped += 1
             if clean:
                 _merge_net(nets, name, clean)
-        if n_dropped:
+        total_unmatched = n_dropped + n_resolved
+        if total_unmatched:
             _emit(config, "agent:log", {
-                "message": f"  Batch {bi}: dropped {n_dropped} hallucinated/duplicate pin refs"
+                "message": f"  Batch {bi}: {n_resolved} fuzzy-resolved, {n_dropped} dropped (of {total_unmatched} unmatched)"
             })
 
     # ── Bus topology check ─────────────────────────────────────────
@@ -193,16 +204,22 @@ def netlist_node(state, config):
                 pname = p_pin.get("name", "").upper()
                 if _is_gnd_net(pname):
                     power_pins.append({"pin": key, "net": "GND"})
+                    _merge_net(valid_nets, "GND", [key])
                     used_pins.add(key)
                 elif _is_power_net(pname):
-                    power_pins.append({"pin": key, "net": pname.lstrip('+')})
+                    net_name = pname.lstrip('+')
+                    power_pins.append({"pin": key, "net": net_name})
+                    _merge_net(valid_nets, net_name, [key])
                     used_pins.add(key)
                 elif p_pin.get("etype") in POWER_ETYPES and pname and pname != "~":
-                    power_pins.append({"pin": key, "net": pname.lstrip('+')})
+                    net_name = pname.lstrip('+')
+                    power_pins.append({"pin": key, "net": net_name})
+                    _merge_net(valid_nets, net_name, [key])
                     used_pins.add(key)
                 elif is_2pin_passive:
                     if len([k for k in power_pins if k["pin"].startswith(f"{ref}:")]) == 0:
                         power_pins.append({"pin": key, "net": "GND"})
+                        _merge_net(valid_nets, "GND", [key])
                         used_pins.add(key)
                         _emit(config, "agent:log", {
                             "message": f"  Passive orphan rescue: {key} -> GND"
@@ -268,9 +285,7 @@ def netlist_node(state, config):
         need_flag = []
         for net in valid_nets:
             name = net["net"].upper().lstrip("+")
-            if _is_gnd_net(name):
-                continue
-            if name in _POWER_RAILS or _is_power_net(name):
+            if name in _POWER_RAILS or _is_power_net(name) or _is_gnd_net(name):
                 has_po = any(
                     pins[p].get("etype", "").lower() == "power_out"
                     for p in net["pins"] if p in pins

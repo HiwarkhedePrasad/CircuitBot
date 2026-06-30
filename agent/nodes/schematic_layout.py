@@ -11,7 +11,7 @@ Extracted from the former monolithic layout_route_node. Handles:
 
 import random
 
-from agent.layout_engine import BackendLayoutEngine
+from agent.layout_engine import BackendLayoutEngine, _snap
 from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 
@@ -25,6 +25,12 @@ def schematic_layout_node(state, config):
     pin_matrix = state.get("pin_matrix", {})
     netlist = state.get("netlist", [])
     power_pins = state.get("power_pins", [])
+
+    # If this is an ERC repair re-run, increment the retry counter
+    erc_fix_pins = state.get("_erc_fix_pins", [])
+    erc_retries = state.get("_erc_retries", 0)
+    if erc_fix_pins:
+        erc_retries += 1
 
     if not comps or not comp_ops:
         emit_tool_event(config, "Schematic Layout", "failed", "No components to place.")
@@ -241,8 +247,8 @@ def schematic_layout_node(state, config):
         power_labels.append({
             "pin": pp["pin"],
             "net": pp["net"],
-            "x": ax,
-            "y": ay,
+            "x": _snap(ax),
+            "y": _snap(ay),
             "dir": direction,
         })
 
@@ -258,8 +264,14 @@ def schematic_layout_node(state, config):
     emit_tool_event(config, "Schematic Layout", "completed", f"Laid out {len(placements)} components, routed {len(sch_traces)} wires")
     emit_assistant_message(config, f"Layout complete — {len(placements)} components placed, {len(sch_traces)} wires routed on the schematic.")
 
-    return {
+    result = {
         "component_placements": placements,
         "wire_paths": sch_traces,
         "power_labels": power_labels,
     }
+    if erc_fix_pins:
+        result["_erc_retries"] = erc_retries
+        result["_erc_fix_pins"] = []  # clear so next audit doesn't re-trigger
+        emit_tool_event(config, "ERC Repair Re-route", "completed",
+            f"Re-routed with {len(erc_fix_pins)} added connections (retry {erc_retries}/3)")
+    return result

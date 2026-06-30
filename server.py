@@ -23,6 +23,9 @@ design_lock = threading.Lock()
 LAST_DESIGN = {}
 _WIREBENDER_LAYOUT = {}  # Preserved across agent-result overwrite
 
+# Human-in-the-loop approval events: sid -> {event: threading.Event, result: dict}
+_agent_events: dict[str, dict] = {}
+
 
 def _generate_netlist_llm(pin_matrix, prompt):
     try:
@@ -236,6 +239,15 @@ def handle_disconnect():
     print(f"Client disconnected: {request.sid}")
 
 
+@socketio.on('agent:pcb_approve')
+def handle_pcb_approve(data):
+    """Receive user's PCB approval decision from frontend."""
+    entry = _agent_events.pop(request.sid, None)
+    if entry:
+        entry["result"]["approved"] = data.get("approved", False)
+        entry["event"].set()
+
+
 @socketio.on('agent:generate')
 def handle_agent_generate(data):
     """Launch agent in a background task. Frontend passes {prompt: '...'}."""
@@ -250,6 +262,10 @@ def handle_agent_generate(data):
 
 def _run_agent(prompt: str, sid: str):
     """Background task that runs the LangGraph agent and pushes WS events."""
+    approval_event = threading.Event()
+    approval_result = {"approved": False}
+    _agent_events[sid] = {"event": approval_event, "result": approval_result}
+
     try:
         from agent.graph import agent_graph
 
@@ -257,7 +273,14 @@ def _run_agent(prompt: str, sid: str):
             socketio.emit(event, data, room=sid)
 
         run_id = os.urandom(3).hex()
-        config = {"configurable": {"emit": ws_emit, "run_id": run_id}}
+        config = {
+            "configurable": {
+                "emit": ws_emit,
+                "run_id": run_id,
+                "approval_event": approval_event,
+                "approval_result": approval_result,
+            }
+        }
         socketio.emit("agent:log", {"message": f"Run {run_id} started"}, room=sid)
         result = agent_graph.invoke({"prompt": prompt}, config)
 
@@ -286,6 +309,8 @@ def _run_agent(prompt: str, sid: str):
         print(f"Agent error: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        _agent_events.pop(sid, None)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

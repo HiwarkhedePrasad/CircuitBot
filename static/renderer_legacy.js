@@ -1,3 +1,5 @@
+const RENDER_MODE = "pixi"; // toggle "legacy" to use Canvas2D renderer
+
 // --- S-Expression Parser ---
 function parseSExpr(str) {
     const tokens = [];
@@ -142,8 +144,8 @@ function resetZoom() {
 }
 
 function getCanvasAndCtx() {
-    const canvas = document.getElementById('compCanvas');
-    return { canvas, ctx: canvas.getContext('2d') };
+    const canvas = document.getElementById('symbolCanvas') || document.getElementById('compCanvas');
+    return { canvas, ctx: canvas ? canvas.getContext('2d') : null };
 }
 
 function renderOps(ops) {

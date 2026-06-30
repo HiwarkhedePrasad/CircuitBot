@@ -101,7 +101,9 @@
                 </div>
                 
                 <div class="canvas-viewport">
-                    <canvas id="compCanvas"></canvas>
+                    <div id="canvasContainer"></div>
+                    <canvas id="pcbCanvas" style="display:none"></canvas>
+                    <canvas id="symbolCanvas" style="display:none"></canvas>
                     <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
                     
                     <!-- PCB Upload Overlay (hidden by default, shown in PCB View tab) -->
@@ -127,7 +129,7 @@
                     </div>
                     <div class="status-right">
                         <span class="status-item">Engine: v8-elk-fixed-side</span>
-                        <span class="status-item">Renderer: Canvas2D</span>
+                        <span class="status-item">Renderer: PixiJS</span>
                     </div>
                 </footer>
             </main>
@@ -166,9 +168,11 @@
 
     <!-- Scripts -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="/static/schematic.js?v=9"></script>
-    <script src="/static/renderer.js?v=9"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+    <script src="/static/schematic.js?v=11"></script>
+    <script src="/static/renderer_legacy.js?v=9"></script>
+    <script src="/static/schematic_renderer.js?v=1"></script>
     <script src="/static/pcb_viewer.js?v=1"></script>
-    <script src="/static/app.js?v=10"></script>
+    <script src="/static/app.js?v=11"></script>
 </body>
 </html>

@@ -393,74 +393,64 @@ def generate_kicad_sch(design: dict) -> str:
             wire_lines.append(f'    (uuid {_q(_new_uuid())})')
             wire_lines.append('  )')
 
-    # (b) power-net fan-out — per-pin labels for long distances
+    # (b) power-net fan-out — wire every pin to a centroid hub so KiCad ERC
+    # sees every pin as connected via a wire segment with a global label on it.
     _DIR_ANGLE = {'right': 0, 'up': 90, 'left': 180, 'down': 270}
 
     by_net: dict[str, list[dict]] = {}
     for lbl in power_labels:
         by_net.setdefault(lbl['net'], []).append(lbl)
 
-    MAX_POWER_WIRE = MAX_SEG_MM  # same threshold as signal wires
-
     for net, labels in by_net.items():
-        # Sort by Y to pick a central-ish hub (prevents far-top/far-bottom hub)
-        labels.sort(key=lambda l: l['y'])
+        if not labels:
+            continue
 
-        hub = labels[0]
-        hub_x = _snap(hub['x'] + off_x)
-        hub_y = _snap(-hub['y'] + off_y)
+        # Centroid hub (average of all pin sheet positions)
+        cand_x = [_snap(l['x'] + off_x) for l in labels]
+        cand_y = [_snap(-l['y'] + off_y) for l in labels]
+        hub_x = _snap(sum(cand_x) / len(cand_x))
+        hub_y = _snap(sum(cand_y) / len(cand_y))
 
-        # Emit the first label at the hub
-        d = hub.get('dir', 'right')
+        # Pick label direction from the label nearest the centroid
+        nearest = min(labels, key=lambda l: (
+            abs(_snap(l['x'] + off_x) - hub_x) + abs(_snap(-l['y'] + off_y) - hub_y)
+        ))
+        d = nearest.get('dir', 'right')
         if d == 'up':
             d = 'down'
         elif d == 'down':
             d = 'up'
         angle = _DIR_ANGLE.get(d, 0)
         shape = 'passive' if net == 'GND' else 'input'
+
+        # Place ONE global label at the centroid hub
         out.append(f'  (global_label {_q(net)} (shape {shape}) (at {_fmt(hub_x)} {_fmt(hub_y)} {angle}) (fields_autoplaced yes)')
         out.append('    (effects (font (size 1.27 1.27)) (justify left))')
         out.append(f'    (uuid {_q(_new_uuid())})')
         out.append('  )')
 
-        # For every other pin: short wire OR per-pin label
-        for other in labels[1:]:
-            ox = _snap(other['x'] + off_x)
-            oy = _snap(-other['y'] + off_y)
-            if (ox, oy) == (hub_x, hub_y):
+        # Wire EVERY pin to the hub via an L-shaped path
+        for lbl in labels:
+            lx = _snap(lbl['x'] + off_x)
+            ly = _snap(-lbl['y'] + off_y)
+            if (lx, ly) == (hub_x, hub_y):
                 continue
-
-            dist = abs(ox - hub_x) + abs(oy - hub_y)
-            if dist > MAX_POWER_WIRE:
-                # Too far — emit a separate label instead of a long wire
-                od = other.get('dir', 'right')
-                if od == 'up':
-                    od = 'down'
-                elif od == 'down':
-                    od = 'up'
-                o_angle = _DIR_ANGLE.get(od, 0)
-                out.append(f'  (global_label {_q(net)} (shape {shape}) (at {_fmt(ox)} {_fmt(oy)} {o_angle}) (fields_autoplaced yes)')
-                out.append('    (effects (font (size 1.27 1.27)) (justify left))')
-                out.append(f'    (uuid {_q(_new_uuid())})')
-                out.append('  )')
-            else:
-                # Close enough — draw L-shaped fan-out wire
-                mid_x, mid_y = hub_x, oy
-                segs = [((ox, oy), (mid_x, mid_y)), ((mid_x, mid_y), (hub_x, hub_y))]
-                for seg in segs:
-                    (x1, y1), (x2, y2) = seg
-                    if x1 == x2 and y1 == y2:
-                        continue
-                    key = ((x1, y1), (x2, y2)) if (x1, y1) <= (x2, y2) else ((x2, y2), (x1, y1))
-                    if key in seen_segs:
-                        continue
-                    seen_segs.add(key)
-                    endpoint_count[(x1, y1)] = endpoint_count.get((x1, y1), 0) + 1
-                    endpoint_count[(x2, y2)] = endpoint_count.get((x2, y2), 0) + 1
-                    wire_lines.append(f'  (wire (pts (xy {_fmt(x1)} {_fmt(y1)}) (xy {_fmt(x2)} {_fmt(y2)}))')
-                    wire_lines.append('    (stroke (width 0) (type default))')
-                    wire_lines.append(f'    (uuid {_q(_new_uuid())})')
-                    wire_lines.append('  )')
+            mid_x, mid_y = hub_x, ly
+            segs = [((lx, ly), (mid_x, mid_y)), ((mid_x, mid_y), (hub_x, hub_y))]
+            for seg in segs:
+                (x1, y1), (x2, y2) = seg
+                if x1 == x2 and y1 == y2:
+                    continue
+                key = ((x1, y1), (x2, y2)) if (x1, y1) <= (x2, y2) else ((x2, y2), (x1, y1))
+                if key in seen_segs:
+                    continue
+                seen_segs.add(key)
+                endpoint_count[(x1, y1)] = endpoint_count.get((x1, y1), 0) + 1
+                endpoint_count[(x2, y2)] = endpoint_count.get((x2, y2), 0) + 1
+                wire_lines.append(f'  (wire (pts (xy {_fmt(x1)} {_fmt(y1)}) (xy {_fmt(x2)} {_fmt(y2)}))')
+                wire_lines.append('    (stroke (width 0) (type default))')
+                wire_lines.append(f'    (uuid {_q(_new_uuid())})')
+                wire_lines.append('  )')
 
     # ── flush all wires at once ──
     out.extend(wire_lines)
