@@ -5,6 +5,7 @@ into the netlist before routing. Never re-runs placement.
 """
 
 from agent.layout_engine import BackendLayoutEngine, _snap
+from agent.validation import ValidationIssue
 from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 
@@ -137,13 +138,104 @@ def routing_node(state, config):
                     "net": net_name,
                 })
 
-    # ── 3. Route traces ─────────────────────────────────────────────
-    raw_traces, dropped_pairs = engine.route_traces(working_netlist, pin_matrix)
+    # ── 3. Pin-coverage validation (PCV) ───────────────────────────
+    all_pins = set(pin_matrix.keys())
+    net_pins = set()
+    for n in nets:
+        for p in n.get("pins", []):
+            net_pins.add(p)
+    wired_pins = set()
+    for t in state.get("wire_paths", []):
+        src = t.get("source", "")
+        tgt = t.get("target", "")
+        if src: wired_pins.add(src)
+        if tgt: wired_pins.add(tgt)
+    power_pin_keys = set(pp["pin"] for pp in power_pins)
+    assigned_pins = net_pins | wired_pins | power_pin_keys
+
+    pcv_issues = []
+    uncovered = sorted(all_pins - assigned_pins)
+    if uncovered:
+        pcv_issues.append(ValidationIssue(
+            code="PCV001",
+            severity="info",
+            stage="routing",
+            message=f"{len(uncovered)} pin(s) not assigned to any net or wire: {', '.join(uncovered[:8])}"
+                     f"{'...' if len(uncovered) > 8 else ''}",
+        ))
+    covered_no_wire = sorted(net_pins - wired_pins - power_pin_keys)
+    if covered_no_wire:
+        pcv_issues.append(ValidationIssue(
+            code="PCV002",
+            severity="info",
+            stage="routing",
+            message=f"{len(covered_no_wire)} pin(s) in netlist but missing physical wire: "
+                     f"{', '.join(covered_no_wire[:8])}{'...' if len(covered_no_wire) > 8 else ''}",
+        ))
+
+    for iss in pcv_issues:
+        _emit(config, "agent:log", {"message": f"  {iss.code}: {iss.message}"})
+
+    # ── 4. Targeted ERC re-route ────────────────────────────────────
+    # If affected_nets is specified, only re-route those nets and preserve existing traces
+    erc_affected = state.get("_erc_affected_nets", [])
+    preserve_existing = bool(erc_affected)
+    existing_traces = state.get("wire_paths", [])
+
+    if preserve_existing and erc_affected:
+        affected_set = set(erc_affected)
+        # Keep traces for unaffected nets
+        preserved = [t for t in existing_traces if t.get("net", "") not in affected_set]
+        # Build targeted netlist: only connections in affected nets
+        targeted_netlist = [c for c in working_netlist if c.get("net", "") in affected_set]
+        _emit(config, "agent:log", {
+            "message": f"  Targeted re-route: {len(targeted_netlist)} connections in {len(affected_set)} affected net(s), "
+                       f"{len(preserved)} existing traces preserved"
+        })
+    else:
+        preserved = []
+        targeted_netlist = working_netlist
+
+    # ── 5. Route traces ─────────────────────────────────────────────
+    route_netlist = targeted_netlist if preserve_existing else working_netlist
+    raw_traces, dropped_pairs = engine.route_traces(route_netlist, pin_matrix)
+
+    # Log each dropped pair with reason for observability
+    if dropped_pairs:
+        for src_ref, tgt_ref in dropped_pairs:
+            _emit(config, "agent:log", {
+                "message": f"  ⚠ Dropped wire: {src_ref} ↔ {tgt_ref} (routing failed)"
+            })
+
+    # ── 5b. Placement repair + re-route for dropped pairs ───────────
+    # Move satellites closer to their partners and try routing again.
+    n_retried = 0
+    retry_traces = []
+    retry_dropped = []
+    if dropped_pairs and not preserve_existing:
+        n_moved = engine._repair_placement_for_routing(dropped_pairs)
+        if n_moved > 0:
+            _emit(config, "agent:log", {
+                "message": f"  Placement repair: nudged {n_moved} component(s) closer to fix dropped wires"
+            })
+            # Build a netlist of just the dropped connections for re-routing
+            dropped_netlist = [
+                c for c in working_netlist
+                if (c["source"].split(":")[0], c["target"].split(":")[0]) in
+                   [(a, b) for a, b in dropped_pairs] or
+                   (c["target"].split(":")[0], c["source"].split(":")[0]) in
+                   [(a, b) for a, b in dropped_pairs]
+            ]
+            retry_traces, retry_dropped = engine.route_traces(dropped_netlist, pin_matrix)
+            n_retried = len(retry_traces)
+            # Update placements after nudge
+            placements = engine.get_placements()
 
     # Relax max wire length on ERC re-routing passes — long wires are
     # better than unconnected pins that fail ERC.
-    MAX_WIRE_LEN = 300.0 if erc_pending else 150.0
-    clean_traces = []
+    # Aligned with layout_engine MAX_WIRE_MANHATTAN * 1.5 (300mm).
+    MAX_WIRE_LEN = 300.0
+    clean_traces = list(preserved) if preserve_existing else []
     n_dropped = 0
     n_len_dropped = 0
     for tr in raw_traces:
@@ -170,6 +262,30 @@ def routing_node(state, config):
             continue
         clean_traces.append(tr)
 
+    # Merge retry traces (from placement repair) into clean_traces
+    for tr in retry_traces:
+        path = tr.get("path", [])
+        if len(path) < 2:
+            continue
+        ok = True
+        total_len = 0.0
+        for i in range(len(path) - 1):
+            dx = abs(path[i]["x"] - path[i + 1]["x"])
+            dy = abs(path[i]["y"] - path[i + 1]["y"])
+            if dx > 1e-3 and dy > 1e-3:
+                ok = False
+                break
+            total_len += dx + dy
+            if total_len > MAX_WIRE_LEN:
+                ok = False
+                break
+        if ok:
+            clean_traces.append(tr)
+            n_retried += 1  # count only successful retries
+
+    # Final dropped_pairs: original minus recovered
+    recovered = len([t for t in retry_traces if len(t.get("path", [])) >= 2])
+
     total_wire = sum(
         sum(abs(p[i+1]["x"] - p[i]["x"]) + abs(p[i+1]["y"] - p[i]["y"])
             for i in range(len(p) - 1))
@@ -182,6 +298,7 @@ def routing_node(state, config):
             f"{n_dropped} dropped ({n_len_dropped} length, "
             f"{n_dropped - n_len_dropped} other)"
             f" (+{len(dropped_pairs)} pairs), "
+            f"{recovered}/{len(dropped_pairs)} recovered via placement repair, "
             f"{total_wire:.1f}mm total"
         )
     })
@@ -236,6 +353,8 @@ def routing_node(state, config):
         "wire_paths": clean_traces,
         "power_labels": power_labels,
         "netlist": working_netlist,
+        "_dropped_pairs": dropped_pairs,
+        "_validation_issues": state.get("_validation_issues", []) + [i.to_dict() for i in pcv_issues],
     }
     # The ERC loop: always increment retries and clear pending connections
     # when we're inside an ERC → repair → routing iteration.

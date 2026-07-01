@@ -28,16 +28,6 @@
                     <span class="icon">+</span> Add Component
                 </button>
                 <div class="divider"></div>
-                <button id="autoLayoutBtn" class="tool-btn" title="Auto-place components" disabled>
-                    <span class="icon">⊞</span> Auto Layout
-                </button>
-                <button id="autoRouteBtn" class="tool-btn" title="Generate orthogonal traces" disabled>
-                    <span class="icon">⌇</span> Auto Route
-                </button>
-                <button id="clearBtn" class="tool-btn danger" title="Clear entire schematic" disabled>
-                    <span class="icon">×</span> Clear
-                </button>
-                <div class="divider"></div>
                 <button id="exportSchBtn" class="tool-btn highlight" title="Export as KiCad .kicad_sch" disabled>
                     <span class="icon">⤓</span> Export .kicad_sch
                 </button>
@@ -105,6 +95,7 @@
                     <canvas id="pcbCanvas" style="display:none"></canvas>
                     <canvas id="symbolCanvas" style="display:none"></canvas>
                     <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
+                    <div id="completenessBadge" class="completeness-badge hidden"></div>
                     
                     <!-- PCB Upload Overlay (hidden by default, shown in PCB View tab) -->
                     <div id="pcbUploadArea" class="pcb-upload-overlay hidden">
@@ -169,10 +160,10 @@
     <!-- Scripts -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
-    <script src="/static/schematic.js?v=11"></script>
-    <script src="/static/renderer_legacy.js?v=9"></script>
-    <script src="/static/schematic_renderer.js?v=1"></script>
+    <script src="/static/schematic.js?v=12"></script>
+    <script src="/static/renderer_legacy.js?v=10"></script>
+    <script src="/static/schematic_renderer.js?v=2"></script>
     <script src="/static/pcb_viewer.js?v=1"></script>
-    <script src="/static/app.js?v=11"></script>
+    <script src="/static/app.js?v=12"></script>
 </body>
 </html>

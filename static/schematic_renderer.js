@@ -2,8 +2,8 @@
 // Phase 1A: view-only renderer with grid, symbols, wires, zoom/pan, selection.
 // Replaces static/renderer.js Canvas2D rendering path.
 
-const GRID_SIZE = 1.27;
-const COLORS = {
+// NOTE: GRID_SIZE is already defined in schematic.js (loaded before this file).
+const SCH_COLORS = {
     bg: 0x1a1a2e,
     symbolLine: 0xE34E32,
     symbolFill: 0x4a3a2e,
@@ -40,7 +40,7 @@ class SchematicRenderer {
 
         this._app = new PIXI.Application({
             resizeTo: parent,
-            backgroundColor: COLORS.bg,
+            backgroundColor: SCH_COLORS.bg,
             antialias: true,
             resolution: this._dpr,
             autoDensity: true,
@@ -150,15 +150,15 @@ class SchematicRenderer {
         if (fill) {
             const ft = fill[1];
             if (ft === '(type background)') {
-                fillColor = COLORS.symbolFill;
+                fillColor = SCH_COLORS.symbolFill;
                 fillAlpha = 0.15;
             } else if (ft === '(type solid)') {
-                fillColor = COLORS.symbolLine;
+                fillColor = SCH_COLORS.symbolLine;
                 fillAlpha = 1;
             }
         }
 
-        g.lineStyle(lineWidth, COLORS.symbolLine, 1);
+        g.lineStyle(lineWidth, SCH_COLORS.symbolLine, 1);
 
         if (type === 'rectangle') {
             const start = getAttr(op, 'start');
@@ -242,34 +242,36 @@ class SchematicRenderer {
 
         // Pin stub line
         const g = new PIXI.Graphics();
-        g.lineStyle(0.254, COLORS.pinLine, 1);
+        g.lineStyle(0.254, SCH_COLORS.pinLine, 1);
         g.moveTo(x, y);
         g.lineTo(ex, ey);
         this._pinLayer.addChild(g);
 
-        // Pin number
-        const numNode = getAttr(op, 'number');
-        if (numNode && numNode[1] !== '"~"') {
-            const pinNum = numNode[1];
-            const size = this._getFontSize(op);
-            let nx = x, ny = y;
-            let anchorX = 0.5, anchorY = 1;
-            if (angDeg === 0) { nx = x + len / 2; ny = y + 0.3; anchorX = 0.5; anchorY = 1; }
-            else if (angDeg === 180) { nx = x - len / 2; ny = y + 0.3; anchorX = 0.5; anchorY = 1; }
-            else if (angDeg === 90) { nx = x - 0.3; ny = y + len / 2; anchorX = 1; anchorY = 0.5; }
-            else if (angDeg === 270) { nx = x - 0.3; ny = y - len / 2; anchorX = 1; anchorY = 0.5; }
+        // Pin number - KiCad-style: no pin numbers displayed on pads
+        // const numNode = getAttr(op, 'number');
+        // if (numNode && numNode[1] !== '"~"') {
+        //     const pinNum = numNode[1];
+        //     const size = this._getFontSize(op);
+        //     let nx = x, ny = y;
+        //     let anchorX = 0.5, anchorY = 1;
+        //     if (angDeg === 0) { nx = x + len / 2; ny = y + 0.3; anchorX = 0.5; anchorY = 1; }
+        //     else if (angDeg === 180) { nx = x - len / 2; ny = y + 0.3; anchorX = 0.5; anchorY = 1; }
+        //     else if (angDeg === 90) { nx = x - 0.3; ny = y + len / 2; anchorX = 1; anchorY = 0.5; }
+        //     else if (angDeg === 270) { nx = x - 0.3; ny = y - len / 2; anchorX = 1; anchorY = 0.5; }
 
-            const txt = new PIXI.Text(pinNum, {
-                fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                fontSize: size,
-                fill: COLORS.pinNum,
-            });
-            txt.scale.y = -1;
-            txt.anchor.set(anchorX, anchorY);
-            txt.x = nx;
-            txt.y = ny;
-            this._textLayer.addChild(txt);
-        }
+        //     const FONT_RES = 24;
+        //     const txt = new PIXI.Text(pinNum, {
+        //         fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+        //         fontSize: FONT_RES,
+        //         fill: SCH_COLORS.pinNum,
+        //     });
+        //     const scaleRatio = size / FONT_RES;
+        //     txt.scale.set(scaleRatio, -scaleRatio);
+        //     txt.anchor.set(anchorX, anchorY);
+        //     txt.x = nx;
+        //     txt.y = ny;
+        //     this._textLayer.addChild(txt);
+        // }
 
         // Pin name (with dedup)
         const nameNode = getAttr(op, 'name');
@@ -292,12 +294,14 @@ class SchematicRenderer {
                 else if (angDeg === 180) { nx -= 0.5; anchorX = 1; anchorY = 0.5; }
                 else if (angDeg === 90 || angDeg === 270) { nx -= 0.8; anchorX = 0.5; anchorY = 0.5; }
 
+                const FONT_RES = 24;
                 const txt = new PIXI.Text(nameText, {
                     fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                    fontSize: size,
-                    fill: COLORS.pinName,
+                    fontSize: FONT_RES,
+                    fill: SCH_COLORS.pinName,
                 });
-                txt.scale.y = -1;
+                const scaleRatio = size / FONT_RES;
+                txt.scale.set(scaleRatio, -scaleRatio);
                 txt.anchor.set(anchorX, anchorY);
 
                 if (angDeg === 90 || angDeg === 270) {
@@ -327,16 +331,18 @@ class SchematicRenderer {
         const ang = parseFloat(at[3] || 0);
         const size = this._getFontSize(op);
 
-        let fillColor = COLORS.propertyVal;
-        if (op[1] === '"Reference"') fillColor = COLORS.propertyRef;
-        if (type === 'text') fillColor = COLORS.text;
+        let fillColor = SCH_COLORS.propertyVal;
+        if (op[1] === '"Reference"') fillColor = SCH_COLORS.propertyRef;
+        if (type === 'text') fillColor = SCH_COLORS.text;
 
+        const FONT_RES = 24;
         const pixiTxt = new PIXI.Text(txt, {
             fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-            fontSize: size,
+            fontSize: FONT_RES,
             fill: fillColor,
         });
-        pixiTxt.scale.y = -1;
+        const scaleRatio = size / FONT_RES;
+        pixiTxt.scale.set(scaleRatio, -scaleRatio);
         pixiTxt.anchor.set(0.5, 0.5);
         pixiTxt.x = x;
         pixiTxt.y = y;
@@ -353,7 +359,12 @@ class SchematicRenderer {
             const font = getAttr(effects, 'font');
             if (font) {
                 const s = getAttr(font, 'size');
-                if (s) size = parseFloat(s[2]);
+                if (s) {
+                    const val = parseFloat(s[1]);
+                    if (!isNaN(val)) {
+                        size = val;
+                    }
+                }
             }
         }
         return size;
@@ -377,7 +388,7 @@ class SchematicRenderer {
         // Dot grid — only when reasonably zoomed in
         if (this._zoom > 0.15) {
             const dotRadius = 0.06;
-            g.beginFill(COLORS.grid, 0.25);
+            g.beginFill(SCH_COLORS.grid, 0.25);
             for (let x = startX; x <= endX; x += gridMm) {
                 for (let y = startY; y <= endY; y += gridMm) {
                     g.drawCircle(x, y, dotRadius);
@@ -392,7 +403,7 @@ class SchematicRenderer {
         const majorStartY = Math.floor(bounds.minY / majorGrid) * majorGrid;
         const majorEndY = Math.ceil(bounds.maxY / majorGrid) * majorGrid;
 
-        g.lineStyle(0.04, COLORS.gridMajor, 0.12);
+        g.lineStyle(0.04, SCH_COLORS.gridMajor, 0.12);
         for (let x = majorStartX; x <= majorEndX; x += majorGrid) {
             g.moveTo(x, bounds.minY);
             g.lineTo(x, bounds.maxY);
@@ -427,9 +438,7 @@ class SchematicRenderer {
         if (!this._schematic || !this._schematic.wirePaths) return;
 
         const g = new PIXI.Graphics();
-        g.lineStyle(0.254, COLORS.wire, 1);
-        g.lineCap = PIXI.Graphics.LINE_CAP.ROUND;
-        g.lineJoin = PIXI.Graphics.LINE_JOIN.ROUND;
+        g.lineStyle(0.254, SCH_COLORS.wire, 1);
 
         for (const wire of this._schematic.wirePaths) {
             if (!wire.path || wire.path.length < 2) continue;
@@ -440,7 +449,6 @@ class SchematicRenderer {
                 if (dx > 0.001 && dy > 0.001) continue; // skip diagonal — shouldn't happen
                 g.lineTo(wire.path[i].x, wire.path[i].y);
             }
-            g.stroke();
         }
 
         this._wireLayer.addChild(g);
@@ -450,7 +458,7 @@ class SchematicRenderer {
         if (!this._schematic || !this._schematic.junctionPoints) return;
 
         const g = new PIXI.Graphics();
-        g.beginFill(COLORS.junction, 1);
+        g.beginFill(SCH_COLORS.junction, 1);
         for (const j of this._schematic.junctionPoints) {
             g.drawCircle(j.x, j.y, 0.5);
         }
@@ -471,7 +479,7 @@ class SchematicRenderer {
             const isGnd = lbl.net === 'GND';
 
             const g = new PIXI.Graphics();
-            const color = isGnd ? COLORS.powerGnd : COLORS.powerVcc;
+            const color = isGnd ? SCH_COLORS.powerGnd : SCH_COLORS.powerVcc;
             g.lineStyle(0.254, color, 1);
 
             // Stub line from pin to symbol
@@ -495,12 +503,15 @@ class SchematicRenderer {
                 g.lineTo(ex + px * 1.27, ey + py * 1.27);
 
                 // Net name label
+                const FONT_RES = 24;
+                const size = 1.6;
                 const txt = new PIXI.Text(lbl.net, {
                     fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                    fontSize: 1.6,
-                    fill: COLORS.powerVcc,
+                    fontSize: FONT_RES,
+                    fill: SCH_COLORS.powerVcc,
                 });
-                txt.scale.y = -1;
+                const scaleRatio = size / FONT_RES;
+                txt.scale.set(scaleRatio, -scaleRatio);
                 txt.anchor.set(dir === 'left' ? 1 : 0, 0.5);
                 txt.x = ex + dx * 0.8;
                 txt.y = ey + dy * 0.8;
@@ -537,7 +548,7 @@ class SchematicRenderer {
         const pad = 1.0;
 
         const g = new PIXI.Graphics();
-        g.lineStyle(0.3, COLORS.selection, 0.8);
+        g.lineStyle(0.3, SCH_COLORS.selection, 0.8);
         g.drawRect(
             comp.x + bbox.x - pad,
             comp.y + bbox.y - pad,

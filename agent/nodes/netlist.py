@@ -87,7 +87,19 @@ def netlist_node(state, config):
         if not isinstance(batch_data, list):
             continue
         batch_nets = batch_data
+        # Normalize list-of-lists format (e.g. [["GND", ["p1","p2"]]])
+        # into dict format (e.g. [{"net": "GND", "pins": ["p1","p2"]}])
+        normalized = []
+        for entry in batch_nets:
+            if isinstance(entry, dict):
+                normalized.append(entry)
+            elif isinstance(entry, list) and len(entry) == 2:
+                name_part, pins_part = entry
+                if isinstance(name_part, str) and isinstance(pins_part, list):
+                    normalized.append({"net": name_part, "pins": pins_part})
+        batch_nets = normalized
         n_dropped = 0
+        n_resolved = 0
         batch_key_set = set(batch_keys)
         for net in batch_nets:
             if not isinstance(net, dict):
@@ -97,7 +109,6 @@ def netlist_node(state, config):
             if not name or not isinstance(raw, list):
                 continue
             clean = []
-            n_resolved = 0
             for p in raw:
                 if p in batch_key_set:
                     if p in assigned:
@@ -183,82 +194,6 @@ def netlist_node(state, config):
                 hub = ps[0]
                 for i in range(1, len(ps)):
                     netlist.append({"source": hub, "target": ps[i], "net": name})
-    connected_refs = set()
-    for conn in netlist:
-        connected_refs.add(conn["source"].split(":")[0])
-        connected_refs.add(conn["target"].split(":")[0])
-    for pp in power_pins:
-        connected_refs.add(pp["pin"].split(":")[0])
-    all_refs = {c["ref_des"] for c in state.get("selected_components", [])}
-    orphans = sorted(all_refs - connected_refs)
-    if orphans:
-        _emit(config, "agent:log", {
-            "message": f"  WARNING: {len(orphans)} unconnected component(s): {', '.join(orphans)}. "
-                       f"Attaching their power/ground pins to nets."
-        })
-        for ref in orphans:
-            orphan_pins = [k for k in pins if k.split(":")[0] == ref and k not in used_pins]
-            is_2pin_passive = len([k for k in pins if k.startswith(f"{ref}:")]) <= 2
-            for key in orphan_pins:
-                p_pin = pins[key]
-                pname = p_pin.get("name", "").upper()
-                if _is_gnd_net(pname):
-                    power_pins.append({"pin": key, "net": "GND"})
-                    _merge_net(valid_nets, "GND", [key])
-                    used_pins.add(key)
-                elif _is_power_net(pname):
-                    net_name = pname.lstrip('+')
-                    power_pins.append({"pin": key, "net": net_name})
-                    _merge_net(valid_nets, net_name, [key])
-                    used_pins.add(key)
-                elif p_pin.get("etype") in POWER_ETYPES and pname and pname != "~":
-                    net_name = pname.lstrip('+')
-                    power_pins.append({"pin": key, "net": net_name})
-                    _merge_net(valid_nets, net_name, [key])
-                    used_pins.add(key)
-                elif is_2pin_passive:
-                    if len([k for k in power_pins if k["pin"].startswith(f"{ref}:")]) == 0:
-                        power_pins.append({"pin": key, "net": "GND"})
-                        _merge_net(valid_nets, "GND", [key])
-                        used_pins.add(key)
-                        _emit(config, "agent:log", {
-                            "message": f"  Passive orphan rescue: {key} -> GND"
-                        })
-    refs_with_signals = set()
-    for conn in netlist:
-        refs_with_signals.add(conn["source"].split(":")[0])
-        refs_with_signals.add(conn["target"].split(":")[0])
-    hub_ref = max(
-        (k.split(":")[0] for k in pins),
-        key=lambda r: sum(1 for k in pins if k.startswith(f"{r}:")),
-        default=None
-    )
-    if hub_ref:
-        for comp in state.get("selected_components", []):
-            ref = comp["ref_des"]
-            if ref in refs_with_signals or ref == hub_ref:
-                continue
-            spare_hub = sorted(
-                k for k in pins
-                if k.startswith(f"{hub_ref}:") and k not in used_pins
-                and pins[k].get("etype") in ("bidirectional", "input", "output", "passive")
-            )
-            ref_signal = sorted(
-                k for k in pins
-                if k.startswith(f"{ref}:") and k not in used_pins
-            )
-            if spare_hub and ref_signal:
-                hub_pin = spare_hub[0]
-                ref_pin = ref_signal[0]
-                net_name = pins[ref_pin].get("name", "").upper() or f"{ref}_SIG"
-                _merge_net(nets, net_name, [hub_pin, ref_pin])
-                netlist.append({"source": hub_pin, "target": ref_pin, "net": net_name})
-                used_pins.add(hub_pin)
-                used_pins.add(ref_pin)
-                refs_with_signals.add(ref)
-                _emit(config, "agent:log", {
-                    "message": f"  Auto-routed {ref_pin} ({pins[ref_pin]['name']}) -> {hub_pin} ({pins[hub_pin]['name']})"
-                })
     n_power_nets = len(power_groups)
     _emit(config, "agent:log", {
         "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "

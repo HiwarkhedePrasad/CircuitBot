@@ -373,6 +373,22 @@ canvas {
     font-size: 10px;
 }
 
+.completeness-badge {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background-color: rgba(0,0,0,0.5);
+    border: 1px solid var(--border-bright);
+    color: var(--text-main);
+    padding: 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    pointer-events: none;
+}
+.completeness-badge.good { border-color: #2ea043; color: #2ea043; }
+.completeness-badge.warn { border-color: #d29922; color: #d29922; }
+.completeness-badge.bad  { border-color: #da3633; color: #da3633; }
+
 /* Floating Route Input */
 .floating-route-input {
     position: absolute;

@@ -72,6 +72,7 @@ def _parse_layer_id(name: str) -> int:
 
 
 def _parse_pad(node: list) -> Optional[PadDef]:
+    """Parse a pad node from a KiCad S-expression."""
     if not isinstance(node, list) or len(node) < 2:
         return None
     pad = PadDef(number=str(node[1]), x=0, y=0, width=0, height=0)
@@ -229,6 +230,37 @@ def _parse_gr_line(node: list) -> Optional[list[tuple[float, float]]]:
     return None
 
 
+def _build_net_pin_map(ast: list) -> dict[int, list[str]]:
+    """Walk the import AST and build ``net_id → [pin_key, ...]``.
+
+    Each pad node inside a footprint may have a ``(net nid)`` child;
+    this function collects all ``ref:padnum`` keys per net ID.
+    """
+    net_pins: dict[int, list[str]] = {}
+    for fp_node in _find_all(ast, "footprint") + _find_all(ast, "module"):
+        ref = ""
+        for prop in _find_all(fp_node, "property"):
+            if len(prop) > 2 and prop[1] == "Reference":
+                ref = str(prop[2])
+                break
+        if not ref:
+            fp_name = str(fp_node[1]) if len(fp_node) > 1 else "UNKNOWN"
+            ref = fp_name
+        for pad_node in _find_all(fp_node, "pad"):
+            pnum = str(pad_node[1]) if len(pad_node) > 1 else "0"
+            net_id = None
+            for child in pad_node[2:]:
+                if isinstance(child, list) and child[0] == "net":
+                    raw = child[1] if len(child) > 1 else None
+                    if isinstance(raw, (int, float)):
+                        net_id = int(raw)
+                    break
+            if net_id is not None:
+                pin_key = f"{ref}:{pnum}"
+                net_pins.setdefault(net_id, []).append(pin_key)
+    return net_pins
+
+
 def import_board(path: str) -> BoardModel:
     raw = Path(path).read_text(encoding="utf-8")
     ast = parse_sexp(raw)
@@ -244,12 +276,24 @@ def import_board(path: str) -> BoardModel:
 
     nets = _find_all(ast, "net")
     parsed_nets = []
+    net_id_to_name: dict[int, str] = {}
     for n in nets:
         if len(n) > 2:
             nid = int(n[1]) if isinstance(n[1], (int, float)) else 0
             name = str(n[2])
-            parsed_nets.append({"id": nid, "name": name})
+            net_id_to_name[nid] = name
+            parsed_nets.append({"name": name, "pins": []})
     model.nets = parsed_nets
+
+    net_pins = _build_net_pin_map(ast)
+
+    # Populate pins from the net-pin map, using the canonical name key
+    for net_entry in model.nets:
+        name = net_entry["name"]
+        for nid, pin_list in net_pins.items():
+            if net_id_to_name.get(nid) == name:
+                net_entry["pins"] = pin_list
+                break
 
     for fp_node in _find_all(ast, "footprint"):
         comp = _parse_footprint(fp_node)

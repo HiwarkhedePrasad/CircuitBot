@@ -25,6 +25,8 @@ import datetime
 import re
 import uuid
 
+from agent.exceptions import ExportValidationError
+
 GRID = 1.27
 
 # Tokens that are safe to emit unquoted in an S-expression
@@ -236,6 +238,29 @@ def generate_kicad_sch(design: dict) -> str:
     placements = {p['ref_des']: p for p in design.get('component_placements', [])}
     wires = design.get('wire_paths', [])
     power_labels = design.get('power_labels', [])
+    netlist = design.get('netlist', [])
+
+    # EV001: Every pin in the netlist must have a physical wire
+    wired_pins: set[str] = set()
+    for w in wires:
+        src = w.get('source', '')
+        tgt = w.get('target', '')
+        if src: wired_pins.add(src)
+        if tgt: wired_pins.add(tgt)
+    missing_wires = []
+    for conn in netlist:
+        for side in ('source', 'target'):
+            pin = conn.get(side, '')
+            if pin and pin not in wired_pins:
+                missing_wires.append(pin)
+    if missing_wires:
+        unique_missing = sorted(set(missing_wires))
+        raise ExportValidationError(
+            f"EV001: {len(unique_missing)} pin(s) in netlist lack physical wires: "
+            f"{', '.join(unique_missing[:10])}"
+            f"{'...' if len(unique_missing) > 10 else ''}",
+            issues=[{'code': 'EV001', 'pin': p} for p in unique_missing]
+        )
 
     # Build footprint lookup: ref_des -> footprint string
     fp_lookup = {c['ref_des']: c.get('footprint', '') for c in comps}
@@ -348,10 +373,42 @@ def generate_kicad_sch(design: dict) -> str:
     MAX_SEG_MM = 150.0
     MAX_WIRE_TOTAL_MM = 300.0
 
+    # Build pin-sheet-position lookup: pin_key -> (sheet_x, sheet_y)
+    # Used to snap wire endpoints to exact pin positions, preventing
+    # floating-point/rounding disconnection between wires and pins.
+    pin_sheet_positions: dict[str, tuple[float, float]] = {}
+    for c in comps:
+        ref = c['ref_des']
+        ops = comp_ops.get(ref)
+        place = placements.get(ref)
+        if not ops or not place:
+            continue
+        for op in ops:
+            if op[0] != 'pin':
+                continue
+            a = _get_attr(op, 'at')
+            if not a or len(a) < 3:
+                continue
+            try:
+                px = float(a[1])
+                py = float(a[2])
+            except (ValueError, IndexError):
+                continue
+            num = _get_attr(op, 'number')
+            if not num or len(num) < 2:
+                continue
+            pin_key = f"{ref}:{num[1]}"
+            sx = _snap(place['x'] + off_x)
+            sy = _snap(-place['y'] + off_y)
+            abs_px = _snap(sx + px)
+            abs_py = _snap(sy - py)
+            pin_sheet_positions[pin_key] = (abs_px, abs_py)
+
     seen_segs: set[tuple[tuple[float, float], tuple[float, float]]] = set()
     endpoint_count: dict[tuple[float, float], int] = {}
     wire_lines: list[str] = []
     n_dropped = 0
+    SNAP_TOLERANCE = 0.01  # mm — snap wire endpoint to pin if within this distance
 
     # (a) signal-net wires
     for w in wires:
@@ -366,11 +423,33 @@ def generate_kicad_sch(design: dict) -> str:
         if total_len > MAX_WIRE_TOTAL_MM:
             n_dropped += 1
             continue
-        for i in range(len(pts) - 1):
-            x1 = _snap(pts[i]['x'] + off_x)
-            y1 = _snap(-pts[i]['y'] + off_y)
-            x2 = _snap(pts[i + 1]['x'] + off_x)
-            y2 = _snap(-pts[i + 1]['y'] + off_y)
+
+        # Pre-compute sheet coords for every path point
+        sheet_pts = []
+        for pt in pts:
+            sx = _snap(pt['x'] + off_x)
+            sy = _snap(-pt['y'] + off_y)
+            sheet_pts.append({'x': sx, 'y': sy})
+
+        # Snap first/last point to exact pin position if within tolerance
+        src_key = w.get('source', '')
+        tgt_key = w.get('target', '')
+        if src_key in pin_sheet_positions and len(sheet_pts) >= 2:
+            want_x, want_y = pin_sheet_positions[src_key]
+            got_x, got_y = sheet_pts[0]['x'], sheet_pts[0]['y']
+            if abs(got_x - want_x) <= SNAP_TOLERANCE and abs(got_y - want_y) <= SNAP_TOLERANCE:
+                sheet_pts[0] = {'x': want_x, 'y': want_y}
+        if tgt_key in pin_sheet_positions and len(sheet_pts) >= 2:
+            want_x, want_y = pin_sheet_positions[tgt_key]
+            got_x, got_y = sheet_pts[-1]['x'], sheet_pts[-1]['y']
+            if abs(got_x - want_x) <= SNAP_TOLERANCE and abs(got_y - want_y) <= SNAP_TOLERANCE:
+                sheet_pts[-1] = {'x': want_x, 'y': want_y}
+
+        for i in range(len(sheet_pts) - 1):
+            x1 = sheet_pts[i]['x']
+            y1 = sheet_pts[i]['y']
+            x2 = sheet_pts[i + 1]['x']
+            y2 = sheet_pts[i + 1]['y']
             # Skip degenerate (zero-length) segments
             if x1 == x2 and y1 == y2:
                 continue
@@ -393,112 +472,86 @@ def generate_kicad_sch(design: dict) -> str:
             wire_lines.append(f'    (uuid {_q(_new_uuid())})')
             wire_lines.append('  )')
 
-    # (b) power-net fan-out — wire every pin to a centroid hub so KiCad ERC
-    # sees every pin as connected via a wire segment with a global label on it.
+    # (b) power nets — give every power pin its own short outward stub and
+    # same-name global label. KiCad connects equal global-label names
+    # electrically, so no centroid fan-out wires are needed. The previous
+    # centroid approach drew long wires through intervening symbol bodies and
+    # made the exported schematic disagree with the frontend.
     _DIR_ANGLE = {'right': 0, 'up': 90, 'left': 180, 'down': 270}
+    POWER_STUB_MM = 2.54
+    emitted_power_labels: set[tuple[str, float, float]] = set()
 
-    by_net: dict[str, list[dict]] = {}
     for lbl in power_labels:
-        by_net.setdefault(lbl['net'], []).append(lbl)
-
-    for net, labels in by_net.items():
-        if not labels:
+        net = lbl.get('net', '')
+        if not net:
             continue
 
-        # Centroid hub (average of all pin sheet positions)
-        cand_x = [_snap(l['x'] + off_x) for l in labels]
-        cand_y = [_snap(-l['y'] + off_y) for l in labels]
-        hub_x = _snap(sum(cand_x) / len(cand_x))
-        hub_y = _snap(sum(cand_y) / len(cand_y))
+        pin_x = _snap(lbl['x'] + off_x)
+        pin_y = _snap(-lbl['y'] + off_y)
+        canvas_dir = lbl.get('dir', 'right')
 
-        # Pick label direction from the label nearest the centroid
-        nearest = min(labels, key=lambda l: (
-            abs(_snap(l['x'] + off_x) - hub_x) + abs(_snap(-l['y'] + off_y) - hub_y)
-        ))
-        d = nearest.get('dir', 'right')
-        if d == 'up':
-            d = 'down'
-        elif d == 'down':
-            d = 'up'
-        angle = _DIR_ANGLE.get(d, 0)
+        dx = 1 if canvas_dir == 'right' else -1 if canvas_dir == 'left' else 0
+        # Canvas Y grows upward; KiCad sheet Y grows downward.
+        dy = -1 if canvas_dir == 'up' else 1 if canvas_dir == 'down' else 0
+        label_x = _snap(pin_x + dx * POWER_STUB_MM)
+        label_y = _snap(pin_y + dy * POWER_STUB_MM)
+
+        label_key = (net, label_x, label_y)
+        if label_key in emitted_power_labels:
+            continue
+        emitted_power_labels.add(label_key)
+
+        sheet_dir = canvas_dir
+        if sheet_dir == 'up':
+            sheet_dir = 'down'
+        elif sheet_dir == 'down':
+            sheet_dir = 'up'
+        angle = _DIR_ANGLE.get(sheet_dir, 0)
         shape = 'passive' if net == 'GND' else 'input'
 
-        # Place ONE global label at the centroid hub
-        out.append(f'  (global_label {_q(net)} (shape {shape}) (at {_fmt(hub_x)} {_fmt(hub_y)} {angle}) (fields_autoplaced yes)')
-        out.append('    (effects (font (size 1.27 1.27)) (justify left))')
-        out.append(f'    (uuid {_q(_new_uuid())})')
-        out.append('  )')
-
-        # Wire EVERY pin to the hub via an L-shaped path
-        for lbl in labels:
-            lx = _snap(lbl['x'] + off_x)
-            ly = _snap(-lbl['y'] + off_y)
-            if (lx, ly) == (hub_x, hub_y):
-                continue
-            mid_x, mid_y = hub_x, ly
-            segs = [((lx, ly), (mid_x, mid_y)), ((mid_x, mid_y), (hub_x, hub_y))]
-            for seg in segs:
-                (x1, y1), (x2, y2) = seg
-                if x1 == x2 and y1 == y2:
-                    continue
-                key = ((x1, y1), (x2, y2)) if (x1, y1) <= (x2, y2) else ((x2, y2), (x1, y1))
-                if key in seen_segs:
-                    continue
+        if (pin_x, pin_y) != (label_x, label_y):
+            key = (
+                ((pin_x, pin_y), (label_x, label_y))
+                if (pin_x, pin_y) <= (label_x, label_y)
+                else ((label_x, label_y), (pin_x, pin_y))
+            )
+            if key not in seen_segs:
                 seen_segs.add(key)
-                endpoint_count[(x1, y1)] = endpoint_count.get((x1, y1), 0) + 1
-                endpoint_count[(x2, y2)] = endpoint_count.get((x2, y2), 0) + 1
-                wire_lines.append(f'  (wire (pts (xy {_fmt(x1)} {_fmt(y1)}) (xy {_fmt(x2)} {_fmt(y2)}))')
+                endpoint_count[(pin_x, pin_y)] = endpoint_count.get((pin_x, pin_y), 0) + 1
+                endpoint_count[(label_x, label_y)] = endpoint_count.get((label_x, label_y), 0) + 1
+                wire_lines.append(
+                    f'  (wire (pts (xy {_fmt(pin_x)} {_fmt(pin_y)}) '
+                    f'(xy {_fmt(label_x)} {_fmt(label_y)}))'
+                )
                 wire_lines.append('    (stroke (width 0) (type default))')
                 wire_lines.append(f'    (uuid {_q(_new_uuid())})')
                 wire_lines.append('  )')
 
+        out.append(
+            f'  (global_label {_q(net)} (shape {shape}) '
+            f'(at {_fmt(label_x)} {_fmt(label_y)} {angle}) '
+            f'(fields_autoplaced yes)'
+        )
+        out.append('    (effects (font (size 1.27 1.27)) (justify left))')
+        out.append(f'    (uuid {_q(_new_uuid())})')
+        out.append('  )')
+
     # ── flush all wires at once ──
     out.extend(wire_lines)
 
-    # ── junction dots where 3+ wire ends meet (computed across ALL wires) ──
-    for (jx, jy), count in endpoint_count.items():
-        if count >= 3:
-            out.append(f'  (junction (at {_fmt(jx)} {_fmt(jy)}) (diameter 0) (color 0 0 0 0)')
-            out.append(f'    (uuid {_q(_new_uuid())})')
-            out.append('  )')
+    # ── Post-wire safety net: detect anomalous wire gatherings ──
+    # Wires are allowed to cross freely (no junction dots).  Only flag
+    # suspiciously busy coordinates where 6+ wire-segment ends converge
+    # at a non-pin spot — that takes 3+ wires crossing at exactly the
+    # same grid point, which is extremely unlikely from our router.
+    pin_coords: set[tuple[float, float]] = set(pin_sheet_positions.values())
 
-    # ── Post-wire safety net: detect accidental shorts ──
-    # Build a set of known component pin positions (sheet coords).
-    pin_positions: set[tuple[float, float]] = set()
-    for c in comps:
-        ref = c['ref_des']
-        ops = comp_ops.get(ref)
-        place = placements.get(ref)
-        if not ops or not place:
-            continue
-        for op in ops:
-            if op[0] != 'pin':
-                continue
-            a = _get_attr(op, 'at')
-            if a and len(a) >= 3:
-                try:
-                    px = float(a[1])
-                    py = float(a[2])
-                    sx = _snap(place['x'] + off_x)
-                    sy = _snap(-place['y'] + off_y)
-                    abs_px = _snap(sx + px)
-                    abs_py = _snap(sy - py)
-                    pin_positions.add((abs_px, abs_py))
-                except (ValueError, IndexError):
-                    pass
-
-    quick_shorts = 0
+    busy_count = 0
     for (jx, jy), count in endpoint_count.items():
-        if count >= 2 and (jx, jy) not in pin_positions:
-            # Two wire segments meet at a non-pin coordinate — potential short.
-            # This should not happen if the router respected blocked_vertices,
-            # but log it as a comment in the KiCad file as a last-resort guard.
-            out.append(f'  # WARNING: possible accidental short at ({_fmt(jx)}, {_fmt(jy)}) '
-                       f'— {count} wire segments meet at non-pin coordinate')
-            quick_shorts += 1
-    if quick_shorts:
-        out.append(f'  # ⚠ KiCad export: {quick_shorts} potential accidental short(s) detected '
-                   f'— review wire vertices at the coordinates above')
+        if count >= 6 and (jx, jy) not in pin_coords:
+            out.append(f'  # NOTE: {count} wire segments meet at ({_fmt(jx)}, {_fmt(jy)}) — '
+                       f'verify no unintended net merge')
+            busy_count += 1
 
     out.append('  (sheet_instances (path "/" (page "1")))')
     out.append(')')

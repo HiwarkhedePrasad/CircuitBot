@@ -206,6 +206,26 @@ def api_export_pcb():
         return f"PCB export failed: {e}", 500
 
 
+@app.route('/api/ratsnest', methods=['POST'])
+def api_ratsnest():
+    """Compute MST ratsnest edges for the given BoardModel.
+
+    Accepts a BoardModel JSON body, returns a dict mapping net names
+    to lists of ``{x1, y1, x2, y2}`` edge objects.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        from pcb_design.board_model import BoardModel
+        from pcb_design.ratsnest import compute_ratsnest
+        model = BoardModel.from_dict(data)
+        ratsnest = compute_ratsnest(model)
+        return jsonify(ratsnest)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/import_pcb', methods=['POST'])
 def api_import_pcb():
     """Import a .kicad_pcb file and return BoardModel JSON."""

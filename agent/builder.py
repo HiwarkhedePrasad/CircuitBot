@@ -7,6 +7,10 @@ from agent.nodes import (
     placement_node, routing_node, pcb_layout_node,
     schematic_audit_node, ask_pcb_approval_node,
     schematic_repair_node,
+    symbol_validate_node,
+    structural_net_validate_node, structural_net_repair_node,
+    power_net_repair_node,
+    connectivity_validate_node, connectivity_repair_node,
 )
 from agent.utils import _route_after_validate, _route_after_pcb_approval, _route_after_erc
 
@@ -21,6 +25,10 @@ def error_end_node(state, config):
     return {}
 
 
+def _always_proceed(state):
+    return "next"
+
+
 def build_graph() -> StateGraph:
     builder = StateGraph(AgentState)
 
@@ -29,13 +37,19 @@ def build_graph() -> StateGraph:
     builder.add_node("select", select_node)
     builder.add_node("validate", validate_node)
     builder.add_node("dispatch", dispatch_node)
+    builder.add_node("symbol_validate", symbol_validate_node)
     builder.add_node("netlist", netlist_node)
+    builder.add_node("power_net_repair", power_net_repair_node)
+    builder.add_node("structural_net_validate", structural_net_validate_node)
+    builder.add_node("structural_net_repair", structural_net_repair_node)
     builder.add_node("placement", placement_node)
     builder.add_node("routing", routing_node)
+    builder.add_node("connectivity_validate", connectivity_validate_node)
+    builder.add_node("connectivity_repair", connectivity_repair_node)
     builder.add_node("schematic_audit", schematic_audit_node)
+    builder.add_node("schematic_repair", schematic_repair_node)
     builder.add_node("ask_pcb_approval", ask_pcb_approval_node)
     builder.add_node("pcb_layout", pcb_layout_node)
-    builder.add_node("schematic_repair", schematic_repair_node)
     builder.add_node("error_end", error_end_node)
 
     builder.set_entry_point("analyze")
@@ -47,10 +61,16 @@ def build_graph() -> StateGraph:
         "dispatch": "dispatch",
         "error_end": "error_end",
     })
-    builder.add_edge("dispatch", "netlist")
-    builder.add_edge("netlist", "placement")
+    builder.add_edge("dispatch", "symbol_validate")
+    builder.add_edge("symbol_validate", "netlist")
+    builder.add_edge("netlist", "power_net_repair")
+    builder.add_edge("power_net_repair", "structural_net_validate")
+    builder.add_edge("structural_net_validate", "structural_net_repair")
+    builder.add_edge("structural_net_repair", "placement")
     builder.add_edge("placement", "routing")
-    builder.add_edge("routing", "schematic_audit")
+    builder.add_edge("routing", "connectivity_validate")
+    builder.add_edge("connectivity_validate", "connectivity_repair")
+    builder.add_edge("connectivity_repair", "schematic_audit")
     builder.add_conditional_edges("schematic_audit", _route_after_erc, {
         "schematic_repair": "schematic_repair",
         "ask_pcb_approval": "ask_pcb_approval",

@@ -544,7 +544,7 @@ def drc2(model: BoardModel, drc: Optional[DRCConfig] = None) -> list[dict]:
     # Build a mapping from pin connection key (ref:pad_num) to net name (case-insensitive)
     pin_to_net = {}
     for net in model.nets:
-        name = str(net.get("net", "")).strip().upper()
+        name = str(net.get("name", "") or net.get("net", "")).strip().upper()
         for p in net.get("pins", []):
             pin_to_net[p] = name
     for pp in model.power_pins:

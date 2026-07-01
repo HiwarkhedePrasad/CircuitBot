@@ -4,7 +4,7 @@
 
 const PCB_COLORS = {
     // Layer colors (matching KiCad 8 defaults)
-    "F.Cu": "#C40000",        // red
+    "F.Cu": "#C46400",        // orange (KiCad pad color)
     "B.Cu": "#0000C4",        // blue
     "F.SilkS": "#C4C400",     // yellow
     "B.SilkS": "#C4C400",     // yellow
@@ -26,7 +26,7 @@ const PCB_COLORS = {
     _traceBottom: "#0000C4",
     _via: "#00C400",
     _viaDrill: "#000000",
-    _padTop: "#C46400",
+    _padTop: "#C46400",       // orange (main pad color)
     _padBottom: "#6400C4",
     _padThrough: "#00C464",
     _background: "#0A0A14",
@@ -34,6 +34,14 @@ const PCB_COLORS = {
     _gridMajor: "#2A2A3E",
     _text: "#C0C0C0",
     _highlight: "#FFFF00",
+    _ratsnest: "#808080",
+};
+
+/** Interaction modes for the PCB viewer state machine. */
+const PCB_MODE = {
+    IDLE: 'idle',
+    PANNING: 'panning',
+    DRAW_TRACE: 'draw_trace',
 };
 
 let pcbState = {
@@ -46,11 +54,20 @@ let pcbState = {
     midY: 0,
     cx: 0,
     cy: 0,
+    mode: PCB_MODE.IDLE,
+    // Pan tracking
     isDragging: false,
     dragStartX: 0,
     dragStartY: 0,
+    // Draw-trace tracking (stub for now, used by Ticket 8)
+    drawStartPad: null,
     highlightNet: null,
     listenersAttached: false,
+    // Ratsnest data: {net_name: [{x1, y1, x2, y2}, ...]}
+    ratsnest: null,
+    _ratsnestPending: false,
+    // Single-level undo (Ticket 5): most recently committed trace, or null
+    lastCommittedTrace: null,
 };
 
 function pcbGetCanvas() {
@@ -71,8 +88,10 @@ function pcbSetupCanvas() {
 
 function pcbLoadBoard(boardModel) {
     pcbState.boardModel = boardModel;
+    pcbState.ratsnest = null;
     pcbComputeTransform();
     pcbDraw();
+    pcbFetchRatsnest();
 }
 
 function pcbComputeTransform() {
@@ -157,6 +176,9 @@ function pcbDraw() {
     // Board outline
     pcbDrawOutline(ctx, model);
 
+    // Ratsnest airwires (above board outline, below copper)
+    pcbDrawRatsnest(ctx);
+
     // Bottom layers (back to front)
     pcbDrawZones(ctx, model, "B.Cu");
     pcbDrawTraces(ctx, model, "B.Cu");
@@ -191,24 +213,17 @@ function pcbDrawGrid(ctx) {
     const startX = Math.floor(x0 / gridSpacing) * gridSpacing;
     const startY = Math.floor(y0 / gridSpacing) * gridSpacing;
 
+    // Dot grid — KiCad-style grid rendering
+    const dotRadius = 0.06;
+    ctx.beginPath();
     for (let x = startX; x <= x1; x += gridSpacing) {
-        const isMajor = (Math.round(x / gridSpacing) % majorEvery) === 0;
-        ctx.strokeStyle = isMajor ? PCB_COLORS._gridMajor : PCB_COLORS._grid;
-        ctx.lineWidth = isMajor ? (0.05 / scale) : (0.025 / scale);
-        ctx.beginPath();
-        ctx.moveTo(x, y0);
-        ctx.lineTo(x, y1);
-        ctx.stroke();
+        for (let y = startY; y <= y1; y += gridSpacing) {
+            const isMajor = (Math.round(x / gridSpacing) % majorEvery) === 0 && (Math.round(y / gridSpacing) % majorEvery) === 0;
+            ctx.fillStyle = isMajor ? PCB_COLORS._gridMajor : PCB_COLORS._grid;
+            ctx.fillRect(x - dotRadius, y - dotRadius, dotRadius * 2, dotRadius * 2);
+        }
     }
-    for (let y = startY; y <= y1; y += gridSpacing) {
-        const isMajor = (Math.round(y / gridSpacing) % majorEvery) === 0;
-        ctx.strokeStyle = isMajor ? PCB_COLORS._gridMajor : PCB_COLORS._grid;
-        ctx.lineWidth = isMajor ? (0.05 / scale) : (0.025 / scale);
-        ctx.beginPath();
-        ctx.moveTo(x0, y);
-        ctx.lineTo(x1, y);
-        ctx.stroke();
-    }
+    ctx.fill();
 }
 
 function pcbDrawOutline(ctx, model) {
@@ -396,6 +411,54 @@ function pcbDrawZones(ctx, model, layer) {
     }
 }
 
+function pcbDrawRatsnest(ctx) {
+    const data = pcbState.ratsnest;
+    if (!data) return;
+
+    ctx.strokeStyle = PCB_COLORS._ratsnest;
+    ctx.lineWidth = 0.08;
+    ctx.setLineDash([0.3, 0.3]);
+
+    for (const edges of Object.values(data)) {
+        for (const e of edges) {
+            ctx.beginPath();
+            ctx.moveTo(e.x1, e.y1);
+            ctx.lineTo(e.x2, e.y2);
+            ctx.stroke();
+        }
+    }
+
+    ctx.setLineDash([]);
+}
+
+/** Fetch ratsnest data from the server for the current board model. */
+function pcbFetchRatsnest() {
+    if (!pcbState.boardModel || pcbState._ratsnestPending) return;
+    pcbState._ratsnestPending = true;
+
+    fetch('/api/ratsnest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pcbState.boardModel),
+    })
+        .then(r => r.json())
+        .then(data => {
+            pcbState.ratsnest = data;
+            pcbState._ratsnestPending = false;
+            pcbDraw();
+        })
+        .catch(err => {
+            console.warn('Ratsnest fetch failed:', err);
+            pcbState._ratsnestPending = false;
+        });
+}
+
+/** Re-fetch ratsnest after a trace commit (called by Ticket 5/8 undo/commit). */
+function pcbRefreshRatsnest() {
+    pcbState.ratsnest = null;
+    pcbFetchRatsnest();
+}
+
 function pcbDrawHUD(ctx, canvas) {
     ctx.save();
     ctx.fillStyle = "#C0C0C0";
@@ -416,7 +479,47 @@ function pcbDrawCurrent() {
     pcbDraw();
 }
 
-// -- Event handlers (shared with main canvas) --
+// -- Event handlers (state machine) --
+
+/** Return true if the given screen point hits a pad that has a ratsnest edge. */
+function _pcbHitTestPad(sx, sy) {
+    if (!pcbState.ratsnest || !pcbState.boardModel) return false;
+
+    const world = pcbScreenToWorld(sx, sy);
+    if (!world) return false;
+
+    // Collect all ratsnest endpoint positions
+    const endpoints = new Set();
+    for (const edges of Object.values(pcbState.ratsnest)) {
+        for (const e of edges) {
+            endpoints.add(`${e.x1},${e.y1}`);
+            endpoints.add(`${e.x2},${e.y2}`);
+        }
+    }
+    if (endpoints.size === 0) return false;
+
+    // Snap tolerance = half grid spacing
+    const snapPx = 1.27 / 2;
+
+    // Check each pad in the board model
+    const model = pcbState.boardModel;
+    for (const comp of (model.components || [])) {
+        for (const pad of (comp.pads || [])) {
+            const px = comp.x + pad.x;
+            const py = comp.y + pad.y;
+            if (endpoints.has(`${px},${py}`)) {
+                const dx = world.x - px;
+                const dy = world.y - py;
+                if (Math.abs(dx) < snapPx && Math.abs(dy) < snapPx) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 function pcbHandleWheel(e) {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.85 : 1.18;
@@ -425,26 +528,119 @@ function pcbHandleWheel(e) {
 }
 
 function pcbHandleMouseDown(e) {
-    pcbState.isDragging = true;
+    if (pcbState.mode === PCB_MODE.DRAW_TRACE) {
+        // While drawing, left-click places a vertex; right-click cancels.
+        // This is a stub — Ticket 8 will add real vertex placement here.
+        return;
+    }
+
+    // Only left button starts panning or drawing
+    if (e.button !== 0) return;
+
+    const world = pcbScreenToWorld(e.clientX, e.clientY);
+    if (!world) return;
+
+    // Check if click hits a ratsnest pad → enter draw-trace mode
+    const sx = e.clientX;
+    const sy = e.clientY;
+    if (_pcbHitTestPad(sx, sy)) {
+        pcbState.mode = PCB_MODE.DRAW_TRACE;
+        pcbState.drawStartPad = { x: world.x, y: world.y };
+        e.target.style.cursor = 'crosshair';
+        pcbDraw();
+        return;
+    }
+
+    // Otherwise start panning
+    pcbState.mode = PCB_MODE.PANNING;
     pcbState.dragStartX = e.clientX;
     pcbState.dragStartY = e.clientY;
     e.target.style.cursor = 'grabbing';
 }
 
 function pcbHandleMouseMove(e) {
-    if (!pcbState.isDragging) return;
-    const dx = e.clientX - pcbState.dragStartX;
-    const dy = e.clientY - pcbState.dragStartY;
-    pcbState.dragStartX = e.clientX;
-    pcbState.dragStartY = e.clientY;
-    pcbState.panX += dx;
-    pcbState.panY += dy;
-    pcbDraw();
+    if (pcbState.mode === PCB_MODE.PANNING) {
+        const dx = e.clientX - pcbState.dragStartX;
+        const dy = e.clientY - pcbState.dragStartY;
+        pcbState.dragStartX = e.clientX;
+        pcbState.dragStartY = e.clientY;
+        pcbState.panX += dx;
+        pcbState.panY += dy;
+        pcbDraw();
+        return;
+    }
+
+    if (pcbState.mode === PCB_MODE.DRAW_TRACE) {
+        // Stub — Ticket 8 will draw rubber-band line here
+        pcbDraw();
+        return;
+    }
 }
 
 function pcbHandleMouseUp(e) {
-    pcbState.isDragging = false;
-    if (e && e.target) e.target.style.cursor = 'grab';
+    if (pcbState.mode === PCB_MODE.PANNING) {
+        pcbState.mode = PCB_MODE.IDLE;
+        if (e && e.target) e.target.style.cursor = 'grab';
+        return;
+    }
+
+    if (pcbState.mode === PCB_MODE.DRAW_TRACE) {
+        // Stub — Ticket 8 will commit trace segment here
+        return;
+    }
+}
+
+/** Cancel draw-trace mode and return to idle. */
+function pcbCancelDraw() {
+    if (pcbState.mode === PCB_MODE.DRAW_TRACE) {
+        pcbState.mode = PCB_MODE.IDLE;
+        pcbState.drawStartPad = null;
+        pcbDraw();
+    }
+}
+
+/** Record a committed trace for single-level undo.
+
+Called by Ticket 8 (trace commit) to store the trace and its net so
+Ctrl+Z can remove it.  Only the most recent trace is kept — subsequent
+commits overwrite.
+*/
+function pcbSetLastCommittedTrace(traceData) {
+    // traceData: {net, layer, width, path: [{x,y},...]}
+    pcbState.lastCommittedTrace = traceData ? { ...traceData, path: traceData.path.map(p => ({ ...p })) } : null;
+}
+
+/** Undo the last committed trace: remove it from the board model, re-fetch ratsnest. */
+function pcbUndoLastTrace() {
+    const trace = pcbState.lastCommittedTrace;
+    if (!trace || !pcbState.boardModel) return;
+
+    // Remove matching trace from board model
+    const traces = pcbState.boardModel.traces || [];
+    const pathStr = JSON.stringify(trace.path);
+    const idx = traces.findIndex(t => JSON.stringify(t.path) === pathStr);
+    if (idx !== -1) {
+        traces.splice(idx, 1);
+    }
+
+    pcbState.lastCommittedTrace = null;
+    pcbState.mode = PCB_MODE.IDLE;
+    pcbRefreshRatsnest();
+    pcbDraw();
+}
+
+/** Handle keyboard shortcuts (called from app.js keydown). */
+function pcbHandleKeyDown(e) {
+    if (e.key === 'Escape') {
+        pcbCancelDraw();
+        return;
+    }
+
+    // Ctrl+Z or Cmd+Z: undo last committed trace
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        pcbUndoLastTrace();
+    }
 }
 
 // Expose globally
@@ -454,6 +650,12 @@ window.pcbHandleWheel = pcbHandleWheel;
 window.pcbHandleMouseDown = pcbHandleMouseDown;
 window.pcbHandleMouseMove = pcbHandleMouseMove;
 window.pcbHandleMouseUp = pcbHandleMouseUp;
+window.pcbHandleKeyDown = pcbHandleKeyDown;
 window.pcbSetupCanvas = pcbSetupCanvas;
 window.pcbDrawCurrent = pcbDrawCurrent;
 window.pcbScreenToWorld = pcbScreenToWorld;
+window.pcbRefreshRatsnest = pcbRefreshRatsnest;
+window.pcbSetLastCommittedTrace = pcbSetLastCommittedTrace;
+window.pcbUndoLastTrace = pcbUndoLastTrace;
+window.PCB_MODE = PCB_MODE;
+window.pcbState = pcbState;

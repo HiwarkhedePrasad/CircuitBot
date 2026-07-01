@@ -1,5 +1,3 @@
-const RENDER_MODE = "pixi"; // toggle "legacy" to use Canvas2D renderer
-
 // --- S-Expression Parser ---
 function parseSExpr(str) {
     const tokens = [];
@@ -106,45 +104,25 @@ async function resolveAndParse(sexprStr, category, accOps = []) {
     return accOps;
 }
 
-// --- Professional Renderer ---
+// --- Symbol Preview Renderer (Canvas2D) ---
 const COLORS = {
-    symbolLine: '#E34E32',   // KiCad deep red
-    symbolFill: 'rgba(255, 240, 220, 0.08)', // Faint fill for shapes
+    symbolLine: '#E34E32',
+    symbolFill: 'rgba(255, 240, 220, 0.08)',
     pinLine: '#E34E32',
-    pinName: '#00A8A8',      // Cyan/Teal
-    pinNum: '#E34E32',       // Same as line
-    propertyRef: '#00A8A8',  // Ref string
-    propertyVal: '#00A8A8',  // Value string
+    pinName: '#00A8A8',
+    pinNum: '#E34E32',
+    propertyRef: '#00A8A8',
+    propertyVal: '#00A8A8',
     text: '#888888',
 };
 
-// Zoom and pan state
 let currentOps = [];
 let currentTransform = null;
 let zoomLevel = 1;
 let panX = 0, panY = 0;
-let zoomListenersAttached = false;
-let currentSchematic = null; // Schematic instance for multi-component mode
-
-function zoomIn() {
-    zoomLevel = Math.min(zoomLevel * 1.3, 50);
-    drawCurrentMode();
-}
-
-function zoomOut() {
-    zoomLevel = Math.max(zoomLevel / 1.3, 0.05);
-    drawCurrentMode();
-}
-
-function resetZoom() {
-    zoomLevel = 1;
-    panX = 0;
-    panY = 0;
-    drawCurrentMode();
-}
 
 function getCanvasAndCtx() {
-    const canvas = document.getElementById('symbolCanvas') || document.getElementById('compCanvas');
+    const canvas = document.getElementById('symbolCanvas');
     return { canvas, ctx: canvas ? canvas.getContext('2d') : null };
 }
 
@@ -231,71 +209,6 @@ function renderOps(ops) {
     panY = 0;
     
     drawSymbol();
-    attachZoomHandlers();
-}
-
-let isDragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-
-function attachZoomHandlers() {
-    if (zoomListenersAttached) return;
-    zoomListenersAttached = true;
-    
-    const canvas = document.getElementById('compCanvas');
-    
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
-    canvas.addEventListener('mousedown', handleMouseDown);
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mouseleave', handleMouseUp);
-}
-
-function handleMouseDown(e) {
-    if (!currentTransform) return;
-    isDragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    e.target.style.cursor = 'grabbing';
-}
-
-function handleMouseMove(e) {
-    if (!isDragging || !currentTransform) return;
-    const dx = e.clientX - dragStartX;
-    const dy = e.clientY - dragStartY;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    panX += dx;
-    panY += dy;
-    drawCurrentMode();
-}
-
-function handleMouseUp(e) {
-    isDragging = false;
-    if (e && e.target) e.target.style.cursor = 'grab';
-}
-
-function handleWheel(e) {
-    e.preventDefault();
-    if (!currentTransform) return;
-    
-    const { canvas } = getCanvasAndCtx();
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
-    
-    const t = currentTransform;
-    const oldZoom = zoomLevel;
-    const delta = -e.deltaY;
-    const factor = delta > 0 ? 1.1 : 1 / 1.1;
-    const newZoom = Math.min(Math.max(oldZoom * factor, 0.05), 50);
-    
-    const r = newZoom / oldZoom;
-    panX = r * panX + (1 - r) * (mouseX - t.cx);
-    panY = r * panY + (1 - r) * (mouseY - t.cy);
-    zoomLevel = newZoom;
-    
-    drawCurrentMode();
 }
 
 function setupCanvasSize() {
@@ -307,10 +220,7 @@ function setupCanvasSize() {
     canvas.height = rect.height * dpr;
 }
 
-// Generic label collision solver: measures every visible label's real
-// rendered size (ctx.measureText) and resolves AABB overlaps by pushing
-// labels apart along the axis perpendicular to their pin stub (or vertically
-// for properties). No fixed thresholds — works for any pin density.
+// Generic label collision solver
 function resolveLabelCollisions(ops, ctx) {
     const labels = [];
 
@@ -369,7 +279,6 @@ function resolveLabelCollisions(ops, ctx) {
         }
     });
 
-    // Iterative AABB separation, capped at 10 passes
     const PUSH = 0.45;
     for (let pass = 0; pass < 10; pass++) {
         let moved = false;
@@ -400,8 +309,6 @@ function resolveLabelCollisions(ops, ctx) {
     const leaders = [];
     labels.forEach(l => {
         if (l.dx || l.dy) offsets.set(l.op, { dx: l.dx, dy: l.dy });
-        // EDA convention: a label pushed further than ~one stub length from
-        // its pin gets a leader line connecting it back to the pin.
         if (l.anchorX !== null && Math.hypot(l.dx, l.dy) > l.maxLead) {
             leaders.push({ x1: l.anchorX, y1: l.anchorY, x2: l.x + l.dx, y2: l.y + l.dy });
         }
@@ -418,13 +325,11 @@ function drawSymbol() {
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Apply combined transform with zoom and pan
     ctx.save();
     ctx.translate(t.cx + panX, t.cy + panY);
     ctx.scale(t.baseScale * zoomLevel, -t.baseScale * zoomLevel);
     ctx.translate(-t.midX, -t.midY);
     
-    // Sort ops: fills/shapes first, then pins, then text
     const order = { 'rectangle': 1, 'circle': 1, 'arc': 1, 'polyline': 1, 'pin': 2, 'property': 3, 'text': 3 };
     ops.sort((a, b) => (order[a[0]] || 0) - (order[b[0]] || 0));
 
@@ -435,7 +340,7 @@ function drawSymbol() {
         ctx.strokeStyle = COLORS.symbolLine;
         ctx.fillStyle = 'transparent';
         
-        let width = 0.254; // default KiCad width
+        let width = 0.254;
         if (stroke) {
             const wAttr = getAttr(stroke, 'width');
             if (wAttr) width = parseFloat(wAttr[1]);
@@ -450,13 +355,13 @@ function drawSymbol() {
     }
 
     function getFontSize(op) {
-        let size = 1.27; // default mm
+        let size = 1.27;
         const effects = getAttr(op, 'effects');
         if (effects) {
             const font = getAttr(effects, 'font');
             if (font) {
                 const s = getAttr(font, 'size');
-                if (s) size = parseFloat(s[2]); // Y size
+                if (s) size = parseFloat(s[2]);
             }
         }
         return size;
@@ -465,11 +370,8 @@ function drawSymbol() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // --- Generic label collision avoidance (measured AABB boxes) ---
     const { offsets: labelOffsets, leaders: labelLeaders } = resolveLabelCollisions(ops, ctx);
 
-    // --- Pin name deduplication ---
-    // For pins with same name at close positions, only render once
     const renderedPinNames = [];
 
     ops.forEach(op => {
@@ -556,7 +458,6 @@ function drawSymbol() {
                     let nx = ex, ny = ey;
                     const nameText = nameNode[1];
 
-                    // Deduplication: skip if same name already rendered at nearby position
                     let shouldRender = true;
                     for (const prev of renderedPinNames) {
                         if (prev.name === nameText && Math.abs(ex - prev.x) < 3.0 && Math.abs(ey - prev.y) < 3.0) {
@@ -585,7 +486,6 @@ function drawSymbol() {
                             ctx.fillText(nameText, 0, 0);
                             ctx.restore();
                         } else if (angDeg === 90 || angDeg === 270) {
-                            // Top/bottom pins: write name vertically (rotated 90°)
                             nx -= 0.8;
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
@@ -624,7 +524,6 @@ function drawSymbol() {
             const at = getAttr(op, 'at');
             const hide = getAttr(op, 'hide');
             
-            // Do NOT render hidden properties!
             if (at && (!hide || hide[1] !== 'yes')) {
                 const txt = type === 'property' ? op[2] : op[1];
                 if (txt !== '"~"') {
@@ -632,7 +531,6 @@ function drawSymbol() {
                     const x = parseFloat(at[1]), y = parseFloat(at[2]);
                     const ang = parseFloat(at[3] || 0);
                     
-                    // Apply collision-resolved offset
                     const lo = labelOffsets.get(op) || { dx: 0, dy: 0 };
                     const ox = lo.dx;
                     const oy = lo.dy;
@@ -658,8 +556,6 @@ function drawSymbol() {
         ctx.restore();
     });
     
-    // Leader lines: labels pushed far from their pin get a thin dashed
-    // connector back to the pin (standard EDA convention for dense parts)
     if (labelLeaders.length) {
         ctx.save();
         ctx.strokeStyle = COLORS.pinNum;
@@ -675,329 +571,4 @@ function drawSymbol() {
     }
 
     ctx.restore();
-}
-
-// --- Render a single component at a specific offset position ---
-function renderComponentAt(ctx, ops, offsetX, offsetY, globalOpState) {
-    const { renderedPinNames: gpn } = globalOpState;
-
-    ops.forEach(op => {
-        const type = op[0];
-        ctx.save();
-
-        if (type === 'rectangle') {
-            const start = getAttr(op, 'start');
-            const end = getAttr(op, 'end');
-            if (start && end) {
-                ctx.strokeStyle = COLORS.symbolLine;
-                ctx.fillStyle = COLORS.symbolFill;
-                let width = 0.254;
-                const stroke = getAttr(op, 'stroke');
-                if (stroke) { const wAttr = getAttr(stroke, 'width'); if (wAttr) width = parseFloat(wAttr[1]); }
-                ctx.lineWidth = width;
-                const fill = getAttr(op, 'fill');
-                if (fill && fill[1] === '(type background)') ctx.fillStyle = COLORS.symbolFill;
-                else if (fill && fill[1] === '(type solid)') ctx.fillStyle = COLORS.symbolLine;
-                else ctx.fillStyle = 'transparent';
-
-                const x1 = parseFloat(start[1]) + offsetX, y1 = parseFloat(start[2]) + offsetY;
-                const x2 = parseFloat(end[1]) + offsetX, y2 = parseFloat(end[2]) + offsetY;
-                const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
-                const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
-                if (ctx.fillStyle !== 'transparent') ctx.fillRect(rx, ry, rw, rh);
-                ctx.strokeRect(rx, ry, rw, rh);
-            }
-        } else if (type === 'polyline') {
-            const pts = getAttr(op, 'pts');
-            if (pts) {
-                ctx.strokeStyle = COLORS.symbolLine;
-                ctx.fillStyle = 'transparent';
-                let width = 0.254;
-                const stroke = getAttr(op, 'stroke');
-                if (stroke) { const wAttr = getAttr(stroke, 'width'); if (wAttr) width = parseFloat(wAttr[1]); }
-                ctx.lineWidth = width;
-                const fill = getAttr(op, 'fill');
-                if (fill && fill[1] === '(type background)') ctx.fillStyle = COLORS.symbolFill;
-                else if (fill && fill[1] === '(type solid)') ctx.fillStyle = COLORS.symbolLine;
-
-                ctx.beginPath();
-                let first = true;
-                for (let i = 1; i < pts.length; i++) {
-                    if (pts[i][0] === 'xy') {
-                        const x = parseFloat(pts[i][1]) + offsetX, y = parseFloat(pts[i][2]) + offsetY;
-                        if (first) { ctx.moveTo(x, y); first = false; } else { ctx.lineTo(x, y); }
-                    }
-                }
-                if (ctx.fillStyle !== 'transparent') ctx.fill();
-                ctx.stroke();
-            }
-        } else if (type === 'circle') {
-            const center = getAttr(op, 'center');
-            const rad = getAttr(op, 'radius');
-            if (center && rad) {
-                ctx.strokeStyle = COLORS.symbolLine;
-                ctx.fillStyle = 'transparent';
-                let width = 0.254;
-                const stroke = getAttr(op, 'stroke');
-                if (stroke) { const wAttr = getAttr(stroke, 'width'); if (wAttr) width = parseFloat(wAttr[1]); }
-                ctx.lineWidth = width;
-                const fill = getAttr(op, 'fill');
-                if (fill && fill[1] === '(type background)') ctx.fillStyle = COLORS.symbolFill;
-                else if (fill && fill[1] === '(type solid)') ctx.fillStyle = COLORS.symbolLine;
-
-                ctx.beginPath();
-                ctx.arc(parseFloat(center[1]) + offsetX, parseFloat(center[2]) + offsetY, parseFloat(rad[1]), 0, Math.PI * 2);
-                if (ctx.fillStyle !== 'transparent') ctx.fill();
-                ctx.stroke();
-            }
-        } else if (type === 'arc') {
-            const start = getAttr(op, 'start');
-            const end = getAttr(op, 'end');
-            const mid = getAttr(op, 'mid');
-            if (start && end && mid) {
-                ctx.strokeStyle = COLORS.symbolLine;
-                let width = 0.254;
-                const stroke = getAttr(op, 'stroke');
-                if (stroke) { const wAttr = getAttr(stroke, 'width'); if (wAttr) width = parseFloat(wAttr[1]); }
-                ctx.lineWidth = width;
-
-                ctx.beginPath();
-                ctx.moveTo(parseFloat(start[1]) + offsetX, parseFloat(start[2]) + offsetY);
-                ctx.quadraticCurveTo(parseFloat(mid[1]) + offsetX, parseFloat(mid[2]) + offsetY, parseFloat(end[1]) + offsetX, parseFloat(end[2]) + offsetY);
-                ctx.stroke();
-            }
-        } else if (type === 'pin') {
-            const at = getAttr(op, 'at');
-            const lenNode = getAttr(op, 'length');
-            if (at && lenNode) {
-                const x = parseFloat(at[1]) + offsetX, y = parseFloat(at[2]) + offsetY;
-                const len = parseFloat(lenNode[1]);
-                const angDeg = parseFloat(at[3] || 0);
-                const ang = angDeg * Math.PI / 180;
-
-                ctx.strokeStyle = COLORS.pinLine;
-                ctx.lineWidth = 0.254;
-                ctx.beginPath();
-                ctx.moveTo(x, y);
-                const ex = x + Math.cos(ang) * len;
-                const ey = y + Math.sin(ang) * len;
-                ctx.lineTo(ex, ey);
-                ctx.stroke();
-
-                const nameNode = getAttr(op, 'name');
-                const numNode = getAttr(op, 'number');
-                const sizeNode = nameNode ? getAttr(nameNode, 'effects') : null;
-                let fontSize = 1.27;
-                if (sizeNode) { const font = getAttr(sizeNode, 'font'); if (font) { const s = getAttr(font, 'size'); if (s) fontSize = parseFloat(s[2]); } }
-
-                ctx.save();
-                ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
-
-                if (nameNode && nameNode[1] !== '"~"') {
-                    ctx.fillStyle = COLORS.pinName;
-                    let nx = ex, ny = ey;
-                    const nameText = nameNode[1];
-
-                    let shouldRender = true;
-                    for (const prev of gpn) {
-                        if (prev.name === nameText && Math.abs(ex - prev.x) < 3.0 && Math.abs(ey - prev.y) < 3.0) {
-                            shouldRender = false; break;
-                        }
-                    }
-
-                    if (shouldRender) {
-                        if (angDeg === 0) { nx += 0.5; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.save(); ctx.translate(nx, ny); ctx.scale(1, -1); ctx.fillText(nameText, 0, 0); ctx.restore(); }
-                        else if (angDeg === 180) { nx -= 0.5; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.save(); ctx.translate(nx, ny); ctx.scale(1, -1); ctx.fillText(nameText, 0, 0); ctx.restore(); }
-                        else if (angDeg === 90 || angDeg === 270) { nx -= 0.8; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.save(); ctx.translate(nx, ny); ctx.scale(1, -1); ctx.rotate(-Math.PI / 2); ctx.fillText(nameText, 0, 0); ctx.restore(); }
-                        gpn.push({ name: nameText, x: ex, y: ey });
-                    }
-                }
-
-                if (numNode && numNode[1] !== '"~"') {
-                    ctx.fillStyle = COLORS.pinNum;
-                    let numx = x, numy = y;
-                    if (angDeg === 0) { numx = x + len / 2; numy = y + 0.3; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; }
-                    else if (angDeg === 180) { numx = x - len / 2; numy = y + 0.3; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; }
-                    else if (angDeg === 90) { numx = x - 0.3; numy = y + len / 2; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; }
-                    else if (angDeg === 270) { numx = x - 0.3; numy = y - len / 2; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; }
-                    ctx.save();
-                    ctx.translate(numx, numy);
-                    ctx.scale(1, -1);
-                    ctx.fillText(numNode[1], 0, 0);
-                    ctx.restore();
-                }
-                ctx.restore();
-            }
-        } else if (type === 'property' || type === 'text') {
-            const at = getAttr(op, 'at');
-            const hide = getAttr(op, 'hide');
-            if (at && (!hide || hide[1] !== 'yes')) {
-                const txt = type === 'property' ? op[2] : op[1];
-                if (txt !== '"~"') {
-                    ctx.save();
-                    const x = parseFloat(at[1]) + offsetX, y = parseFloat(at[2]) + offsetY;
-                    const ang = parseFloat(at[3] || 0);
-                    ctx.translate(x, y);
-                    ctx.scale(1, -1);
-                    if (ang !== 0) ctx.rotate(-ang * Math.PI / 180);
-                    ctx.fillStyle = (op[1] === '"Reference"') ? COLORS.propertyRef : COLORS.propertyVal;
-                    if (type === 'text') ctx.fillStyle = COLORS.text;
-                    let fontSize = 1.27;
-                    const effects = getAttr(op, 'effects');
-                    if (effects) { const font = getAttr(effects, 'font'); if (font) { const s = getAttr(font, 'size'); if (s) fontSize = parseFloat(s[2]); } }
-                    ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(txt, 0, 0);
-                    ctx.restore();
-                }
-            }
-        }
-        ctx.restore();
-    });
-}
-
-// --- Render full schematic (all components) ---
-function drawSchematic() {
-    if (!currentSchematic || !currentTransform || currentSchematic.components.length === 0) return;
-
-    const { canvas, ctx } = getCanvasAndCtx();
-    const t = currentTransform;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw grid
-    Schematic.drawGrid(ctx, t, zoomLevel, canvas.width, canvas.height);
-
-    // Apply transform
-    ctx.save();
-    ctx.translate(t.cx + panX, t.cy + panY);
-    ctx.scale(t.baseScale * zoomLevel, -t.baseScale * zoomLevel);
-    ctx.translate(-t.midX, -t.midY);
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Shared pin name deduplication state across all components
-    const globalOpState = { renderedPinNames: [] };
-
-    // Render each component at its position
-    currentSchematic.components.forEach(comp => {
-        renderComponentAt(ctx, comp.ops, comp.x, comp.y, globalOpState);
-    });
-
-    // Render wires (from auto-routing)
-    if (currentSchematic.wirePaths) {
-        ctx.strokeStyle = '#00A800';
-        ctx.lineWidth = 0.254;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        currentSchematic.wirePaths.forEach(wire => {
-            if (!wire.path || wire.path.length < 2) return;
-            ctx.beginPath();
-            ctx.moveTo(wire.path[0].x, wire.path[0].y);
-            for (let i = 1; i < wire.path.length; i++) {
-                const dx = Math.abs(wire.path[i].x - wire.path[i-1].x);
-                const dy = Math.abs(wire.path[i].y - wire.path[i-1].y);
-                if (dx > 0.001 && dy > 0.001) {
-                    continue;  // skip diagonal segment — should never happen
-                }
-                ctx.lineTo(wire.path[i].x, wire.path[i].y);
-            }
-            ctx.stroke();
-        });
-    }
-
-    // Render junctions (WireBender dots)
-    if (currentSchematic.junctionPoints) {
-        ctx.fillStyle = '#00A800';
-        currentSchematic.junctionPoints.forEach(j => {
-            ctx.beginPath();
-            ctx.arc(j.x, j.y, 0.5, 0, Math.PI * 2);
-            ctx.fill();
-        });
-    }
-
-    // Render power/GND symbols (net labels instead of routed power wires)
-    if (currentSchematic.powerLabels) {
-        const STUB = 2.54;
-        currentSchematic.powerLabels.forEach(lbl => {
-            const dir = lbl.dir || 'right';
-            const dx = dir === 'right' ? 1 : dir === 'left' ? -1 : 0;
-            const dy = dir === 'up' ? 1 : dir === 'down' ? -1 : 0;
-            const ex = lbl.x + dx * STUB;
-            const ey = lbl.y + dy * STUB;
-            const isGnd = lbl.net === 'GND';
-
-            ctx.strokeStyle = isGnd ? '#4488ff' : '#cc4444';
-            ctx.lineWidth = 0.254;
-
-            // Stub from pin to symbol
-            ctx.beginPath();
-            ctx.moveTo(lbl.x, lbl.y);
-            ctx.lineTo(ex, ey);
-            ctx.stroke();
-
-            if (isGnd) {
-                // GND: three shrinking bars perpendicular to the stub
-                const px = -dy, py = dx; // perpendicular
-                for (let i = 0; i < 3; i++) {
-                    const w = 1.27 - i * 0.42;
-                    const ox = ex + dx * i * 0.64;
-                    const oy = ey + dy * i * 0.64;
-                    ctx.beginPath();
-                    ctx.moveTo(ox - px * w, oy - py * w);
-                    ctx.lineTo(ox + px * w, oy + py * w);
-                    ctx.stroke();
-                }
-            } else {
-                // Power: bar + net name
-                const px = -dy, py = dx;
-                ctx.beginPath();
-                ctx.moveTo(ex - px * 1.27, ey - py * 1.27);
-                ctx.lineTo(ex + px * 1.27, ey + py * 1.27);
-                ctx.stroke();
-
-                ctx.save();
-                ctx.translate(ex + dx * 0.8, ey + dy * 0.8);
-                ctx.scale(1, -1); // un-flip Y for text
-                ctx.fillStyle = '#cc4444';
-                ctx.font = '1.6px monospace';
-                ctx.textAlign = dir === 'left' ? 'right' : 'left';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(lbl.net, 0, 0);
-                ctx.restore();
-            }
-        });
-    }
-
-    ctx.restore();
-}
-
-function enterSchematicMode() {
-    if (!currentSchematic || currentSchematic.components.length === 0) return;
-
-    currentSchematic.mode = 'schematic';
-    const { canvas } = getCanvasAndCtx();
-    setupCanvasSize();
-    const transform = currentSchematic.computeTransform(canvas.width, canvas.height);
-    currentTransform = transform;
-    zoomLevel = 1;
-    panX = 0;
-    panY = 0;
-
-    drawSchematic();
-    attachZoomHandlers();
-}
-
-function exitSchematicMode() {
-    currentSchematic.mode = 'single';
-}
-
-function drawCurrentMode() {
-    if (currentSchematic && currentSchematic.mode === 'schematic' && currentSchematic.components.length > 0) {
-        drawSchematic();
-    } else if (currentOps.length > 0) {
-        drawSymbol();
-    }
 }

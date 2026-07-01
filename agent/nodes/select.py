@@ -201,6 +201,33 @@ def select_node(state, config):
         best_score = best.get("score", 0)
         best_just = (best.get("justification") or "").upper()
         if best_score >= 4 and "SKIPPED" not in best_just:
+            # ── Functional-duplicate guard ──────────────────────────────
+            # Prevent selecting a second IC from the same library family
+            # (e.g. MCU_Espressif:ESP32-C3 when MCU_Espressif:ESP32-S3 is
+            # already selected for a different subsystem).
+            _best_id = best["id_str"]
+            _bi = _best_id.rfind(":")
+            _best_lib = _best_id[:_bi] if _bi >= 1 else ""
+            _FUNCTIONAL_DEDUP_LIBS = frozenset([
+                "MCU_Espressif", "MCU_ST", "MCU_Microchip", "MCU_Nordic",
+                "MCU_NXP", "MCU_Texas", "MCU_Infineon",
+                "RF_Module", "RF",
+                "Interface_USB", "Interface_UART",
+                "Regulator_Linear", "Regulator_Switching",
+            ])
+            if _best_lib in _FUNCTIONAL_DEDUP_LIBS:
+                existing_match = next(
+                    (s for s in selected
+                     if s.get("id_str", "").startswith(f"{_best_lib}:")
+                     and not _is_passive(s.get("id_str", ""), s.get("category", ""))),
+                    None
+                )
+                if existing_match:
+                    _emit(config, "agent:log", {
+                        "message": f"  Skipped {_best_id} for '{sub.get('subsystem', '')}' "
+                                   f"— {_best_lib} already selected: {existing_match['id_str']}"
+                    })
+                    continue
             selected.append({
                 "id_str": best["id_str"],
                 "ref_des": "",  # assigned in dedup step

@@ -36,6 +36,7 @@ def schematic_repair_node(state, config):
     pending = []      # {pin, net} — wiring requests for the routing node
     add_to_power = [] # extra PWR_FLAG entries
     skipped = []      # pins we can't fix (not in any existing net)
+    affected_nets: set[str] = set()  # net names affected by repair
 
     for f in fixable:
         pin_key = f.get("pin_key", "")
@@ -63,6 +64,7 @@ def schematic_repair_node(state, config):
             if has_physical_wire:
                 continue
             pending.append({"pin": pin_key, "net": found_net})
+            affected_nets.add(found_net)
 
         elif ftype == "power_pin_not_driven":
             if has_physical_wire:
@@ -77,6 +79,7 @@ def schematic_repair_node(state, config):
             if has_physical_wire:
                 continue
             pending.append({"pin": pin_key, "net": found_net})
+            affected_nets.add(found_net)
 
     _emit(config, "agent:log", {
         "message": (
@@ -91,5 +94,6 @@ def schematic_repair_node(state, config):
 
     return {
         "_erc_pending_connections": pending,
+        "_erc_affected_nets": sorted(affected_nets),
         "power_pins": new_power,
     }

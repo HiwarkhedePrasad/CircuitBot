@@ -10,6 +10,12 @@ from agent.nodes.pcb_layout import pcb_layout_node
 from agent.nodes.schematic_audit import schematic_audit_node
 from agent.nodes.ask_pcb_approval import ask_pcb_approval_node
 from agent.nodes.schematic_repair import schematic_repair_node
+from agent.nodes.symbol_validate import symbol_validate_node
+from agent.nodes.structural_net_validate import structural_net_validate_node
+from agent.nodes.structural_net_repair import structural_net_repair_node
+from agent.nodes.power_net_repair import power_net_repair_node
+from agent.nodes.connectivity_validate import connectivity_validate_node
+from agent.nodes.connectivity_repair import connectivity_repair_node
 
 __all__ = [
     "analyze_node", "research_node", "select_node", "validate_node",
@@ -17,4 +23,8 @@ __all__ = [
     "placement_node", "routing_node", "pcb_layout_node",
     "schematic_audit_node", "ask_pcb_approval_node",
     "schematic_repair_node",
+    "symbol_validate_node",
+    "structural_net_validate_node", "structural_net_repair_node",
+    "power_net_repair_node",
+    "connectivity_validate_node", "connectivity_repair_node",
 ]

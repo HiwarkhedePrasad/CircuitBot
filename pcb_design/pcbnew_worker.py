@@ -155,7 +155,9 @@ def _create_board(payload: dict) -> dict:
         if not fp_path or not os.path.isfile(fp_path):
             continue
 
-        footprint = pcbnew.PCB_IO.Load(fp_path)
+        lib_dir = os.path.dirname(fp_path)
+        fp_name = os.path.splitext(os.path.basename(fp_path))[0]
+        footprint = pcbnew.FootprintLoad(lib_dir, fp_name)
 
         ref = comp.get("ref", comp.get("ref_des", ""))
         footprint.SetReference(ref)
@@ -335,7 +337,6 @@ def _add_gnd_pour(board, net_index):
         zone = pcbnew.ZONE(board)
         zone.SetLayer(_layer_id(layer_name))
         zone.SetNet(gnd_net)
-        zone.SetPriority(0)
         zone.SetIslandRemovalMode(True)
         zone.SetMinIslandArea(1000000)  # 1 mm² in nm²
 

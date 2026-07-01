@@ -41,11 +41,14 @@ SAT_H_GAP      = 12.70
 SAT_V_GAP      = 3.81
 PIN_STUB_LEN   = 2.54          # one grid step out from the symbol body
 
-MAX_WIRE_MANHATTAN = 200.0     # HARD cap — anything longer is DROPPED
+MAX_WIRE_MANHATTAN = 250.0     # HARD cap — anything longer is DROPPED
 MAX_COMPS_PER_COLUMN = 4       # grid placement: max components per column
-MAX_COLLISIONS = 5             # allow up to 5 component-body intersections (exit source, enter target, plus 1-3 intervening)
-BBOX_CLEARANCE = 1.27          # extra clearance margin around symbol bodies (1 grid step)
+MAX_COLLISIONS = 0             # component bodies are hard routing obstacles
+BBOX_CLEARANCE = 0.635         # extra clearance margin around symbol bodies (half grid step)
 MAX_SAT_DISTANCE = 30.0        # HARD cap: satellites must be within 30mm Manhattan of parent center
+# For point-to-point nets (only 2 pins) allow a longer wire — a long wire
+# is better than a missing connection.
+MAX_WIRE_PT2PT = 350.0
 
 MATRIX_SIZE   = 300
 MATRIX_OFFSET = 150
@@ -204,6 +207,9 @@ _IDSTR_HINTS: dict[str, str] = {
 _TIER_RULES: list[tuple[str, int]] = [
     ('CONNECTOR',  0), ('USB',       0), ('BATTERY', 0),
     ('FUSE',       0), ('POLYFUSE',  0), ('SWITCH',  0),
+    ('SPST',       0), ('SPDT',      0), ('TACTILE', 0),
+    ('PUSHBUTTON', 0), ('DIP',       0), ('ROCKER',  0),
+    ('TOGGLE',     0), ('SLIDE',     0),
     ('LDO',        1), ('REGULATOR', 1), ('BUCK',    1),
     ('BOOST',      1), ('CONVERTER', 1),
     ('MCU',        2), ('PROCESSOR', 2), ('ESP32',   2),
@@ -382,12 +388,31 @@ def _path_collisions(path: list[tuple[float, float]],
     Uses BBOX_CLEARANCE as margin so wires are routed with a safe
     keepout gap around symbol bodies, not just their bare outlines.
 
-    For the source and target components, we only ignore collisions on
-    the first and last segments of the path respectively, preventing wires
-    from routing through their own components.
+    A segment is exempted from collision with the source component if
+    either of its endpoints lies inside the source body+clearance zone
+    (the wire is still exiting the component).  Likewise for the target:
+    segments whose endpoints are inside the target body+clearance are
+    exempted (the wire is entering).
+
+    Any other segment that intersects ANY component body (including
+    src/tgt on intermediate segments that have fully exited/not-yet-entered)
+    is counted.  This prevents wires from routing through their own or
+    their partner's component body on free-space segments.
     """
     if len(path) < 2:
         return 0
+
+    def _point_in_comp_clearance(px: float, py: float, c: dict) -> bool:
+        bbox = c.get('bbox') or c.get('geom_bbox')
+        if not bbox:
+            return False
+        margin = BBOX_CLEARANCE
+        left   = c['x'] + bbox['x'] - margin
+        right  = left + bbox['w'] + 2 * margin
+        top    = c['y'] + bbox['y'] - margin
+        bottom = top + bbox['h'] + 2 * margin
+        return left <= px <= right and top <= py <= bottom
+
     hits = 0
     for i in range(len(path) - 1):
         p1, p2 = path[i], path[i + 1]
@@ -395,13 +420,16 @@ def _path_collisions(path: list[tuple[float, float]],
             continue
         for c in components:
             ref = c['ref_des']
-            # Allow the first segment (connection to source pin) to touch/intersect the source component
-            if ref == src_ref and i == 0:
-                continue
-            # Allow the last segment (connection to target pin) to touch/intersect the target component
-            if ref == tgt_ref and i == len(path) - 2:
-                continue
-                
+            # Exempt segment if either endpoint is still inside the
+            # source component (wire exiting) or already inside the
+            # target component (wire entering).
+            if ref == src_ref:
+                if _point_in_comp_clearance(*p1, c) or _point_in_comp_clearance(*p2, c):
+                    continue
+            if ref == tgt_ref:
+                if _point_in_comp_clearance(*p1, c) or _point_in_comp_clearance(*p2, c):
+                    continue
+
             bbox = c.get('bbox') or c.get('geom_bbox')
             if not bbox:
                 continue
@@ -559,6 +587,136 @@ def _candidate_U(s_pos, s_stub, t_pos, t_stub, components):
     return cands
 
 
+def _astar_orthogonal(
+    start: tuple[float, float],
+    goal: tuple[float, float],
+    components: list[dict],
+    src_ref: str,
+    tgt_ref: str,
+    max_length: float,
+    blocked_vertices: set[tuple[float, float]],
+) -> list[tuple[float, float]] | None:
+    """Bounded orthogonal A* over the schematic grid.
+
+    Builds a grid at GRID_SIZE resolution covering the bounding box of
+    start/goal plus margin.  Cells inside component bodies (with
+    BBOX_CLEARANCE) are marked blocked.  Only the source and target
+    components are exempted so the wire can leave/arrive.
+
+    Returns a list of waypoints (already snapped) or None if no path
+    found within the length cap.
+    """
+    import heapq
+    margin = 200.0
+    min_x = min(start[0], goal[0]) - margin
+    max_x = max(start[0], goal[0]) + margin
+    min_y = min(start[1], goal[1]) - margin
+    max_y = max(start[1], goal[1]) + margin
+
+    gs = GRID_SIZE
+    cols = max(3, int(round((max_x - min_x) / gs)))
+    rows = max(3, int(round((max_y - min_y) / gs)))
+    max_x = min_x + cols * gs
+    max_y = min_y + rows * gs
+
+    def _to_grid(wx: float, wy: float) -> tuple[int, int]:
+        return (int(round((wx - min_x) / gs)),
+                int(round((wy - min_y) / gs)))
+
+    def _to_world(gx: int, gy: int) -> tuple[float, float]:
+        return (_snap(min_x + gx * gs), _snap(min_y + gy * gs))
+
+    # Build obstacle set — skip source/target so the A* can freely exit/enter.
+    blocked_cells: set[tuple[int, int]] = set()
+    for c in components:
+        ref = c['ref_des']
+        if ref in (src_ref, tgt_ref):
+            continue
+        bbox = c.get('bbox') or c.get('geom_bbox')
+        if not bbox:
+            continue
+        left   = c['x'] + bbox['x'] - BBOX_CLEARANCE
+        right  = left + bbox['w'] + 2 * BBOX_CLEARANCE
+        top    = c['y'] + bbox['y'] - BBOX_CLEARANCE
+        bottom = top + bbox['h'] + 2 * BBOX_CLEARANCE
+        gx1, gy1 = _to_grid(left, top)
+        gx2, gy2 = _to_grid(right, bottom)
+        for gx in range(max(0, gx1), min(cols, gx2 + 1)):
+            for gy in range(max(0, gy1), min(rows, gy2 + 1)):
+                blocked_cells.add((gx, gy))
+
+    gs_pos = _to_grid(*start)
+    gg_pos = _to_grid(*goal)
+
+    if gs_pos == gg_pos:
+        return []
+
+    if not (0 <= gs_pos[0] < cols and 0 <= gs_pos[1] < rows and
+            0 <= gg_pos[0] < cols and 0 <= gg_pos[1] < rows):
+        return None
+
+    # Unblock the stub cells so the A* can start/end there.
+    blocked_cells.discard(gs_pos)
+    blocked_cells.discard(gg_pos)
+
+    # Unblock ALL four neighbours of the start and goal cells, even if they
+    # are inside the source/target component body.  This gives the A* a way
+    # to leave the source and enter the target.  The first and last segments
+    # of the final path inside these bodies are exempted by _path_collisions.
+    for origin in (gs_pos, gg_pos):
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = origin[0] + dx, origin[1] + dy
+            if 0 <= nx < cols and 0 <= ny < rows:
+                blocked_cells.discard((nx, ny))
+
+    # Also block vertices already occupied by other traces
+    for vx, vy in blocked_vertices:
+        gx, gy = _to_grid(vx, vy)
+        if 0 <= gx < cols and 0 <= gy < rows:
+            blocked_cells.add((gx, gy))
+
+    max_steps = int(max_length / gs) * 4
+
+    def _heuristic(gx, gy):
+        return abs(gx - gg_pos[0]) + abs(gy - gg_pos[1])
+
+    open_set = [(0, gs_pos)]
+    came_from: dict[tuple[int, int], tuple[int, int]] = {}
+    g_score: dict[tuple[int, int], float] = {gs_pos: 0}
+    f_score: dict[tuple[int, int], float] = {gs_pos: _heuristic(*gs_pos)}
+
+    while open_set:
+        _, current = heapq.heappop(open_set)
+
+        if current == gg_pos:
+            # Reconstruct
+            path_grid = []
+            while current in came_from:
+                path_grid.append(current)
+                current = came_from[current]
+            path_grid.append(gs_pos)
+            path_grid.reverse()
+            waypoints = [_to_world(gx, gy) for gx, gy in path_grid]
+            return _clean_path(waypoints)
+
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = current[0] + dx, current[1] + dy
+            if not (0 <= nx < cols and 0 <= ny < rows):
+                continue
+            if (nx, ny) in blocked_cells:
+                continue
+            neighbor = (nx, ny)
+            tentative = g_score[current] + 1
+            if tentative < g_score.get(neighbor, float('inf')):
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative
+                f = tentative + _heuristic(nx, ny)
+                f_score[neighbor] = f
+                heapq.heappush(open_set, (f, neighbor))
+
+    return None
+
+
 def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
                blocked_vertices: set[tuple[float, float]] | None = None):
     """Generate, score, and pick the best orthogonal path.
@@ -606,11 +764,10 @@ def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
             best_score = score
             best_path = path
 
-    # Relaxed second pass: if strict routing found nothing, retry with
-    # double the collision limit. This prevents silent wire drops for
-    # moderately dense schematics where every path clips a few bodies.
+    # Relaxed second pass: permit longer detours, but never relax the
+    # component-body collision guarantee.
     if best_path is None:
-        relaxed_collisions = MAX_COLLISIONS * 2
+        relaxed_collisions = MAX_COLLISIONS
         for raw in candidates:
             path = _clean_path(raw)
             if len(path) < 2:
@@ -677,6 +834,43 @@ def _make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
             if score < best_score:
                 best_score = score
                 best_path = new_path
+
+    # Fourth pass: bounded orthogonal A* — only when simple candidates fail
+    if best_path is None:
+        astar_path = _astar_orthogonal(
+            s_stub, t_stub, components, src_ref, tgt_ref,
+            MAX_WIRE_MANHATTAN * 1.5, blocked,
+        )
+        if astar_path:
+            path = [s_pos] + astar_path + [t_pos]
+            path = _clean_path(path)
+            if len(path) >= 2:
+                length = _path_length(path)
+                if length <= MAX_WIRE_MANHATTAN * 1.5:
+                    collisions = _path_collisions(path, components, src_ref, tgt_ref)
+                    if collisions <= MAX_COLLISIONS:
+                        best_path = path
+
+    # Fifth pass: LAST-RESORT — allow exactly 1 collision for long wires.
+    # A wire that grazes one component body is far better than a missing
+    # connection. Only used when every zero-collision candidate failed.
+    if best_path is None:
+        relaxed_collisions = max(MAX_COLLISIONS + 1, 1)
+        for raw in candidates:
+            path = _clean_path(raw)
+            if len(path) < 2:
+                continue
+            length = _path_length(path)
+            if length > MAX_WIRE_MANHATTAN * 1.5:
+                continue
+            collisions = _path_collisions(path, components, src_ref, tgt_ref)
+            if collisions > relaxed_collisions:
+                continue
+            bends = _bend_count(path)
+            score = collisions * 10000 + length + bends * 2
+            if score < best_score:
+                best_score = score
+                best_path = path
 
     return best_path
 
@@ -1029,6 +1223,14 @@ class BackendLayoutEngine:
         if PLACEMENT_MODE != "blocks_v2":
             n_moved = self._enforce_satellite_distance(parent_map)
 
+        # Convert component positions to symbol origins so that routing,
+        # export, and collision detection all use a consistent reference.
+        # Placement algorithms may store bbox-left-edge or spring-center
+        # positions; _seg_intersects_bbox and _abs assume symbol origin.
+        for c in self.components:
+            c['x'] = _snap(c['x'] - c['bbox']['x'])
+            c['y'] = _snap(c['y'] - c['bbox']['y'])
+
     def _build_parent_map(self, netlist: list) -> dict[str, str]:
         scores: dict[tuple[str, str], int] = {}
         for conn in netlist:
@@ -1119,37 +1321,47 @@ class BackendLayoutEngine:
 
         return n_moved
 
-    def _remove_overlaps(self, max_iters: int = 20) -> int:
+    def _remove_overlaps(self, max_iters: int = 100) -> int:
         """Push apart overlapping component bounding boxes.
 
         After spring layout (or legacy placement), components may overlap.
-        This uses a simple force-directed repulsion: each iteration
-        identifies all overlapping pairs and pushes them apart along
-        the axis of minimum overlap.  If ``_spring_pos`` is available,
-        components are also pulled back toward their spring position
-        at ``OVERLAP_PULLBACK`` strength to prevent unbounded drift.
+        Each iteration identifies all overlapping geometry bounding boxes
+        and pushes them apart along the axis of minimum overlap. Component
+        positions are symbol origins, so bbox offsets must be included when
+        calculating their actual occupied sheet area.
 
         Returns the number of overlap pairs remaining after ``max_iters``.
         """
         if len(self.components) < 2:
             return 0
 
-        for iteration in range(max_iters):
+        def bounds(component):
+            bbox = component['bbox']
+            return (
+                component['x'] + bbox['x'] - BBOX_CLEARANCE,
+                component['y'] + bbox['y'] - BBOX_CLEARANCE,
+                component['x'] + bbox['x'] + bbox['w'] + BBOX_CLEARANCE,
+                component['y'] + bbox['y'] + bbox['h'] + BBOX_CLEARANCE,
+            )
+
+        def count_overlaps():
+            count = 0
+            for i in range(len(self.components)):
+                ax1, ay1, ax2, ay2 = bounds(self.components[i])
+                for j in range(i + 1, len(self.components)):
+                    bx1, by1, bx2, by2 = bounds(self.components[j])
+                    if ax2 > bx1 and ax1 < bx2 and ay2 > by1 and ay1 < by2:
+                        count += 1
+            return count
+
+        for _ in range(max_iters):
             remaining = 0
             for i in range(len(self.components)):
                 for j in range(i + 1, len(self.components)):
                     a = self.components[i]
                     b = self.components[j]
-
-                    ax1 = a['x'] - 0.5
-                    ay1 = a['y'] - 0.5
-                    ax2 = ax1 + a['width'] + 0.5
-                    ay2 = ay1 + a['height'] + 0.5
-
-                    bx1 = b['x'] - 0.5
-                    by1 = b['y'] - 0.5
-                    bx2 = bx1 + b['width'] + 0.5
-                    by2 = by1 + b['height'] + 0.5
+                    ax1, ay1, ax2, ay2 = bounds(a)
+                    bx1, by1, bx2, by2 = bounds(b)
 
                     if ax2 <= bx1 or ax1 >= bx2 or ay2 <= by1 or ay1 >= by2:
                         continue  # no overlap
@@ -1166,35 +1378,31 @@ class BackendLayoutEngine:
                     # Determine push direction: push apart on the smaller overlap axis
                     if ox < oy or (ox == oy and ox == 0):
                         # Horizontal separation
+                        push = (ox + GRID_SIZE) / 2
                         if a['x'] <= b['x']:
-                            a['x'] -= ox / 2
-                            b['x'] += ox / 2
+                            a['x'] -= push
+                            b['x'] += push
                         else:
-                            a['x'] += ox / 2
-                            b['x'] -= ox / 2
+                            a['x'] += push
+                            b['x'] -= push
                     else:
                         # Vertical separation
+                        push = (oy + GRID_SIZE) / 2
                         if a['y'] <= b['y']:
-                            a['y'] -= oy / 2
-                            b['y'] += oy / 2
+                            a['y'] -= push
+                            b['y'] += push
                         else:
-                            a['y'] += oy / 2
-                            b['y'] -= oy / 2
+                            a['y'] += push
+                            b['y'] -= push
 
             if remaining == 0:
                 break
 
-        # Pull back toward spring positions (prevents unbounded drift)
-        if self._spring_pos:
-            pullback = OVERLAP_PULLBACK
-            for c in self.components:
-                ref = c['ref_des']
-                if ref in self._spring_pos:
-                    sx, sy = self._spring_pos[ref]
-                    c['x'] = _snap(c['x'] + (sx - c['x']) * pullback)
-                    c['y'] = _snap(c['y'] + (sy - c['y']) * pullback)
+        for component in self.components:
+            component['x'] = _snap(component['x'])
+            component['y'] = _snap(component['y'])
 
-        return remaining
+        return count_overlaps()
 
     def _build_weighted_graph(self, netlist: list,
                                 pin_matrix: dict) -> nx.Graph:
@@ -1708,24 +1916,34 @@ class BackendLayoutEngine:
         traces: list[dict] = []
         dropped_pairs: list[tuple[str, str]] = []
 
-        # Track intermediate vertices of ALL successfully routed traces so
-        # that no two different nets share a non-pin-endpoint coordinate.
-        # This prevents KiCad from merging unrelated nets into accidental
-        # shorts through shared junction points.
-        used_vertices: set[tuple[float, float]] = set()
+        # Case-insensitive fallback index for pin keys — the LLM sometimes
+        # emits pin keys with inconsistent casing (e.g. "U1:VCC" vs "U1:vcc").
+        pin_matrix_lower: dict[str, str] = {}
+        for k in pin_matrix:
+            pin_matrix_lower[k.lower()] = k
+
+        def _resolve_pin(key: str) -> Optional[dict]:
+            pin = pin_matrix.get(key)
+            if pin is not None:
+                return pin
+            # Case-insensitive fallback
+            alt = pin_matrix_lower.get(key.lower())
+            if alt is not None:
+                return pin_matrix[alt]
+            return None
 
         def _abs(key: str) -> Optional[tuple[float, float]]:
             ref = key.split(':')[0]
             if not ref:
                 return None
-            pin = pin_matrix.get(key)
+            pin = _resolve_pin(key)
             off = pos.get(ref)
             if pin is None or off is None:
                 return None
             return (_snap(pin['x'] + off[0]), _snap(pin['y'] + off[1]))
 
         def _dir(key: str) -> str:
-            return _pin_direction(pin_matrix.get(key, {}))
+            return _pin_direction(_resolve_pin(key) or {})
 
         def _mhd(conn) -> float:
             s = _abs(conn['source']); t = _abs(conn['target'])
@@ -1733,9 +1951,10 @@ class BackendLayoutEngine:
             return abs(s[0]-t[0]) + abs(s[1]-t[1])
 
         # Pre-filter: drop any connection whose pins are too far apart
-        routable = [c for c in netlist if _mhd(c) <= MAX_WIRE_MANHATTAN]
+        max_allowed = MAX_WIRE_MANHATTAN * 1.5
+        routable = [c for c in netlist if _mhd(c) <= max_allowed]
         for c in netlist:
-            if _mhd(c) > MAX_WIRE_MANHATTAN:
+            if _mhd(c) > max_allowed:
                 dropped_pairs.append((
                     c['source'].split(':')[0],
                     c['target'].split(':')[0],
@@ -1746,6 +1965,12 @@ class BackendLayoutEngine:
             s_pos = _abs(conn['source'])
             t_pos = _abs(conn['target'])
             if not s_pos or not t_pos:
+                # A netlist pin key has no entry in pin_matrix (or the
+                # component wasn't placed). Record as a dropped pair so the
+                # caller can report and repair, instead of silently skipping.
+                src_ref = conn['source'].split(':')[0] if conn.get('source') else '?'
+                tgt_ref = conn['target'].split(':')[0] if conn.get('target') else '?'
+                dropped_pairs.append((src_ref, tgt_ref))
                 continue
             if s_pos == t_pos:
                 continue
@@ -1756,10 +1981,10 @@ class BackendLayoutEngine:
             tgt_ref = conn['target'].split(':')[0]
 
             path = _make_path(s_pos, s_dir, t_pos, t_dir,
-                              self.components, src_ref, tgt_ref,
-                              blocked_vertices=used_vertices)
+                              self.components, src_ref, tgt_ref)
 
             # HARD final guards — drop the wire if ANY check fails
+            # NOTE: length limit matches _make_path's relaxed/A* passes (*1.5)
             dropped = False
             if not path:
                 dropped = True
@@ -1767,7 +1992,7 @@ class BackendLayoutEngine:
                 dropped = True
             elif not _is_orthogonal(path):
                 dropped = True
-            elif _path_length(path) > MAX_WIRE_MANHATTAN:
+            elif _path_length(path) > MAX_WIRE_MANHATTAN * 1.5:
                 dropped = True
             elif _path_collisions(path, self.components, src_ref, tgt_ref) > MAX_COLLISIONS:
                 dropped = True
@@ -1781,12 +2006,6 @@ class BackendLayoutEngine:
                 'target': conn['target'],
                 'path':   [{'x': p[0], 'y': p[1]} for p in path],
             })
-
-            # Record all intermediate vertices (not first/last = pin endpoints)
-            # as used — prevents subsequent nets from creating overlapping
-            # wire vertices that KiCad would interpret as electrical junctions.
-            for v in path[1:-1]:
-                used_vertices.add(v)
 
         # Deduplicate dropped pairs
         seen: set[tuple[str, str]] = set()

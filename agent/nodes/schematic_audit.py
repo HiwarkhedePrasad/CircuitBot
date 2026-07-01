@@ -205,6 +205,33 @@ def schematic_audit_node(state, config):
     else:
         emit_tool_event(config, "KiCad ERC", "skipped", "kicad-cli not available")
 
+        # ── 4b. ERC-less fallback: use pending connections from connectivity_repair ──
+        pending = state.get("_erc_pending_connections", [])
+        if pending:
+            # Synthesise ERC results so the builder routes to schematic_repair
+            synthetic_fixable = []
+            for p in pending:
+                synthetic_fixable.append({
+                    "type": "pin_not_connected",
+                    "pin_key": p.get("pin", ""),
+                    "pin_name": p.get("net", ""),
+                    "ref_des": p.get("pin", "").split(":")[0],
+                    "pin_num": p.get("pin", "").split(":")[-1] if ":" in p.get("pin", "") else "",
+                    "position": {},
+                    "description": f"Pin {p.get('pin', '')} missing wire",
+                })
+            erc_result = {
+                "errors": [{"type": "pin_not_connected"}],
+                "warnings": [],
+                "total_errors": len(synthetic_fixable),
+                "total_warnings": 0,
+                "fixable_count": len(synthetic_fixable),
+                "fixable": synthetic_fixable,
+            }
+            _emit(config, "agent:log", {
+                "message": f"  ERC-less fallback: {len(synthetic_fixable)} pending connection(s) from connectivity_repair"
+            })
+
     # ── 5. Emit done ─────────────────────────────────────────────────
     _emit(config, "agent:layout_ready", {
         "placements": placements,

@@ -9,6 +9,7 @@ This is the single source of truth for all board data:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -154,6 +155,53 @@ class BoardModel:
                 return c
         return None
 
+    def normalize_nets(self) -> None:
+        """Convert any KiCad-imported net entries to the canonical format.
+
+        Canonical format: ``{"name": str, "pins": [pin_key, ...]}``.
+        This converts ``{"id": int, "name": str}`` entries (from KiCad import)
+        to the canonical shape, preserving any existing pin lists.
+        """
+        canonical = []
+        for net in self.nets:
+            name = net.get("name") or net.get("net", "")
+            pins = net.get("pins", [])
+            if not name:
+                continue
+            canonical.append({"name": name, "pins": list(pins)})
+        self.nets = canonical
+
+    def get_pads_for_net(self, net_name: str) -> list[tuple[float, float]]:
+        """Return absolute board-space (x, y) positions for every pad on *net_name*.
+
+        Resolves pin keys (e.g. ``"U1:3"``) to component-relative pad offsets,
+        then applies the component's position and rotation.
+
+        Returns an empty list when the net name is unknown or has no pins.
+        """
+        self.normalize_nets()
+        pin_keys: list[str] = []
+        for net in self.nets:
+            if net.get("name", "").upper() == net_name.upper():
+                pin_keys = net.get("pins", [])
+                break
+        if not pin_keys:
+            return []
+        results: list[tuple[float, float]] = []
+        for pk in pin_keys:
+            ref, _, pnum = pk.partition(":")
+            comp = self.component_at(ref)
+            if comp is None:
+                continue
+            pad = next((p for p in comp.pads if str(p.number) == pnum), None)
+            if pad is None:
+                continue
+            angle = math.radians(comp.rotation + (pad.rotation or 0))
+            rx = pad.x * math.cos(angle) - pad.y * math.sin(angle)
+            ry = pad.x * math.sin(angle) + pad.y * math.cos(angle)
+            results.append((comp.x + rx, comp.y + ry))
+        return results
+
     def all_obstacle_polygons(self) -> list[Polygon]:
         if not HAS_SHAPELY:
             return []
@@ -209,7 +257,10 @@ class BoardModel:
                 }
                 for v in self.vias
             ],
-            "nets": self.nets,
+            "nets": [
+                {"name": n.get("name") or n.get("net", ""), "pins": n.get("pins", [])}
+                for n in self.nets
+            ],
             "power_pins": self.power_pins,
             "power_labels": self.power_labels,
         }
@@ -223,6 +274,7 @@ class BoardModel:
             power_pins=data.get("power_pins", []),
             power_labels=data.get("power_labels", []),
         )
+        model.normalize_nets()
         for cd in data.get("components", []):
             pads = [
                 PadDef(
