@@ -68,20 +68,32 @@ document.addEventListener('DOMContentLoaded', () => {
             setActiveTab('viewPCBBtn');
             showViewport('pcb');
             document.getElementById('routePrompt').classList.add('hidden');
-            if (pcbState.boardModel) {
-                pcbUploadArea.classList.add('hidden');
-                pcbSetupCanvas();
-                pcbDraw();
-            } else {
-                pcbUploadArea.classList.remove('hidden');
-                const { canvas, ctx } = pcbGetCanvas();
-                if (canvas) {
+            pcbUploadArea.classList.add('hidden');
+            if (_useLegacyPcbViewer) {
+                if (pcbState.boardModel) {
                     pcbSetupCanvas();
-                    ctx.fillStyle = '#0A0A14';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    pcbDraw();
+                } else {
+                    showPcbUploadOverlay();
+                }
+            } else {
+                if (pcbState.boardModel) {
+                    if (window.TscircuitViewer) {
+                        window.TscircuitViewer.mount('tscircuit-container');
+                    }
+                } else {
+                    showPcbUploadOverlay();
                 }
             }
         });
+    }
+
+    function showPcbUploadOverlay() {
+        pcbUploadArea.classList.remove('hidden');
+        if (!_useLegacyPcbViewer) {
+            const tsc = document.getElementById('tscircuit-container');
+            if (tsc) tsc.style.display = 'none';
+        }
     }
 
     // ── Renderer (PixiJS) ────────────────────────────────────────────────────
@@ -125,13 +137,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return document.getElementById('viewSymbolBtn').classList.contains('active');
     }
 
+    let _useLegacyPcbViewer = false;
+
     function showViewport(active) {
         const container = document.getElementById('canvasContainer');
         const pcbCanvas = document.getElementById('pcbCanvas');
         const symbolCanvas = document.getElementById('symbolCanvas');
+        const tscircuitContainer = document.getElementById('tscircuit-container');
         container.style.display = active === 'schematic' ? '' : 'none';
-        pcbCanvas.style.display = active === 'pcb' ? '' : 'none';
         symbolCanvas.style.display = active === 'symbol' ? '' : 'none';
+        if (active === 'pcb') {
+            if (_useLegacyPcbViewer) {
+                pcbCanvas.style.display = '';
+                tscircuitContainer.style.display = 'none';
+            } else {
+                pcbCanvas.style.display = 'none';
+                tscircuitContainer.style.display = '';
+            }
+        } else {
+            pcbCanvas.style.display = 'none';
+            tscircuitContainer.style.display = 'none';
+        }
     }
 
     function enterSchematicView() {
@@ -169,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Global keyboard handler for PCB view shortcuts (Escape to cancel drawing)
     document.addEventListener('keydown', (e) => {
-        if (isPCBMode()) pcbHandleKeyDown(e);
+        if (isPCBMode() && _useLegacyPcbViewer) pcbHandleKeyDown(e);
     });
 
     // ── SocketIO ──────────────────────────────────────────────────────────────
@@ -226,6 +252,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 addLogEntry('PCB model loaded for board view.', 'success');
                 exportPCBBtn.disabled = false;
                 importPCBBtn.disabled = false;
+                // Drive the tscircuit viewer: mount if it has never been
+                // mounted yet, otherwise refresh into the existing container.
+                if (window.TscircuitViewer && !_useLegacyPcbViewer) {
+                    if (window.TscircuitViewer.isMounted && window.TscircuitViewer.isMounted()) {
+                        window.TscircuitViewer.refresh();
+                    } else {
+                        window.TscircuitViewer.mount('tscircuit-container');
+                    }
+                }
             }
         });
         socket.on('agent:error', (data) => {
@@ -358,10 +393,97 @@ document.addEventListener('DOMContentLoaded', () => {
         badge.classList.remove('hidden');
     }
 
+    function pruneDisconnectedNetIslands(traces, netlist) {
+        const safeTraces = Array.isArray(traces) ? traces : [];
+        const safeNetlist = Array.isArray(netlist) ? netlist : [];
+        if (safeTraces.length === 0) return [];
+
+        const expectedRefsByNet = {};
+        for (const conn of safeNetlist) {
+            const net = conn.net || '';
+            if (!net) continue;
+            if (!expectedRefsByNet[net]) expectedRefsByNet[net] = new Set();
+            const s = (conn.source || '').split(':')[0];
+            const t = (conn.target || '').split(':')[0];
+            if (s) expectedRefsByNet[net].add(s);
+            if (t) expectedRefsByNet[net].add(t);
+        }
+
+        const tracesByNet = {};
+        for (const tr of safeTraces) {
+            const net = tr.net || '';
+            if (!net) continue;
+            if (!tracesByNet[net]) tracesByNet[net] = [];
+            tracesByNet[net].push(tr);
+        }
+
+        const keep = new Set();
+        for (const [net, netTraces] of Object.entries(tracesByNet)) {
+            const expected = expectedRefsByNet[net] || new Set();
+            if (expected.size <= 2) {
+                for (const tr of netTraces) keep.add(tr);
+                continue;
+            }
+
+            const adj = {};
+            for (const ref of expected) adj[ref] = new Set();
+
+            for (const tr of netTraces) {
+                const s = (tr.source || '').split(':')[0];
+                const t = (tr.target || '').split(':')[0];
+                if (!s || !t) continue;
+                if (adj[s] && adj[t]) {
+                    adj[s].add(t);
+                    adj[t].add(s);
+                }
+            }
+
+            const visited = new Set();
+            const groups = [];
+            for (const ref of expected) {
+                if (visited.has(ref) || !adj[ref] || adj[ref].size === 0) continue;
+                const stack = [ref];
+                const group = new Set();
+                while (stack.length) {
+                    const cur = stack.pop();
+                    if (visited.has(cur)) continue;
+                    visited.add(cur);
+                    group.add(cur);
+                    for (const nxt of adj[cur]) {
+                        if (!visited.has(nxt)) stack.push(nxt);
+                    }
+                }
+                if (group.size > 0) groups.push(group);
+            }
+
+            if (groups.length <= 1) {
+                for (const tr of netTraces) keep.add(tr);
+                continue;
+            }
+
+            let mainGroup = groups[0];
+            for (let i = 1; i < groups.length; i++) {
+                if (groups[i].size > mainGroup.size) mainGroup = groups[i];
+            }
+            for (const tr of netTraces) {
+                const s = (tr.source || '').split(':')[0];
+                const t = (tr.target || '').split(':')[0];
+                if (mainGroup.has(s) && mainGroup.has(t)) {
+                    keep.add(tr);
+                }
+            }
+        }
+
+        return safeTraces.filter(tr => {
+            const net = tr.net || '';
+            return !net || keep.has(tr);
+        });
+    }
+
     function handleAgentLayoutReady(data) {
         if (!currentSchematic) return;
         const placements = data.placements || [];
-        const traces = data.traces || [];
+        const traces = pruneDisconnectedNetIslands(data.traces || [], data.netlist || []);
         const powerLabels = data.power_labels || [];
 
         // Apply backend placements directly
@@ -372,11 +494,101 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSchematic.wirePaths = traces;
         currentSchematic.powerLabels = powerLabels;
         updateCompletenessBadge(traces, data.netlist || []);
+        displayNetlist(data.netlist || [], data.power_pins || []);
         enterSchematicView();
         addLogEntry(`Laid out ${placements.length} components with ${traces.length} wires (backend routing).`, 'success');
     }
 
+    function displayNetlist(signalNetlist, powerPins) {
+        const container = document.getElementById('netlistDisplay');
+        const countBadge = document.getElementById('netlistCount');
+        if (!container) return;
+
+        const hasSignal = signalNetlist && signalNetlist.length > 0;
+        const hasPower = powerPins && powerPins.length > 0;
+        if (!hasSignal && !hasPower) {
+            container.innerHTML = '<div class="netlist-placeholder">No netlist generated yet.</div>';
+            if (countBadge) countBadge.textContent = '0';
+            return;
+        }
+
+        let totalCount = 0;
+        let html = '';
+
+        // Signal connections
+        if (hasSignal) {
+            const groups = {};
+            for (const conn of signalNetlist) {
+                const net = conn.net || '(unnamed)';
+                if (!groups[net]) groups[net] = [];
+                groups[net].push(`${conn.source} → ${conn.target}`);
+                totalCount++;
+            }
+            for (const [net, conns] of Object.entries(groups)) {
+                html += `<div class="netlist-entry">`;
+                html += `<span class="net-name">${net}</span>`;
+                html += `<span class="net-conn">${conns.join(', ')}</span>`;
+                html += `</div>`;
+            }
+        }
+
+        // Power pins — grouped by net name, shown with a visual separator
+        if (hasPower) {
+            const powerGroups = {};
+            for (const pp of powerPins) {
+                const net = pp.net || '(unnamed)';
+                if (!powerGroups[net]) powerGroups[net] = [];
+                powerGroups[net].push(pp.pin);
+            }
+            for (const [net, pins] of Object.entries(powerGroups)) {
+                html += `<div class="netlist-entry power-net">`;
+                html += `<span class="net-name">${net}</span>`;
+                html += `<span class="net-conn">${pins.join(', ')}</span>`;
+                html += `</div>`;
+                totalCount++;
+            }
+        }
+
+        container.innerHTML = html;
+        if (countBadge) countBadge.textContent = totalCount;
+    }
+
+    function copyNetlistToClipboard() {
+        const container = document.getElementById('netlistDisplay');
+        if (!container) return;
+        const entries = container.querySelectorAll('.netlist-entry');
+        if (!entries.length) return;
+        let text = '';
+        for (const entry of entries) {
+            const net = entry.querySelector('.net-name')?.textContent || '';
+            const conn = entry.querySelector('.net-conn')?.textContent || '';
+            text += `${net}: ${conn}\n`;
+        }
+        navigator.clipboard.writeText(text.trim()).then(() => {
+            const btn = document.getElementById('copyNetlistBtn');
+            if (!btn) return;
+            const orig = btn.textContent;
+            btn.textContent = '✓';
+            setTimeout(() => { btn.textContent = orig; }, 1500);
+        }).catch(() => {
+            // Fallback for older browsers
+            const ta = document.createElement('textarea');
+            ta.value = text.trim();
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        });
+    }
+
     connectSocket();
+
+    // ── Netlist copy button ────────────────────────────────────────────────────
+
+    const copyNetlistBtn = document.getElementById('copyNetlistBtn');
+    if (copyNetlistBtn) {
+        copyNetlistBtn.addEventListener('click', copyNetlistToClipboard);
+    }
 
     // ── Export .kicad_sch ─────────────────────────────────────────────────────
 
@@ -450,14 +662,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Search ────────────────────────────────────────────────────────────────
+    // ── Search (legacy — element may be absent) ───────────────────────────────
 
-    searchBtn.addEventListener('click', performSearch);
-    searchInput.addEventListener('keydown', (e) => {
+    if (searchBtn) searchBtn.addEventListener('click', performSearch);
+    if (searchInput) searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') performSearch();
     });
 
     async function performSearch() {
+        if (!searchInput || !searchResults || !loading) return;
         const query = searchInput.value.trim();
         if (!query) return;
 
@@ -574,6 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearConversation();
         agentConversation.innerHTML = '';
         showAgentStatus('Starting agent...');
+        displayNetlist([]);
         if (!currentSchematic) currentSchematic = new Schematic();
         socket.emit('agent:generate', { prompt });
     });
@@ -604,17 +818,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Zoom & UI ─────────────────────────────────────────────────────────────
 
     document.getElementById('zoomInBtn').addEventListener('click', () => {
-        if (isPCBMode()) { pcbState.zoom = Math.min(pcbState.zoom * 1.3, 50); pcbDraw(); }
+        if (isPCBMode() && _useLegacyPcbViewer) { pcbState.zoom = Math.min(pcbState.zoom * 1.3, 50); pcbDraw(); }
         else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
         else if (renderer) renderer.setZoom(renderer.zoom * 1.3);
     });
     document.getElementById('zoomOutBtn').addEventListener('click', () => {
-        if (isPCBMode()) { pcbState.zoom = Math.max(pcbState.zoom / 1.3, 0.05); pcbDraw(); }
+        if (isPCBMode() && _useLegacyPcbViewer) { pcbState.zoom = Math.max(pcbState.zoom / 1.3, 0.05); pcbDraw(); }
         else if (isSymbolPreviewMode() && currentPreviewOps) { zoomLevel = Math.max(zoomLevel / 1.3, 0.05); drawSymbol(); }
         else if (renderer) renderer.setZoom(renderer.zoom / 1.3);
     });
     document.getElementById('zoomResetBtn').addEventListener('click', () => {
-        if (isPCBMode()) { pcbComputeTransform(); pcbDraw(); }
+        if (isPCBMode() && _useLegacyPcbViewer) { pcbComputeTransform(); pcbDraw(); }
         else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
         else if (currentSchematic && currentSchematic.components.length > 0) { enterSchematicView(); }
     });
@@ -624,8 +838,10 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             if (isPCBMode()) {
-                pcbSetupCanvas();
-                if (pcbState.boardModel) pcbDraw();
+                if (_useLegacyPcbViewer) {
+                    pcbSetupCanvas();
+                    if (pcbState.boardModel) pcbDraw();
+                }
             } else if (isSymbolPreviewMode() && currentPreviewOps) {
                 setupCanvasSize();
                 renderOps(currentPreviewOps);

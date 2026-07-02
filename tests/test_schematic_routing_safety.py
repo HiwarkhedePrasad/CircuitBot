@@ -5,6 +5,7 @@ from agent.layout_engine import (
     BackendLayoutEngine,
     _path_collisions,
 )
+from agent.routing.api import _prune_disconnected_net_islands
 
 
 def _rect_ops(width=10.0, height=10.0):
@@ -105,3 +106,22 @@ def test_power_export_uses_short_per_pin_stubs_instead_of_centroid_fanout():
     for x1, y1, x2, y2 in segments:
         length = abs(float(x2) - float(x1)) + abs(float(y2) - float(y1))
         assert abs(length - 2.54) < 1e-9
+
+
+def test_route_post_filter_removes_disconnected_same_net_islands():
+    netlist = [
+        {"source": "U1:1", "target": "U2:1", "net": "SIG"},
+        {"source": "U2:1", "target": "U3:1", "net": "SIG"},
+        {"source": "U3:1", "target": "U4:1", "net": "SIG"},
+    ]
+    traces = [
+        {"source": "U1:1", "target": "U2:1", "net": "SIG", "path": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}]},
+        {"source": "U3:1", "target": "U4:1", "net": "SIG", "path": [{"x": 40.0, "y": 0.0}, {"x": 50.0, "y": 0.0}]},
+    ]
+
+    kept, pruned = _prune_disconnected_net_islands(traces, netlist)
+
+    assert len(kept) == 1
+    assert kept[0]["source"] == "U1:1"
+    assert kept[0]["target"] == "U2:1"
+    assert ("U3", "U4") in pruned or ("U4", "U3") in pruned
