@@ -155,9 +155,9 @@ def schematic_audit_node(state, config):
     if sch_text:
         erc_result = run_kicad_erc(sch_text)
     if erc_result:
-        total = erc_result["total_errors"]
-        fixable = erc_result["fixable_count"]
-        warns = erc_result["total_warnings"]
+        total = erc_result.get("total_errors", 0)
+        fixable = erc_result.get("fixable_count", 0)
+        warns = erc_result.get("total_warnings", 0)
         erc_status = "failed" if total > 0 else "completed"
         erc_msg = f"{total} errors ({fixable} fixable), {warns} warnings"
         if total > 0:

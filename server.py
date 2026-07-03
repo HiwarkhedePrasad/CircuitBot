@@ -145,7 +145,8 @@ def api_save_layout():
     """Receive the frontend (ELK) computed geometry for the last design."""
     data = request.get_json(silent=True) or {}
     with design_lock:
-        if not LAST_DESIGN.get('selected_components'):
+        has_design = LAST_DESIGN.get('selected_components') or LAST_DESIGN.get('component_ops') or data.get('wire_paths') or data.get('placements')
+        if not has_design:
             return jsonify({'ok': False, 'error': 'No design to update'}), 404
         _WIREBENDER_LAYOUT['component_placements'] = data.get('placements', _WIREBENDER_LAYOUT.get('component_placements', []))
         _WIREBENDER_LAYOUT['wire_paths'] = data.get('wire_paths', _WIREBENDER_LAYOUT.get('wire_paths', []))
@@ -226,6 +227,365 @@ def api_ratsnest():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/circuit_json', methods=['GET', 'POST'])
+def api_circuit_json():
+    """Return the current BoardModel as a Circuit JSON array for tscircuit/pcb-viewer.
+
+    GET: uses LAST_DESIGN's board_model (if available) or returns an empty board.
+    POST: accepts an optional BoardModel JSON body.
+    """
+    from pcb_design.board_model import BoardModel as BM
+    from pcb_design.circuit_json_converter import board_model_to_circuit_json
+
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        board_dict = data.get('board_model', data)
+    else:
+        with design_lock:
+            board_dict = LAST_DESIGN.get('board_model')
+
+    if board_dict:
+        model = BM.from_dict(board_dict)
+    else:
+        model = BM()
+
+    circuit_json = board_model_to_circuit_json(model)
+    return jsonify(circuit_json)
+
+
+@app.route('/api/apply_edits', methods=['POST'])
+def api_apply_edits():
+    """Receive frontend edit events and apply them to the active design.
+
+    Expects JSON::
+
+        {
+            "edit_events": [
+                {
+                    "pcb_edit_event_type": "edit_trace_hint",
+                    "pcb_port_id": "...",
+                    "route": [{"x": ..., "y": ..., "via": false, "trace_width": ...}],
+                    "edit_event_id": "...",
+                    "in_progress": false
+                },
+                {
+                    "pcb_edit_event_type": "edit_component_location",
+                    "pcb_component_id": "...",
+                    "original_center": {"x": ..., "y": ...},
+                    "new_center": {"x": ..., "y": ...},
+                    "in_progress": false
+                }
+            ]
+        }
+
+    Only events with *in_progress: false* are committed.
+    Returns the updated *board_model* with recalculated ratsnest.
+    """
+    from pcb_design.board_model import BoardModel, BoardTrace
+    from agent.routing.api import apply_schematic_edit
+
+    data = request.get_json(silent=True) or {}
+    events = data.get("edit_events", [])
+    if not events:
+        return jsonify({"ok": False, "error": "No edit_events provided"}), 400
+    if not isinstance(events, list):
+        return jsonify({"ok": False, "error": "edit_events must be an array"}), 400
+
+    def _sanitize_id(s: str) -> str:
+        return str(s).replace("/", "_").replace(".", "_").replace(" ", "_").replace("-", "_")
+
+    def _resolve_component(model: BoardModel, pcb_component_id: str):
+        raw = str(pcb_component_id or "").replace("pcb_component_", "", 1)
+        if not raw:
+            return None
+        comp = model.component_at(raw)
+        if comp is not None:
+            return comp
+        for c in model.components:
+            if _sanitize_id(c.ref) == raw:
+                return c
+        return None
+
+    def _resolve_port_pin(model: BoardModel, pcb_port_id: str) -> tuple[str, str] | tuple[None, None]:
+        raw = str(pcb_port_id or "")
+        if not raw.startswith("pcb_port_"):
+            return (None, None)
+        tail = raw[len("pcb_port_"):]
+        for c in model.components:
+            sref = _sanitize_id(c.ref)
+            for p in c.pads:
+                cand = f"{sref}_{p.number}"
+                if cand == tail:
+                    return (c.ref, str(p.number))
+        return (None, None)
+
+    def _net_for_pin(model: BoardModel, ref: str, pin_num: str) -> str:
+        pin_key = f"{ref}:{pin_num}"
+        for net in model.nets:
+            if pin_key in net.get("pins", []):
+                return net.get("name") or net.get("net", "") or "_manual"
+        return "_manual"
+
+    def _to_layer(route_point: dict) -> str:
+        layer = route_point.get("layer", "")
+        if layer == "bottom":
+            return "B.Cu"
+        if layer == "top":
+            return "F.Cu"
+        return "F.Cu"
+
+    def _pin_exists(pin_matrix: dict, pin_key: str) -> bool:
+        return bool(pin_key) and pin_key in pin_matrix
+
+    def _normalize_schematic_path(path: list) -> list[dict]:
+        normalized = []
+        for point in path:
+            if not isinstance(point, dict) or "x" not in point or "y" not in point:
+                continue
+            normalized.append({"x": point["x"], "y": point["y"]})
+        return normalized
+
+    def _schematic_net_for_pair(netlist: list, source: str, target: str) -> str:
+        pair = {source, target}
+        for conn in netlist:
+            if {conn.get("source"), conn.get("target")} == pair:
+                return conn.get("net") or ""
+        return ""
+
+    with design_lock:
+        board_dict = LAST_DESIGN.get("board_model")
+        has_schematic_state = bool(LAST_DESIGN.get("selected_components"))
+        if not board_dict and not has_schematic_state:
+            return jsonify({"ok": False, "error": "No board model or schematic design loaded"}), 400
+        model = BoardModel.from_dict(board_dict) if board_dict else None
+
+        applied = 0
+        ignored = 0
+        errors = []
+        had_wire_events = False
+        had_move_events = False
+        for i, event in enumerate(events):
+            if not isinstance(event, dict):
+                errors.append({"index": i, "error": "Event must be a JSON object"})
+                ignored += 1
+                continue
+
+            etype = event.get("edit_event_type") or event.get("pcb_edit_event_type")
+            if not etype:
+                errors.append({"index": i, "error": "Missing edit_event_type or pcb_edit_event_type"})
+                ignored += 1
+                continue
+
+            in_progress = event.get("in_progress", True)
+            if in_progress:
+                ignored += 1
+                continue
+
+            if etype in ("edit_trace_hint", "edit_pcb_trace_hint"):
+                if model is None:
+                    errors.append({"index": i, "error": "No board model loaded"})
+                    ignored += 1
+                    continue
+                route = event.get("route", [])
+                if not isinstance(route, list) or len(route) < 2:
+                    errors.append({"index": i, "error": "edit_trace_hint.route must be an array with >=2 points"})
+                    ignored += 1
+                    continue
+
+                path = []
+                for p in route:
+                    if not isinstance(p, dict):
+                        continue
+                    if p.get("via"):
+                        continue
+                    if "x" not in p or "y" not in p:
+                        continue
+                    path.append((p["x"], p["y"]))
+
+                if len(path) < 2:
+                    errors.append({"index": i, "error": "edit_trace_hint route needs >=2 non-via points with x/y"})
+                    ignored += 1
+                    continue
+
+                trace_width = route[0].get("trace_width", route[0].get("width", 0.254))
+                layer = _to_layer(route[0])
+                ref, pnum = _resolve_port_pin(model, event.get("pcb_port_id", ""))
+                net_name = _net_for_pin(model, ref, pnum) if ref and pnum else "_manual"
+                model.traces.append(BoardTrace(
+                    net=net_name,
+                    layer=layer,
+                    width=trace_width,
+                    path=path,
+                ))
+                applied += 1
+
+            elif etype in ("edit_component_location", "edit_pcb_component_location"):
+                if model is None:
+                    errors.append({"index": i, "error": "No board model loaded"})
+                    ignored += 1
+                    continue
+                comp_id = event.get("pcb_component_id", "")
+                new_center = event.get("new_center", {})
+                if not comp_id:
+                    errors.append({"index": i, "error": "edit_component_location missing pcb_component_id"})
+                    ignored += 1
+                    continue
+                if not isinstance(new_center, dict) or "x" not in new_center or "y" not in new_center:
+                    errors.append({"index": i, "error": "edit_component_location.new_center must have x and y"})
+                    ignored += 1
+                    continue
+
+                comp = _resolve_component(model, comp_id)
+                if comp is not None:
+                    comp.x = new_center["x"]
+                    comp.y = new_center["y"]
+                    applied += 1
+                else:
+                    errors.append({"index": i, "error": f"Component not found: {comp_id}"})
+                    ignored += 1
+            elif etype in ("schematic_add_wire", "add_wire"):
+                source = event.get("source") or event.get("source_pin")
+                target = event.get("target") or event.get("target_pin")
+                path = event.get("path", [])
+                pin_matrix = LAST_DESIGN.get("pin_matrix", {})
+                if not _pin_exists(pin_matrix, source) or not _pin_exists(pin_matrix, target):
+                    errors.append({"index": i, "error": "schematic_add_wire source/target must be valid pin keys"})
+                    ignored += 1
+                    continue
+                if source == target:
+                    errors.append({"index": i, "error": "schematic_add_wire cannot connect a pin to itself"})
+                    ignored += 1
+                    continue
+                if not isinstance(path, list) or len(path) < 2:
+                    errors.append({"index": i, "error": "schematic_add_wire.path must be an array with >=2 points"})
+                    ignored += 1
+                    continue
+                clean_path = _normalize_schematic_path(path)
+                if len(clean_path) < 2:
+                    errors.append({"index": i, "error": "schematic_add_wire path needs >=2 points with x/y"})
+                    ignored += 1
+                    continue
+                wire_id = event.get("wire_id") or event.get("edit_event_id") or f"wire_{len(LAST_DESIGN.get('wire_paths', [])) + 1}"
+                net = event.get("net") or _schematic_net_for_pair(LAST_DESIGN.get("netlist", []), source, target)
+                edit_event = {
+                    "edit_event_type": etype, "wire_id": wire_id,
+                    "source": source, "target": target, "path": clean_path, "net": net,
+                }
+                LAST_DESIGN["wire_paths"] = apply_schematic_edit(
+                    LAST_DESIGN.get("wire_paths", []),
+                    edit_event,
+                    LAST_DESIGN.get("netlist", []),
+                    LAST_DESIGN.get("pin_matrix", {}),
+                    LAST_DESIGN.get("component_placements", []),
+                )
+                _WIREBENDER_LAYOUT["wire_paths"] = LAST_DESIGN["wire_paths"]
+                applied += 1
+                had_wire_events = True
+            elif etype in ("schematic_delete_wire", "delete_wire"):
+                wire_id = event.get("wire_id")
+                source = event.get("source") or event.get("source_pin")
+                target = event.get("target") or event.get("target_pin")
+                if not wire_id and not (source and target):
+                    errors.append({"index": i, "error": "schematic_delete_wire needs wire_id or source/target"})
+                    ignored += 1
+                    continue
+                edit_event = {
+                    "edit_event_type": etype, "wire_id": wire_id,
+                    "source": source, "target": target,
+                }
+                before = list(LAST_DESIGN.get("wire_paths", []))
+                LAST_DESIGN["wire_paths"] = apply_schematic_edit(
+                    before,
+                    edit_event,
+                    LAST_DESIGN.get("netlist", []),
+                    LAST_DESIGN.get("pin_matrix", {}),
+                    LAST_DESIGN.get("component_placements", []),
+                )
+                _WIREBENDER_LAYOUT["wire_paths"] = LAST_DESIGN["wire_paths"]
+                applied += 1
+                ignored += 0
+                had_wire_events = True
+            elif etype in ("schematic_move_component", "edit_schematic_component_location"):
+                ref_des = event.get("ref_des") or event.get("component_ref")
+                new_center = event.get("new_center", {})
+                if not ref_des:
+                    errors.append({"index": i, "error": "schematic_move_component missing ref_des"})
+                    ignored += 1
+                    continue
+                if not isinstance(new_center, dict) or "x" not in new_center or "y" not in new_center:
+                    errors.append({"index": i, "error": "schematic_move_component.new_center must have x and y"})
+                    ignored += 1
+                    continue
+                placements = list(LAST_DESIGN.get("component_placements", []))
+                found = False
+                for placement in placements:
+                    if placement.get("ref_des") == ref_des:
+                        placement["x"] = new_center["x"]
+                        placement["y"] = new_center["y"]
+                        if "rotation" in new_center:
+                            placement["rotation"] = new_center["rotation"]
+                        found = True
+                        break
+                if not found:
+                    placements.append({"ref_des": ref_des, "x": new_center["x"], "y": new_center["y"]})
+                LAST_DESIGN["component_placements"] = placements
+                _WIREBENDER_LAYOUT["component_placements"] = placements
+                LAST_DESIGN["wire_paths"] = apply_schematic_edit(
+                    LAST_DESIGN.get("wire_paths", []),
+                    {"edit_event_type": etype, "ref_des": ref_des},
+                    LAST_DESIGN.get("netlist", []),
+                    LAST_DESIGN.get("pin_matrix", {}),
+                    placements,
+                )
+                _WIREBENDER_LAYOUT["wire_paths"] = LAST_DESIGN["wire_paths"]
+                applied += 1
+                had_move_events = True
+                had_wire_events = True
+            else:
+                errors.append({"index": i, "error": f"Unknown event type: {etype}"})
+                ignored += 1
+
+        new_board = None
+        if model is not None:
+            from pcb_design.ratsnest import compute_ratsnest
+            new_board = model.to_dict()
+            new_board["ratsnest"] = compute_ratsnest(model)
+            LAST_DESIGN["board_model"] = new_board
+            _WIREBENDER_LAYOUT["board_model"] = new_board
+
+    resp: dict = {
+        "ok": True, "applied": applied, "ignored": ignored,
+    }
+    if had_wire_events:
+        resp["wire_paths"] = LAST_DESIGN.get("wire_paths", [])
+    if had_move_events:
+        resp["component_placements"] = LAST_DESIGN.get("component_placements", [])
+    if new_board is not None:
+        resp["board_model"] = new_board
+    if errors:
+        resp["errors"] = errors
+    return jsonify(resp)
+
+
+@app.route('/api/save_board_model', methods=['POST'])
+def api_save_board_model():
+    """Persist a full BoardModel dict as the new source of truth.
+
+    This is the fallback endpoint for when fine-grained event-level apply
+    fails.  The caller sends the entire ``board_model`` dict.
+    """
+    data = request.get_json(silent=True) or {}
+    board_model = data.get("board_model")
+    if not board_model:
+        return jsonify({"ok": False, "error": "No board_model provided"}), 400
+
+    with design_lock:
+        LAST_DESIGN["board_model"] = board_model
+        _WIREBENDER_LAYOUT["board_model"] = board_model
+
+    return jsonify({"ok": True})
+
+
 @app.route('/api/import_pcb', methods=['POST'])
 def api_import_pcb():
     """Import a .kicad_pcb file and return BoardModel JSON."""
@@ -257,6 +617,10 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     print(f"Client disconnected: {request.sid}")
+    entry = _agent_events.pop(request.sid, None)
+    if entry:
+        entry["result"]["approved"] = False
+        entry["event"].set()
 
 
 @socketio.on('agent:pcb_approve')
@@ -317,6 +681,8 @@ def _run_agent(prompt: str, sid: str):
                 'component_placements': wb.get('component_placements') or result.get('component_placements', []),
                 'wire_paths': wb.get('wire_paths') or result.get('wire_paths', []),
                 'power_labels': wb.get('power_labels') or result.get('power_labels', []),
+                'pin_matrix': result.get('pin_matrix', {}),
+                'netlist': result.get('netlist', []),
                 'nets': result.get('nets', []),
                 'power_pins': result.get('power_pins', []),
                 'board_model': board_model,

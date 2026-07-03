@@ -2,7 +2,8 @@ from langgraph.graph import StateGraph, END
 
 from agent.state import AgentState
 from agent.nodes import (
-    analyze_node, research_node, select_node, validate_node,
+    analyze_node, research_node, select_node,
+    symbol_compatibility_node, validate_node,
     dispatch_node, netlist_node,
     placement_node, routing_node, pcb_layout_node,
     schematic_audit_node, ask_pcb_approval_node,
@@ -11,6 +12,7 @@ from agent.nodes import (
     structural_net_validate_node, structural_net_repair_node,
     power_net_repair_node,
     connectivity_validate_node, connectivity_repair_node,
+    validate_repair_node,
 )
 from agent.utils import _route_after_validate, _route_after_pcb_approval, _route_after_erc
 
@@ -35,6 +37,7 @@ def build_graph() -> StateGraph:
     builder.add_node("analyze", analyze_node)
     builder.add_node("research", research_node)
     builder.add_node("select", select_node)
+    builder.add_node("symbol_compatibility", symbol_compatibility_node)
     builder.add_node("validate", validate_node)
     builder.add_node("dispatch", dispatch_node)
     builder.add_node("symbol_validate", symbol_validate_node)
@@ -50,17 +53,20 @@ def build_graph() -> StateGraph:
     builder.add_node("schematic_repair", schematic_repair_node)
     builder.add_node("ask_pcb_approval", ask_pcb_approval_node)
     builder.add_node("pcb_layout", pcb_layout_node)
+    builder.add_node("validate_repair", validate_repair_node)
     builder.add_node("error_end", error_end_node)
 
     builder.set_entry_point("analyze")
     builder.add_edge("analyze", "research")
     builder.add_edge("research", "select")
-    builder.add_edge("select", "validate")
+    builder.add_edge("select", "symbol_compatibility")
+    builder.add_edge("symbol_compatibility", "validate")
     builder.add_conditional_edges("validate", _route_after_validate, {
-        "select": "select",
+        "validate_repair": "validate_repair",
         "dispatch": "dispatch",
         "error_end": "error_end",
     })
+    builder.add_edge("validate_repair", "validate")
     builder.add_edge("dispatch", "symbol_validate")
     builder.add_edge("symbol_validate", "netlist")
     builder.add_edge("netlist", "power_net_repair")

@@ -75,7 +75,15 @@ def _parse_pad(node: list) -> Optional[PadDef]:
     """Parse a pad node from a KiCad S-expression."""
     if not isinstance(node, list) or len(node) < 2:
         return None
-    pad = PadDef(number=str(node[1]), x=0, y=0, width=0, height=0)
+    pad = PadDef(
+        number=str(node[1]),
+        x=0,
+        y=0,
+        width=0,
+        height=0,
+        type=str(node[2]) if len(node) > 2 else "smd",
+        shape=str(node[3]) if len(node) > 3 else "rect",
+    )
     for child in node[2:]:
         if not isinstance(child, list):
             continue
@@ -93,11 +101,65 @@ def _parse_pad(node: list) -> Optional[PadDef]:
         elif key == "drill":
             if isinstance(child[1], (int, float)):
                 pad.drill = float(child[1])
-        elif key == "type":
-            pad.type = str(child[1]) if len(child) > 1 else "smd"
-        elif key == "shape":
-            pad.shape = str(child[1]) if len(child) > 1 else "rect"
     return pad
+
+
+def _parse_fp_graphic(node: list) -> Optional[dict]:
+    if not isinstance(node, list) or not node:
+        return None
+    kind = node[0]
+    if kind not in ("fp_line", "fp_rect", "fp_circle", "fp_arc", "fp_poly"):
+        return None
+    item = {"kind": kind, "layer": "F.SilkS", "width": 0.15}
+    points = []
+    for child in node[1:]:
+        if not isinstance(child, list) or not child:
+            continue
+        key = child[0]
+        if key in ("start", "end", "center", "mid"):
+            item[key] = {"x": _get_float(child, 1), "y": _get_float(child, 2)}
+        elif key == "pts":
+            for pt in child[1:]:
+                if isinstance(pt, list) and pt and pt[0] == "xy":
+                    points.append({"x": _get_float(pt, 1), "y": _get_float(pt, 2)})
+        elif key == "layer":
+            item["layer"] = _get_str(child, 1, "F.SilkS")
+        elif key == "stroke":
+            width_node = _find_one(child, "width")
+            if width_node:
+                item["width"] = _get_float(width_node, 1, 0.15)
+        elif key == "width":
+            item["width"] = _get_float(child, 1, 0.15)
+        elif key == "fill":
+            item["fill"] = _get_str(child, 1, "none")
+    if points:
+        item["points"] = points
+    return item
+
+
+def _parse_property_text(node: list) -> Optional[dict]:
+    if not isinstance(node, list) or len(node) < 3 or node[0] != "property":
+        return None
+    item = {
+        "kind": "property",
+        "name": str(node[1]),
+        "text": str(node[2]),
+        "layer": "F.SilkS",
+        "x": 0.0,
+        "y": 0.0,
+        "rotation": 0.0,
+    }
+    for child in node[3:]:
+        if not isinstance(child, list) or not child:
+            continue
+        if child[0] == "at":
+            item["x"] = _get_float(child, 1)
+            item["y"] = _get_float(child, 2)
+            if len(child) > 3 and isinstance(child[3], (int, float)):
+                item["rotation"] = float(child[3])
+        elif child[0] == "layer":
+            item["layer"] = _get_str(child, 1, "F.SilkS")
+    return item
 
 
 def _parse_trace(node: list) -> Optional[BoardTrace]:
@@ -156,6 +218,7 @@ def _parse_footprint(node: list) -> Optional[BoardComponent]:
     x, y, rotation = 0.0, 0.0, 0.0
     layer = "F.Cu"
     pads = []
+    graphics = []
     at_node = _find_one(node, "at")
     if at_node:
         x = _get_float(at_node, 1)
@@ -170,13 +233,20 @@ def _parse_footprint(node: list) -> Optional[BoardComponent]:
             ref = str(prop[2])
         elif len(prop) > 2 and prop[1] == "Value":
             value = str(prop[2])
+        text_item = _parse_property_text(prop)
+        if text_item:
+            graphics.append(text_item)
     for pad_node in _find_all(node, "pad"):
         pad = _parse_pad(pad_node)
         if pad:
             pads.append(pad)
+    for child in node[2:]:
+        graphic = _parse_fp_graphic(child)
+        if graphic:
+            graphics.append(graphic)
     return BoardComponent(
         ref=ref or fp_str, footprint=fp_str,
-        x=x, y=y, rotation=rotation, layer=layer, value=value, pads=pads,
+        x=x, y=y, rotation=rotation, layer=layer, value=value, pads=pads, graphics=graphics,
     )
 
 
@@ -228,6 +298,32 @@ def _parse_gr_line(node: list) -> Optional[list[tuple[float, float]]]:
     if start and end and layer == "Edge.Cuts":
         return [start, end]
     return None
+
+
+def _parse_outline_segment(node: list) -> Optional[dict]:
+    if not isinstance(node, list) or not node:
+        return None
+    if node[0] not in ("gr_line", "gr_arc", "gr_rect", "gr_circle", "gr_poly"):
+        return None
+    item = {"kind": node[0], "layer": "Edge.Cuts"}
+    points = []
+    for child in node[1:]:
+        if not isinstance(child, list) or not child:
+            continue
+        key = child[0]
+        if key in ("start", "end", "center", "mid"):
+            item[key] = {"x": _get_float(child, 1), "y": _get_float(child, 2)}
+        elif key == "pts":
+            for pt in child[1:]:
+                if isinstance(pt, list) and pt and pt[0] == "xy":
+                    points.append({"x": _get_float(pt, 1), "y": _get_float(pt, 2)})
+        elif key == "layer":
+            item["layer"] = _get_str(child, 1, "Edge.Cuts")
+    if item.get("layer") != "Edge.Cuts":
+        return None
+    if points:
+        item["points"] = points
+    return item
 
 
 def _build_net_pin_map(ast: list) -> dict[int, list[str]]:
@@ -320,12 +416,18 @@ def import_board(path: str) -> BoardModel:
             model.zones.append(zone)
 
     edge_pts = []
+    outline_segments = []
     for gr_node in _find_all(ast, "gr_line"):
         seg = _parse_gr_line(gr_node)
         if seg:
             edge_pts.extend(seg)
+    for gr_node in _find_all(ast, "gr_line") + _find_all(ast, "gr_arc") + _find_all(ast, "gr_rect") + _find_all(ast, "gr_circle") + _find_all(ast, "gr_poly"):
+        segment = _parse_outline_segment(gr_node)
+        if segment:
+            outline_segments.append(segment)
     if HAS_SHAPELY and len(edge_pts) >= 3:
         from shapely.geometry import Polygon as ShapelyPolygon
         model.outline = ShapelyPolygon(edge_pts)
+    model.outline_segments = outline_segments
 
     return model

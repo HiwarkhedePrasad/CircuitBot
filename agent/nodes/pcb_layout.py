@@ -84,7 +84,15 @@ def pcb_layout_node(state, config):
 
     try:
         board_dict = model.to_dict()
-        pcb_result = build_board_via_subprocess(board_dict, netlist)
+        # Merge power_pins into the connection list so the PCB router
+        # sees all connectivity, not just signal nets
+        all_connections = list(netlist)
+        seen_net_names = {c.get("net", "") for c in all_connections}
+        for pp in power_pins:
+            net_name = pp.get("net", "")
+            if net_name and net_name not in seen_net_names:
+                seen_net_names.add(net_name)
+        pcb_result = build_board_via_subprocess(board_dict, all_connections)
 
         if pcb_result.get("status") == "ok" and pcb_result.get("traces"):
             # Populate model from pcbnew output
@@ -168,6 +176,11 @@ def pcb_layout_node(state, config):
 
     # ── 6. Emit final events ───────────────────────────────────────
     board_dict = model.to_dict()
+    try:
+        from pcb_design.ratsnest import compute_ratsnest
+        board_dict["ratsnest"] = compute_ratsnest(model)
+    except Exception:
+        board_dict["ratsnest"] = {}
     _emit(config, "agent:pcb_ready", {"board_model": board_dict})
     _emit(config, "agent:done", {
         "message": (f"Design complete: {len(model.components)} components, "

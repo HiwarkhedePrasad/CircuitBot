@@ -76,7 +76,8 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
 - 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
 - USB-UART Bridge ICs: "Interface_USB:CP2102N", "Interface_USB:CH340G"
-- AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
+- AVR/ATmega ICSP Headers (SPI): "Connector:AVR-ISP-6"
+- UART Programming Headers (ESP32, STM32, etc.): "Connector:Conn_01x04_Pin" or "Connector:Conn_01x06_Pin"
 - Overcurrent PTC Fuses: "Device:Polyfuse"
 
 Be specific, practical, and electrically complete."""
@@ -182,7 +183,8 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
 - 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
 - USB-UART Bridge ICs: "Interface_USB:CP2102N", "Interface_USB:CH340G"
-- AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
+- AVR/ATmega ICSP Headers (SPI): "Connector:AVR-ISP-6"
+- UART Programming Headers (ESP32, STM32, etc.): "Connector:Conn_01x04_Pin" or "Connector:Conn_01x06_Pin"
 - Overcurrent PTC Fuses: "Device:Polyfuse"
 
 Output ONLY a JSON object with keys:
@@ -364,6 +366,23 @@ PIN MATCHING GUIDELINES:
   by name (e.g., "3V3_PULLUP" only if no existing power net name is given)
 - A 1-Wire sensor data pin (e.g., DS18B20 "DQ") connects to an MCU GPIO plus its pull-up
 
+7. ETYPE MATCHING — each pin in "Pins available" now shows its electrical type
+   (etype).  Use etype to determine signal flow direction:
+   - "output" drives a signal OUT → connect to "input" of another device
+   - "input" receives a signal → must be driven by an "output" or "bidirectional"
+   - "bidirectional" (GPIO, I2C SDA/SCL) ↔ connect to other "bidirectional" pins
+   - "passive" (resistor/capacitor ends) can connect to any signal or power net
+   - Power pins ("power_in", "power_out") are pre-assigned and NOT in your list
+   - "open_collector" / "tri_state" behave like bidirectional outputs
+ 8. Per-component "description", "pin_summary" and "knowledge" are provided for
+    context.  The "knowledge" field contains structured interface and pin-role
+    data extracted from the component library (e.g. ``[UART(TX=35,RX=34)|I2C(SDA=21,SCL=22)]``).
+    Use description to understand what the part does, pin_summary for pin counts,
+    and knowledge for wiring-critical semantics (pin roles, interfaces, power rails,
+    programming pins).
+    Example: a temperature sensor with ``ANALOG_OUT`` pin role and knowledge
+    ``[ADC(CH0=1)]`` should connect to an MCU ADC input pin.
+
 PCB CALCULATION TOOLS (use when you need to check trace widths or impedances):
 To use a tool, output {"_tool": "tool_name", "args": {...}} instead of the normal JSON array.
 The tool result will be returned and you can continue. Available tools:
@@ -398,13 +417,22 @@ NETLIST_BATCH_USER = """User's design intent: {prompt}
 All components in the schematic (for context):
 {components_desc}
 
+Each component entry includes a description, pin_summary (total pin count and
+electrical type breakdown), and structured knowledge (interfaces, pin roles,
+power rails).  Use these to understand what each part does and which pins
+carry signals vs. power.
+
 Nets already created in earlier batches (reuse these EXACT names to join them):
 {existing_nets}
 
 Pins available in THIS batch (the ONLY pin keys you may output):
 {pins_desc}
 
-Group these batch pins into signal nets now. Output only the JSON array."""
+Each pin shows its name AND its electrical type (etype).
+Use etype to infer signal direction — outputs drive inputs, bidirectional
+connects to bidirectional, passive pins go wherever their net needs them.
+
+Group these batch pins into signal nets now.  Output only the JSON array."""
 
 
 NETLIST_USER = """Components placed in schematic:

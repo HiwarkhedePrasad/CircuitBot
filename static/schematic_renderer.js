@@ -4,7 +4,7 @@
 
 // NOTE: GRID_SIZE is already defined in schematic.js (loaded before this file).
 const SCH_COLORS = {
-    bg: 0x1a1a2e,
+    bg: 0x100F0F,
     symbolLine: 0xE34E32,
     symbolFill: 0x4a3a2e,
     pinLine: 0xE34E32,
@@ -14,13 +14,78 @@ const SCH_COLORS = {
     propertyVal: 0x00A8A8,
     text: 0x888888,
     wire: 0x00A800,
+    wirePreview: 0x66FFAA,
     junction: 0x00A800,
+    terminal: 0x66FFAA,
+    terminalHover: 0xFFFFFF,
+    terminalActive: 0xFFD166,
     grid: 0x496090,
     gridMajor: 0x3a5068,
     selection: 0x00FF88,
     powerGnd: 0x4488ff,
     powerVcc: 0xcc4444,
 };
+
+// ── Symbol style overrides ────────────────────────────────────────────────
+
+const SymbolKind = { RESISTOR: "resistor" };
+const SymbolStandard = { IEC: "iec", ANSI: "ansi" };
+
+const SymbolStyleOverrides = {
+    "Device:R":       { kind: SymbolKind.RESISTOR },
+    "Device:R_Small": { kind: SymbolKind.RESISTOR },
+};
+
+const SymbolStyleRenderers = {
+    [SymbolKind.RESISTOR]: drawResistorAnsi,
+};
+
+function detectBodyRect(comp) {
+    const rects = comp.ops.filter(op => op[0] === 'rectangle');
+    if (rects.length === 0) return null;
+    const pins = comp.ops.filter(op => op[0] === 'pin');
+    if (pins.length < 2) return null;
+
+    let minTipY = Infinity, maxTipY = -Infinity;
+    for (const pin of pins) {
+        const at = getAttr(pin, 'at');
+        const len = parseFloat((getAttr(pin, 'length') || [0, 0])[1]);
+        const angle = parseFloat(at[3]) * Math.PI / 180;
+        const tipY = parseFloat(at[2]) - Math.sin(angle) * len;
+        minTipY = Math.min(minTipY, tipY);
+        maxTipY = Math.max(maxTipY, tipY);
+    }
+
+    for (const r of rects) {
+        const s = getAttr(r, 'start'), e = getAttr(r, 'end');
+        if (!s || !e) continue;
+        const ry1 = parseFloat(s[2]), ry2 = parseFloat(e[2]);
+        const sy = Math.min(ry1, ry2), ey = Math.max(ry1, ry2);
+        const halfH = (ey - sy) / 2;
+        const tol = Math.max(0.05, halfH * 0.05);
+        if (Math.abs(sy - minTipY) < tol && Math.abs(ey - maxTipY) < tol) return r;
+    }
+    return null;
+}
+
+function drawResistorAnsi(g, comp, rectOp) {
+    const s = getAttr(rectOp, 'start'), e = getAttr(rectOp, 'end');
+    const x1 = parseFloat(s[1]), y1 = parseFloat(s[2]);
+    const x2 = parseFloat(e[1]), y2 = parseFloat(e[2]);
+    const halfW = Math.abs(x2 - x1) / 2;
+    const halfH = Math.abs(y2 - y1) / 2;
+    const cx = (x1 + x2) / 2 + comp.x;
+    const cy = (y1 + y2) / 2 + comp.y;
+    const segments = Math.max(4, Math.round(halfH / 0.6));
+
+    g.lineStyle(0.2032, SCH_COLORS.symbolLine, 1);
+    for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const x = cx + (i % 2 === 0 ? -halfW : halfW);
+        const y = cy + halfH - t * halfH * 2;
+        i === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+}
 
 class SchematicRenderer {
     constructor(containerId, callbacks) {
@@ -33,7 +98,14 @@ class SchematicRenderer {
         this._panStart = { x: 0, y: 0 };
         this._panOffsetStart = { x: 0, y: 0 };
         this._selectedComp = null;
+        this._pinHitTargets = [];
+        this._wireDraft = null;
+        this._hoverPin = null;
+        this._activePin = null;
         this._dpr = window.devicePixelRatio || 1;
+        this._dragCompRef = null;
+        this._dragDelta = { dx: 0, dy: 0 };
+        this._interactionAbort = new AbortController();
 
         const container = document.getElementById(containerId);
         const parent = container.parentElement;
@@ -70,6 +142,7 @@ class SchematicRenderer {
         this._app.stage.addChild(this._world);
 
         this._setupInteraction();
+        this._symbolStyle = { standard: SymbolStandard.ANSI };
     }
 
     get canvas() { return this._canvas; }
@@ -86,18 +159,37 @@ class SchematicRenderer {
 
     destroy() {
         this._schematic = null;
+        this._interactionAbort.abort();
+        this._clearLayer(this._gridLayer);
+        this._clearLayer(this._wireLayer);
+        this._clearLayer(this._symbolLayer);
+        this._clearLayer(this._pinLayer);
+        this._clearLayer(this._textLayer);
+        this._clearLayer(this._overlayLayer);
+        if (this._canvas && this._canvas.parentNode) {
+            this._canvas.parentNode.removeChild(this._canvas);
+        }
         this._app.destroy(true, { children: true });
+    }
+
+    setSymbolStandard(standard) {
+        if (!Object.values(SymbolStandard).includes(standard)) return;
+        this._symbolStyle.standard = standard;
+        this.refresh();
     }
 
     // ── Full redraw ──────────────────────────────────────────────────────────
 
     _fullRedraw() {
-        this._gridLayer.removeChildren();
-        this._wireLayer.removeChildren();
-        this._symbolLayer.removeChildren();
-        this._pinLayer.removeChildren();
-        this._textLayer.removeChildren();
-        this._overlayLayer.removeChildren();
+        this._clearLayer(this._gridLayer);
+        this._clearLayer(this._wireLayer);
+        this._clearLayer(this._symbolLayer);
+        this._clearLayer(this._pinLayer);
+        this._clearLayer(this._textLayer);
+        this._clearLayer(this._overlayLayer);
+        this._pinHitTargets = [];
+        this._wireDraft = null;
+        this._hoverPin = null;
 
         if (!this._schematic) return;
 
@@ -111,22 +203,38 @@ class SchematicRenderer {
             this._renderComponent(comp, globalPinNames);
         }
 
+        this._renderTerminals();
         this._renderSelection();
     }
 
     _renderComponent(comp, globalPinNames) {
         const ox = comp.x;
         const oy = comp.y;
+        const override = SymbolStyleOverrides[comp.lib_id];
+
+        if (override && comp._bodyRect === undefined) {
+            comp._bodyRect = detectBodyRect(comp);
+        }
 
         for (const op of comp.ops) {
             const type = op[0];
 
             if (type === 'rectangle' || type === 'polyline' || type === 'circle' || type === 'arc') {
                 const g = new PIXI.Graphics();
+
+                if (override && op === comp._bodyRect && this._symbolStyle.standard === SymbolStandard.ANSI) {
+                    const renderer = SymbolStyleRenderers[override.kind];
+                    if (renderer) {
+                        renderer(g, comp, op);
+                        this._symbolLayer.addChild(g);
+                        continue;
+                    }
+                }
+
                 this._drawOpShape(g, op, ox, oy);
                 this._symbolLayer.addChild(g);
             } else if (type === 'pin') {
-                this._drawPin(op, ox, oy, globalPinNames);
+                this._drawPin(op, ox, oy, globalPinNames, comp);
             } else if (type === 'property' || type === 'text') {
                 this._drawText(op, ox, oy, type);
             }
@@ -228,7 +336,7 @@ class SchematicRenderer {
 
     // ── Pin drawing ──────────────────────────────────────────────────────────
 
-    _drawPin(op, ox, oy, globalPinNames) {
+    _drawPin(op, ox, oy, globalPinNames, comp) {
         const at = getAttr(op, 'at');
         const lenNode = getAttr(op, 'length');
         if (!at || !lenNode) return;
@@ -239,6 +347,17 @@ class SchematicRenderer {
         const ang = angDeg * Math.PI / 180;
         const ex = x + Math.cos(ang) * len;
         const ey = y + Math.sin(ang) * len;
+        const numNode = getAttr(op, 'number');
+        const pinNum = numNode && numNode[1] ? String(numNode[1]).replace(/"/g, '') : '';
+        if (comp && pinNum && pinNum !== '~') {
+            this._pinHitTargets.push({
+                key: `${comp.refDesignator}:${pinNum}`,
+                refDes: comp.refDesignator,
+                pinNum,
+                x,
+                y,
+            });
+        }
 
         // Pin stub line
         const g = new PIXI.Graphics();
@@ -442,12 +561,17 @@ class SchematicRenderer {
 
         for (const wire of this._schematic.wirePaths) {
             if (!wire.path || wire.path.length < 2) continue;
-            g.moveTo(wire.path[0].x, wire.path[0].y);
+            const srcRef = (wire.source || '').split(':')[0];
+            const tgtRef = (wire.target || '').split(':')[0];
+            const offFirst = srcRef === this._dragCompRef ? this._dragDelta : { dx: 0, dy: 0 };
+            const offLast  = tgtRef === this._dragCompRef ? this._dragDelta : { dx: 0, dy: 0 };
+            g.moveTo(wire.path[0].x + offFirst.dx, wire.path[0].y + offFirst.dy);
             for (let i = 1; i < wire.path.length; i++) {
                 const dx = Math.abs(wire.path[i].x - wire.path[i - 1].x);
                 const dy = Math.abs(wire.path[i].y - wire.path[i - 1].y);
-                if (dx > 0.001 && dy > 0.001) continue; // skip diagonal — shouldn't happen
-                g.lineTo(wire.path[i].x, wire.path[i].y);
+                if (dx > 0.001 && dy > 0.001) continue;
+                const off = i === wire.path.length - 1 ? offLast : { dx: 0, dy: 0 };
+                g.lineTo(wire.path[i].x + off.dx, wire.path[i].y + off.dy);
             }
         }
 
@@ -526,7 +650,7 @@ class SchematicRenderer {
 
     selectComponent(comp) {
         this._selectedComp = comp;
-        this._overlayLayer.removeChildren();
+        this._clearLayer(this._overlayLayer);
         this._renderSelection();
         if (this._callbacks.onSelect) {
             this._callbacks.onSelect(comp);
@@ -535,7 +659,7 @@ class SchematicRenderer {
 
     clearSelection() {
         this._selectedComp = null;
-        this._overlayLayer.removeChildren();
+        this._clearLayer(this._overlayLayer);
         if (this._callbacks.onSelect) {
             this._callbacks.onSelect(null);
         }
@@ -569,6 +693,43 @@ class SchematicRenderer {
             }
         }
         return null;
+    }
+
+    hitTestPin(worldX, worldY) {
+        if (!this._pinHitTargets || this._pinHitTargets.length === 0) return null;
+        let best = null;
+        let bestDist = Infinity;
+        const tol = Math.max(0.8, 7 / Math.max(this._zoom, 0.01));
+        for (const pin of this._pinHitTargets) {
+            const dx = worldX - pin.x;
+            const dy = worldY - pin.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist <= tol && dist < bestDist) {
+                best = pin;
+                bestDist = dist;
+            }
+        }
+        return best;
+    }
+
+    setActivePin(pin) {
+        this._activePin = pin || null;
+        this._renderInteractionOverlay();
+    }
+
+    setWireDraft(startPin, worldPoint) {
+        this._wireDraft = startPin && worldPoint ? { startPin, worldPoint } : null;
+        this._renderInteractionOverlay();
+    }
+
+    clearWireDraft() {
+        this._wireDraft = null;
+        this._activePin = null;
+        this._renderInteractionOverlay();
+    }
+
+    refresh() {
+        this._fullRedraw();
     }
 
     // ── Camera ───────────────────────────────────────────────────────────────
@@ -665,7 +826,7 @@ class SchematicRenderer {
 
             this._applyCamera();
             if (this._callbacks.onZoomChange) this._callbacks.onZoomChange(this._zoom);
-        }, { passive: false });
+        }, { passive: false, signal: this._interactionAbort.signal });
 
         // Middle-button pan
         canvas.addEventListener('mousedown', (e) => {
@@ -675,7 +836,37 @@ class SchematicRenderer {
                 this._panOffsetStart = { x: this._panOffset.x, y: this._panOffset.y };
                 canvas.style.cursor = 'grabbing';
             }
-        });
+        }, { signal: this._interactionAbort.signal });
+
+        // Left-click: select, drag-move component, or pan on empty space
+        let _leftStart = null;
+        let _dragComp = null;
+        let _leftPanning = false;
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                _leftStart = { x: e.clientX, y: e.clientY };
+                _dragComp = null;
+                _leftPanning = false;
+                if (this._wireDraft) return;
+                const rect = canvas.getBoundingClientRect();
+                const sx = (e.clientX - rect.left) * (this._app.screen.width / rect.width);
+                const sy = (e.clientY - rect.top) * (this._app.screen.height / rect.height);
+                const world = this.screenToWorld(sx, sy);
+                if (world) {
+                    const pin = this.hitTestPin(world.x, world.y);
+                    if (!pin) {
+                        const comp = this.hitTest(world.x, world.y);
+                        if (comp) {
+                            _dragComp = comp;
+                            this.selectComponent(comp);
+                            comp._dragOrigX = comp.x;
+                            comp._dragOrigY = comp.y;
+                        }
+                    }
+                }
+            }
+        }, { signal: this._interactionAbort.signal });
 
         canvas.addEventListener('mousemove', (e) => {
             if (this._isPanning) {
@@ -687,47 +878,122 @@ class SchematicRenderer {
                 return;
             }
 
+            if (e.buttons & 1 && _leftStart) {
+                const dx = e.clientX - _leftStart.x;
+                const dy = e.clientY - _leftStart.y;
+
+                if (_dragComp) {
+                    _dragComp.x = _dragComp._dragOrigX + dx / this._zoom;
+                    _dragComp.y = _dragComp._dragOrigY - dy / this._zoom;
+                    this._dragDelta.dx = _dragComp.x - _dragComp._dragOrigX;
+                    this._dragDelta.dy = _dragComp.y - _dragComp._dragOrigY;
+                    this._dragCompRef = _dragComp.refDesignator;
+                    this._partialRedraw();
+                    return;
+                }
+
+                if (!_leftPanning && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+                    _leftPanning = true;
+                    canvas.style.cursor = 'grabbing';
+                    this._panOffsetStart = { x: this._panOffset.x, y: this._panOffset.y };
+                }
+                if (_leftPanning) {
+                    this._panOffset.x = this._panOffsetStart.x + dx;
+                    this._panOffset.y = this._panOffsetStart.y + dy;
+                    this._applyCamera();
+                    return;
+                }
+            }
+
             // Update coordinate display
             if (this._callbacks.onCoordChange) {
                 const rect = canvas.getBoundingClientRect();
                 const sx = (e.clientX - rect.left) * (this._app.screen.width / rect.width);
                 const sy = (e.clientY - rect.top) * (this._app.screen.height / rect.height);
                 const world = this.screenToWorld(sx, sy);
-                if (world) this._callbacks.onCoordChange(world.x, world.y);
+                if (world) {
+                    this._callbacks.onCoordChange(world.x, world.y);
+                    const hoverPin = this.hitTestPin(world.x, world.y);
+                    const hoverKey = hoverPin ? hoverPin.key : '';
+                    if ((this._hoverPin ? this._hoverPin.key : '') !== hoverKey) {
+                        this._hoverPin = hoverPin;
+                        this._renderInteractionOverlay();
+                    }
+                    canvas.style.cursor = this._wireDraft || hoverPin ? 'crosshair' : '';
+                }
             }
-        });
+            if (this._wireDraft) {
+                const rect = canvas.getBoundingClientRect();
+                const sx = (e.clientX - rect.left) * (this._app.screen.width / rect.width);
+                const sy = (e.clientY - rect.top) * (this._app.screen.height / rect.height);
+                const world = this.screenToWorld(sx, sy);
+                if (world) this.setWireDraft(this._wireDraft.startPin, world);
+            }
+        }, { signal: this._interactionAbort.signal });
 
         canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+                if (_dragComp) {
+                    delete _dragComp._dragOrigX;
+                    delete _dragComp._dragOrigY;
+                    const dx = e.clientX - _leftStart.x;
+                    const dy = e.clientY - _leftStart.y;
+                    if ((Math.abs(dx) >= 4 || Math.abs(dy) >= 4) && this._callbacks.onComponentMoved) {
+                        this._callbacks.onComponentMoved(_dragComp, this._dragDelta.dx, this._dragDelta.dy);
+                    }
+                    _dragComp = null;
+                    _leftStart = null;
+                    return;
+                }
+                if (_leftPanning) {
+                    _leftPanning = false;
+                    _leftStart = null;
+                    canvas.style.cursor = '';
+                    return;
+                }
+                if (_leftStart) {
+                    const dx = e.clientX - _leftStart.x;
+                    const dy = e.clientY - _leftStart.y;
+                    if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+                        this._handleClick(e);
+                    }
+                    _leftStart = null;
+                }
+            }
+
             if (e.button === 1) {
                 this._isPanning = false;
                 canvas.style.cursor = '';
             }
-        });
+        }, { signal: this._interactionAbort.signal });
 
         canvas.addEventListener('mouseleave', () => {
             this._isPanning = false;
+            this._dragCompRef = null;
+            this._dragDelta = { dx: 0, dy: 0 };
+            _leftPanning = false;
+            _dragComp = null;
+            _leftStart = null;
             canvas.style.cursor = '';
-        });
+        }, { signal: this._interactionAbort.signal });
+    }
 
-        // Left-click selection (handle click, not mousedown, to avoid conflicts with pan)
-        let _clickStart = null;
-        canvas.addEventListener('mousedown', (e) => {
-            if (e.button === 0) {
-                _clickStart = { x: e.clientX, y: e.clientY };
-            }
-        });
+    _partialRedraw() {
+        if (!this._schematic) return;
+        this._clearLayer(this._wireLayer);
+        this._clearLayer(this._symbolLayer);
+        this._clearLayer(this._pinLayer);
+        this._clearLayer(this._textLayer);
+        this._clearLayer(this._overlayLayer);
+        this._pinHitTargets = [];
 
-        canvas.addEventListener('mouseup', (e) => {
-            if (e.button === 0 && _clickStart) {
-                const dx = e.clientX - _clickStart.x;
-                const dy = e.clientY - _clickStart.y;
-                if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
-                    // It's a click, not a drag
-                    this._handleClick(e);
-                }
-                _clickStart = null;
-            }
-        });
+        this._renderWires();
+        const globalPinNames = [];
+        for (const comp of this._schematic.components) {
+            this._renderComponent(comp, globalPinNames);
+        }
+        this._renderTerminals();
+        this._renderSelection();
     }
 
     _handleClick(e) {
@@ -739,11 +1005,80 @@ class SchematicRenderer {
         const world = this.screenToWorld(sx, sy);
         if (!world) return;
 
+        const pin = this.hitTestPin(world.x, world.y);
+        if (pin && this._callbacks.onPinClick) {
+            this._callbacks.onPinClick(pin, world);
+            return;
+        }
+
         const comp = this.hitTest(world.x, world.y);
         if (comp) {
             this.selectComponent(comp);
         } else {
             this.clearSelection();
+        }
+    }
+
+    _renderTerminals() {
+        if (!this._pinHitTargets || this._pinHitTargets.length === 0) return;
+        const g = new PIXI.Graphics();
+        for (const pin of this._pinHitTargets) {
+            g.lineStyle(0.12, SCH_COLORS.terminal, 0.85);
+            g.beginFill(SCH_COLORS.bg, 0.95);
+            g.drawCircle(pin.x, pin.y, 0.72);
+            g.endFill();
+            g.beginFill(SCH_COLORS.terminal, 0.9);
+            g.drawCircle(pin.x, pin.y, 0.28);
+            g.endFill();
+        }
+        this._overlayLayer.addChild(g);
+    }
+
+    _renderInteractionOverlay() {
+        this._clearLayer(this._overlayLayer);
+        this._renderTerminals();
+        this._renderSelection();
+        if (this._hoverPin) {
+            const hg = new PIXI.Graphics();
+            hg.lineStyle(0.16, SCH_COLORS.terminalHover, 0.95);
+            hg.beginFill(SCH_COLORS.terminalHover, 0.18);
+            hg.drawCircle(this._hoverPin.x, this._hoverPin.y, 1.15);
+            hg.endFill();
+            this._overlayLayer.addChild(hg);
+        }
+        if (this._activePin) {
+            const ag = new PIXI.Graphics();
+            ag.lineStyle(0.18, SCH_COLORS.terminalActive, 1);
+            ag.beginFill(SCH_COLORS.terminalActive, 0.22);
+            ag.drawCircle(this._activePin.x, this._activePin.y, 1.35);
+            ag.endFill();
+            this._overlayLayer.addChild(ag);
+        }
+        if (!this._wireDraft) return;
+        const start = this._wireDraft.startPin;
+        const end = this._wireDraft.worldPoint;
+        const g = new PIXI.Graphics();
+        g.lineStyle(0.254, SCH_COLORS.wirePreview, 0.9);
+        g.moveTo(start.x, start.y);
+        g.lineTo(end.x, end.y);
+        g.beginFill(SCH_COLORS.wirePreview, 1);
+        g.drawCircle(start.x, start.y, 0.5);
+        g.endFill();
+        this._overlayLayer.addChild(g);
+    }
+
+    _clearLayer(layer) {
+        if (!layer) return;
+        const children = layer.removeChildren() || [];
+        for (const child of children) {
+            if (!child || typeof child.destroy !== 'function') continue;
+            try {
+                child.destroy({ children: true, texture: true, baseTexture: true });
+            } catch (_) {
+                try {
+                    child.destroy(true);
+                } catch (_) {}
+            }
         }
     }
 }

@@ -1,0 +1,13 @@
+{
+  "name": "circuitbot",
+  "version": "0.8.2",
+  "private": true,
+  "description": "CircuitBot PCB design agent",
+  "scripts": {
+    "start": "python server.py",
+    "install-viewer": "node -e \"require('fs').cpSync(require('path').join(require.resolve('@tscircuit/runframe/package.json'), '..', 'dist', 'standalone-preview.min.js'), 'static/tscircuit-viewer.min.js')\""
+  },
+  "dependencies": {
+    "@tscircuit/runframe": "^0.0.2141"
+  }
+}

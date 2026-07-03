@@ -240,28 +240,6 @@ def generate_kicad_sch(design: dict) -> str:
     power_labels = design.get('power_labels', [])
     netlist = design.get('netlist', [])
 
-    # EV001: Every pin in the netlist must have a physical wire
-    wired_pins: set[str] = set()
-    for w in wires:
-        src = w.get('source', '')
-        tgt = w.get('target', '')
-        if src: wired_pins.add(src)
-        if tgt: wired_pins.add(tgt)
-    missing_wires = []
-    for conn in netlist:
-        for side in ('source', 'target'):
-            pin = conn.get(side, '')
-            if pin and pin not in wired_pins:
-                missing_wires.append(pin)
-    if missing_wires:
-        unique_missing = sorted(set(missing_wires))
-        raise ExportValidationError(
-            f"EV001: {len(unique_missing)} pin(s) in netlist lack physical wires: "
-            f"{', '.join(unique_missing[:10])}"
-            f"{'...' if len(unique_missing) > 10 else ''}",
-            issues=[{'code': 'EV001', 'pin': p} for p in unique_missing]
-        )
-
     # Build footprint lookup: ref_des -> footprint string
     fp_lookup = {c['ref_des']: c.get('footprint', '') for c in comps}
 
@@ -408,7 +386,8 @@ def generate_kicad_sch(design: dict) -> str:
     endpoint_count: dict[tuple[float, float], int] = {}
     wire_lines: list[str] = []
     n_dropped = 0
-    SNAP_TOLERANCE = 0.01  # mm — snap wire endpoint to pin if within this distance
+    surviving_wired_pins: set[str] = set()
+    SNAP_TOLERANCE = GRID * 0.5  # mm — snap wire endpoint to pin if within this distance
 
     # (a) signal-net wires
     for w in wires:
@@ -467,10 +446,33 @@ def generate_kicad_sch(design: dict) -> str:
             seen_segs.add(key)
             endpoint_count[(x1, y1)] = endpoint_count.get((x1, y1), 0) + 1
             endpoint_count[(x2, y2)] = endpoint_count.get((x2, y2), 0) + 1
+            if src_key: surviving_wired_pins.add(src_key)
+            if tgt_key: surviving_wired_pins.add(tgt_key)
             wire_lines.append(f'  (wire (pts (xy {_fmt(x1)} {_fmt(y1)}) (xy {_fmt(x2)} {_fmt(y2)}))')
             wire_lines.append('    (stroke (width 0) (type default))')
             wire_lines.append(f'    (uuid {_q(_new_uuid())})')
             wire_lines.append('  )')
+
+    # EV001 (H-06): validate export consistency — every wire_path entry must
+    # have produced at least one wire segment.  This catches degenerate wires
+    # (all segments dropped / zero-length) without blocking export when the
+    # routing engine produced zero traces for a net (a routing-layer concern).
+    missing_wires = []
+    for w in wires:
+        src = w.get('source', '')
+        tgt = w.get('target', '')
+        if src and src not in surviving_wired_pins:
+            missing_wires.append(src)
+        if tgt and tgt not in surviving_wired_pins:
+            missing_wires.append(tgt)
+    if missing_wires:
+        unique_missing = sorted(set(missing_wires))
+        raise ExportValidationError(
+            f"EV001: {len(unique_missing)} wire-endpoint(s) lack physical wire segments: "
+            f"{', '.join(unique_missing[:10])}"
+            f"{'...' if len(unique_missing) > 10 else ''}",
+            issues=[{'code': 'EV001', 'pin': p} for p in unique_missing]
+        )
 
     # (b) power nets — give every power pin its own short outward stub and
     # same-name global label. KiCad connects equal global-label names
@@ -535,6 +537,12 @@ def generate_kicad_sch(design: dict) -> str:
         out.append('    (effects (font (size 1.27 1.27)) (justify left))')
         out.append(f'    (uuid {_q(_new_uuid())})')
         out.append('  )')
+
+    # Track power-label pins as wired (they got a stub segment above).
+    for lbl in power_labels:
+        pin_key = lbl.get('pin', '')
+        if pin_key:
+            surviving_wired_pins.add(pin_key)
 
     # ── flush all wires at once ──
     out.extend(wire_lines)

@@ -1,6 +1,7 @@
 from agent.nodes.analyze import analyze_node
 from agent.nodes.research import research_node
 from agent.nodes.select import select_node
+from agent.nodes.symbol_compatibility import symbol_compatibility_node
 from agent.nodes.validate import validate_node
 from agent.nodes.dispatch import dispatch_node
 from agent.nodes.netlist import netlist_node
@@ -16,9 +17,11 @@ from agent.nodes.structural_net_repair import structural_net_repair_node
 from agent.nodes.power_net_repair import power_net_repair_node
 from agent.nodes.connectivity_validate import connectivity_validate_node
 from agent.nodes.connectivity_repair import connectivity_repair_node
+from agent.nodes.validate_repair import validate_repair_node
 
 __all__ = [
-    "analyze_node", "research_node", "select_node", "validate_node",
+    "analyze_node", "research_node", "select_node",
+    "symbol_compatibility_node", "validate_node",
     "dispatch_node", "netlist_node",
     "placement_node", "routing_node", "pcb_layout_node",
     "schematic_audit_node", "ask_pcb_approval_node",
@@ -27,4 +30,5 @@ __all__ = [
     "structural_net_validate_node", "structural_net_repair_node",
     "power_net_repair_node",
     "connectivity_validate_node", "connectivity_repair_node",
+    "validate_repair_node",
 ]

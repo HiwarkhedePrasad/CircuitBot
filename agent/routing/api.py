@@ -10,7 +10,7 @@ from agent.routing.constants import (
     MATRIX_SIZE, MATRIX_OFFSET,
 )
 from agent.routing.geometry import _snap, _pin_direction
-from agent.routing.path_utils import _is_orthogonal, _path_length
+from agent.routing.path_utils import _clean_path, _is_orthogonal, _path_length
 from agent.routing.collision import _path_collisions
 from agent.routing.make_path import make_path
 
@@ -84,7 +84,8 @@ def _prune_disconnected_net_islands(traces: list[dict], netlist: list[dict]
                 keep_ids.add(id(tr))
             continue
 
-        main_comp = max(components, key=lambda refs: len(refs))
+        components.sort(key=lambda s: (-len(s), sorted(s)))
+        main_comp = components[0]
         for tr, s_ref, t_ref in trace_refs:
             if s_ref in main_comp and t_ref in main_comp:
                 keep_ids.add(id(tr))
@@ -218,6 +219,120 @@ def repair_placement_for_routing(components: list[dict],
             moved.add(sat_ref)
 
     return len(moved)
+
+
+def _pin_lookup(pin_matrix: dict) -> dict[str, str]:
+    return {str(k).lower(): k for k in pin_matrix}
+
+
+def _resolve_pin(pin_matrix: dict, pin_lookup: dict[str, str], key: str) -> Optional[dict]:
+    pin = pin_matrix.get(key)
+    if pin is not None:
+        return pin
+    alt = pin_lookup.get(str(key).lower())
+    if alt is None:
+        return None
+    return pin_matrix.get(alt)
+
+
+def _placement_map(component_placements: list[dict]) -> dict[str, tuple[float, float]]:
+    return {
+        str(comp.get('ref_des', '')): (
+            float(comp.get('x', 0.0)),
+            float(comp.get('y', 0.0)),
+        )
+        for comp in component_placements
+        if comp.get('ref_des')
+    }
+
+
+def _abs_pin_position(pin_key: str, pin_matrix: dict,
+                      component_placements: list[dict]) -> Optional[tuple[float, float]]:
+    pin_lookup = _pin_lookup(pin_matrix)
+    placements = _placement_map(component_placements)
+    ref = str(pin_key or '').split(':')[0]
+    if not ref:
+        return None
+    pin = _resolve_pin(pin_matrix, pin_lookup, pin_key)
+    origin = placements.get(ref)
+    if pin is None or origin is None:
+        return None
+    return (_snap(float(pin.get('x', 0.0)) + origin[0]),
+            _snap(float(pin.get('y', 0.0)) + origin[1]))
+
+
+def _canonical_manhattan_path(start: tuple[float, float],
+                              end: tuple[float, float]) -> list[dict]:
+    sx, sy = start
+    ex, ey = end
+    points: list[tuple[float, float]] = [(sx, sy)]
+    if abs(sx - ex) > 1e-3 and abs(sy - ey) > 1e-3:
+        mid_x = _snap((sx + ex) / 2.0)
+        points.extend([(mid_x, sy), (mid_x, ey)])
+    points.append((ex, ey))
+    cleaned = _clean_path(points)
+    return [{'x': x, 'y': y} for x, y in cleaned]
+
+
+def _canonicalize_wire(wire: dict, pin_matrix: dict,
+                       component_placements: list[dict]) -> dict:
+    source = wire.get('source', '')
+    target = wire.get('target', '')
+    start = _abs_pin_position(source, pin_matrix, component_placements)
+    end = _abs_pin_position(target, pin_matrix, component_placements)
+    if start is None or end is None:
+        path = wire.get('path', [])
+    else:
+        path = _canonical_manhattan_path(start, end)
+    out = dict(wire)
+    out['path'] = path
+    return out
+
+
+def _canonicalize_wire_paths(wire_paths: list[dict], pin_matrix: dict,
+                             component_placements: list[dict]) -> list[dict]:
+    if not pin_matrix or not component_placements:
+        return wire_paths
+    return [_canonicalize_wire(wire, pin_matrix, component_placements) for wire in wire_paths]
+
+
+def apply_schematic_edit(wire_paths: list[dict], event: dict, netlist: list[dict],
+                         pin_matrix: Optional[dict] = None,
+                         component_placements: Optional[list[dict]] = None) -> list[dict]:
+    """Apply a schematic edit event and return clean, pruned wire paths.
+
+    Caller owns persistence — this function only transforms the wire list.
+    """
+    etype = event.get('edit_event_type', '')
+    pin_matrix = pin_matrix or {}
+    component_placements = component_placements or []
+    if etype in ('schematic_add_wire', 'add_wire'):
+        source = event.get('source') or event.get('source_pin', '')
+        target = event.get('target') or event.get('target_pin', '')
+        wire_id = event.get('wire_id') or event.get('edit_event_id', '')
+        net = event.get('net', '')
+        wire_paths = [w for w in wire_paths if w.get('wire_id') != wire_id]
+        wire_paths.append(_canonicalize_wire({
+            'wire_id': wire_id, 'source': source, 'target': target,
+            'net': net, 'path': event.get('path', []), 'manual': True,
+        }, pin_matrix, component_placements))
+        pruned, _ = _prune_disconnected_net_islands(wire_paths, netlist)
+        return pruned
+    elif etype in ('schematic_delete_wire', 'delete_wire'):
+        wire_id = event.get('wire_id')
+        source = event.get('source') or event.get('source_pin', '')
+        target = event.get('target') or event.get('target_pin', '')
+        if wire_id:
+            wire_paths = [w for w in wire_paths if w.get('wire_id') != wire_id]
+        elif source and target:
+            pair = {source, target}
+            wire_paths = [w for w in wire_paths
+                          if {w.get('source', ''), w.get('target', '')} != pair]
+        pruned, _ = _prune_disconnected_net_islands(wire_paths, netlist)
+        return pruned
+    elif etype in ('schematic_move_component', 'edit_schematic_component_location'):
+        return _canonicalize_wire_paths(wire_paths, pin_matrix, component_placements)
+    return wire_paths
 
 
 def route_traces(components: list[dict], netlist: list, pin_matrix: dict,

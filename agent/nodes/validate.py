@@ -18,7 +18,11 @@ _KNOWN_SYMBOLS = frozenset([
     "Sensor_Temperature:DS18B20",
     "Device:Crystal", "Device:Crystal_GND24", "Device:Crystal_Small",
     "Connector:AVR-ISP-6",
+    "Connector:Conn_01x04_Pin",
+    "Connector:Conn_01x06_Pin",
+    "Connector:Conn_01x08_Pin",
     "Device:Polyfuse",
+    "power:PWR_FLAG",
     # Placeholder symbols from support_rules KNOWN_FALLBACK_SYMBOLS —
     # these are used when RAG has no real KiCad symbol for an IC.
     # They are placeholders; the validator should not flag them.
@@ -185,6 +189,24 @@ _DEVKIT_REDUNDANT_LIBS = frozenset({
     "Interface_USB", "Regulator_Linear", "Connector_USB", "Connector",
 })
 
+_CORE_LIB_PREFIXES = ("RF_MODULE:", "MCU_", "MODULE_")
+_CORE_ID_KEYWORDS = frozenset({
+    "WROOM", "ESP32", "ESP8266", "STM32", "RP2040", "RP2350",
+    "ATMEGA", "ATTINY", "AT90", "ATXMEGA", "SAMD",
+})
+
+
+def _is_core_component(c: dict) -> bool:
+    """Return True if *c* is a primary MCU/module that should never be
+    removed by redundancy enforcement or devkit deduplication."""
+    id_str = (c.get("id_str", "") or "").upper()
+    lib = (id_str.split(":")[0] + ":") if ":" in id_str else ""
+    if any(lib.startswith(p) for p in _CORE_LIB_PREFIXES):
+        return True
+    if any(kw in id_str for kw in _CORE_ID_KEYWORDS):
+        return True
+    return False
+
 
 def _remove_devkit_redundancy(comps: list[dict], emit_fn) -> tuple[list[dict], list[str]]:
     """If any selected component is a DevKit/dev-board/WROOM/module, strip
@@ -205,23 +227,52 @@ def _remove_devkit_redundancy(comps: list[dict], emit_fn) -> tuple[list[dict], l
         return comps, []
 
     # Identify redundant main components
+    # ── WROOM guard ────────────────────────────────────────────────────
+    # Bare WROOM modules (ESP32-WROOM-32, ESP32-WROOM-32D) do NOT have
+    # on-board voltage regulation or USB-UART bridges — they are bare
+    # modules, not dev boards.  Only strip redundant components when a
+    # true development board keyword (DEVKIT, NODEMCU, BOARD, BREAKOUT)
+    # is present.
+    _DEV_BOARD_KW = frozenset({"DEVKIT", "NODEMCU", "BOARD", "BREAKOUT"})
+    has_dev_board = any(
+        any(kw in (c.get("id_str", "") or "").upper() for kw in _DEV_BOARD_KW)
+        for c in comps if c.get("ref_des", "") in module_refs
+    )
     redundant_refs: set[str] = set()
     for c in comps:
         id_str = (c.get("id_str", "") or "").upper()
         ref = c.get("ref_des", "")
         if not ref:
             continue
-        # USB-UART bridges
-        if any(kw in id_str for kw in ("CP2102", "CH340", "FT230", "FT232")):
+        # Never remove user-locked or core MCU/module components
+        if c.get("user_locked") or _is_core_component(c):
+            continue
+        # USB-UART bridges — only remove if a true dev board is present
+        if has_dev_board and any(kw in id_str for kw in ("CP2102", "CH340", "FT230", "FT232")):
             redundant_refs.add(ref)
-        # Voltage regulators
-        if "AMS1117" in id_str or "REGULATOR_LINEAR:" in id_str:
+        # Voltage regulators — only remove if a true dev board is present
+        if has_dev_board and ("AMS1117" in id_str or "REGULATOR_LINEAR:" in id_str):
             redundant_refs.add(ref)
-        # USB-C receptacles
-        if "USB_C_RECEPTACLE" in id_str:
+        # USB-C receptacles — only remove if a true dev board is present
+        if has_dev_board and "USB_C_RECEPTACLE" in id_str:
             redundant_refs.add(ref)
         # Non-RTC crystals (40 MHz main crystal — RTC 32.768 kHz is kept)
         if id_str in ("DEVICE:CRYSTAL_SMALL", "DEVICE:CRYSTAL", "DEVICE:CRYSTAL_GND24"):
+            redundant_refs.add(ref)
+
+    # Library-level catch-all: any component from a library known to be
+    # redundant with WROOM/modules (e.g. Interface_USB, Regulator_Linear,
+    # Connector_USB). This catches parts not covered by specific patterns
+    # above (like TPS25730D in Interface_USB).
+    for c in comps:
+        ref = c.get("ref_des", "")
+        if not ref or ref in redundant_refs:
+            continue
+        if c.get("user_locked") or _is_core_component(c):
+            continue
+        c_id_str = (c.get("id_str", "") or "").upper()
+        c_lib = c_id_str.split(":")[0] if ":" in c_id_str else ""
+        if c_lib in _DEVKIT_REDUNDANT_LIBS:
             redundant_refs.add(ref)
 
     # Remove support passives whose for_component is a redundant ref
@@ -285,23 +336,64 @@ def _enforce_redundancy_removal(
         if eid:
             for c in comps:
                 if c.get("id_str", "") == eid:
+                    # Protect user-locked and core MCU/module from removal
+                    if c.get("user_locked") or _is_core_component(c):
+                        continue
                     redundant_refs.add(c.get("ref_des", ""))
                     matched_some = True
         # Fallback: try matching ref_des from message text
         if not matched_some:
             for c in comps:
                 ref = c.get("ref_des", "")
-                if ref and ref.lower() in msg:
+                if not ref:
+                    continue
+                # Protect user-locked and core MCU/module from removal
+                if c.get("user_locked") or _is_core_component(c):
+                    continue
+                # Pattern 1: redundancy keyword BEFORE ref_des within 80 chars
+                ctx_fwd = re.compile(
+                    rf'(?:redundant|superfluous|unnecessary|duplicate|already\s+integrated)'
+                    rf'.{{0,80}}\b{re.escape(ref.lower())}\b',
+                    re.IGNORECASE
+                )
+                if ctx_fwd.search(msg):
                     redundant_refs.add(ref)
-                    break  # one per issue
+                    break
+                # Pattern 1b: ref_des BEFORE redundancy keyword within 80 chars (reverse)
+                ctx_rev = re.compile(
+                    rf'\b{re.escape(ref.lower())}\b'
+                    rf'.{{0,80}}(?:redundant|superfluous|unnecessary|duplicate)',
+                    re.IGNORECASE
+                )
+                if ctx_rev.search(msg):
+                    redundant_refs.add(ref)
+                    break
+                # Pattern 2 (C-04 fix): ref_des as sentence subject BUT only when
+                # the same sentence ALSO contains a redundancy keyword. This prevents
+                # matching the SURVIVOR when the redundant part is the real subject.
+                sentence_m = re.search(
+                    rf'(?:redundant|superfluous|unnecessary|duplicate|already\s+integrated)',
+                    msg, re.IGNORECASE
+                )
+                if sentence_m:
+                    subj_pattern = re.compile(
+                        rf'\b{re.escape(ref.lower())}\b\s+(?:is|was|has|contains|integrates)',
+                        re.IGNORECASE
+                    )
+                    if subj_pattern.search(msg):
+                        redundant_refs.add(ref)
+                        break
 
     if not redundant_refs:
         return comps, issues, []
 
     # Cascade: remove support passives linked to a removed main component
+    pre_cascade = set(redundant_refs)
     for c in comps:
         ref = c.get("ref_des", "")
         if not ref or ref in redundant_refs:
+            continue
+        if c.get("user_locked"):
             continue
         fc = c.get("for_component", "")
         desc = (c.get("description", "") or "").upper()
@@ -309,6 +401,14 @@ def _enforce_redundancy_removal(
             redundant_refs.add(ref)
         elif any(r in desc for r in redundant_refs):
             redundant_refs.add(ref)
+    cascade_added = redundant_refs - pre_cascade
+    if cascade_added:
+        cascade_detail = [
+            f"{r}" for r in sorted(cascade_added)
+        ]
+        emit_fn("agent:log", {
+            "message": f"  Cascade removal: {', '.join(cascade_detail)} (support components of removed ICs)"
+        })
 
     # Capture id_strs BEFORE filtering comps
     removed_ids = {
@@ -516,6 +616,16 @@ def validate_node(state, config):
         errors = [i for i in issues if i.get("severity") == "error"]
         warnings = [i for i in issues if i.get("severity") == "warning"]
 
+    # C-05: Build full rejected list BEFORE critical-pattern early return so
+    # that devkit-removed and enforcement-removed IDs are never lost.
+    _base_rejected = list(state.get("rejected_ids", []))
+    for rid in _devkit_rejected_ids:
+        if rid not in _base_rejected:
+            _base_rejected.append(rid)
+    for rid in _enforced_rejected_ids:
+        if rid not in _base_rejected:
+            _base_rejected.append(rid)
+
     for issue in issues:
         msg = (issue.get("message", "") or "").lower()
         for keyword, context, reason in _CRITICAL_PATTERNS:
@@ -524,9 +634,12 @@ def validate_node(state, config):
                           f"  Component: {issue.get('id_str', '?')}\n"
                           f"  Detail: {issue.get('message', '')}\n"
                           f"  Suggestion: {issue.get('suggestion', '')}")
-                rejected = list(state.get("rejected_ids", []))
-                if issue.get("id_str") and issue["id_str"] not in rejected:
-                    rejected.append(issue["id_str"])
+                rejected = list(_base_rejected)
+                crit_id = issue.get("id_str", "")
+                if crit_id and crit_id not in rejected and not any(
+                    c.get("user_locked") for c in comps if c.get("id_str") == crit_id
+                ):
+                    rejected.append(crit_id)
                 _emit(config, "agent:log", {
                     "message": f"  Validation rejected {issue.get('id_str', '?')}: {issue.get('message', '')}"
                 })
@@ -563,6 +676,27 @@ def validate_node(state, config):
                 else:
                     results = search_components(query, k=5, library_filter=lib_filter)
                     best = results[0] if results else None
+                if not best:
+                    q_lower = query.lower()
+                    for known_id in _KNOWN_SYMBOLS:
+                        known_name = known_id.rpartition(':')[2].lower().replace('_', ' ')
+                        if known_name in q_lower or q_lower in known_name:
+                            best = {"id_str": known_id, "text": mc.get("description", query), "footprint": "", "pads": []}
+                            break
+                # ── Programming/UART header deterministic fallback ──
+                if not best:
+                    prog_keywords = ("programming", "debug", "uart header", "tx rx")
+                    if any(kw in query.lower() for kw in prog_keywords):
+                        for fallback_id in ("Connector:Conn_01x06_Pin",
+                                            "Connector:Conn_01x04_Pin",
+                                            "Connector:Conn_01x08_Pin"):
+                            if fallback_id in _KNOWN_SYMBOLS:
+                                best = {"id_str": fallback_id, "text": mc.get("description", query),
+                                        "footprint": "", "pads": []}
+                                _emit(config, "agent:log", {
+                                    "message": f"  Programming header fallback: using {fallback_id}"
+                                })
+                                break
                 if best:
                     ref_prefix = _ref_prefix_for(best["id_str"], best["id_str"].split(":")[0])
                     existing_nums = set()

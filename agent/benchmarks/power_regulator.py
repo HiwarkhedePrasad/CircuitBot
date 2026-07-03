@@ -1,0 +1,80 @@
+"""Power regulator chain: USB → LDO → MCU with input/output caps."""
+
+
+def load():
+    return {
+        "name": "Power Regulator",
+        "description": "USB input → AMS1117 LDO → ESP32, with decoupling caps",
+        "components": [
+            {
+                "ref_des": "J1",
+                "id_str": "Connector_USB:USB_C_Receptacle_USB2.0",
+                "category": "Connector_USB",
+                "description": "USB-C input",
+                "for_component": "",
+                "ops": [["rectangle", ["start", -8, -5], ["end", 8, 5]]],
+                "footprint": "",
+            },
+            {
+                "ref_des": "U2",
+                "id_str": "Regulator_Linear:AMS1117-3.3",
+                "category": "Regulator_Linear",
+                "description": "3.3V LDO regulator",
+                "for_component": "",
+                "ops": [["rectangle", ["start", -6, -4], ["end", 6, 4]]],
+                "footprint": "",
+            },
+            {
+                "ref_des": "U1",
+                "id_str": "MCU:ESP32",
+                "category": "MCU",
+                "description": "ESP32 microcontroller",
+                "for_component": "",
+                "ops": [["rectangle", ["start", -10, -8], ["end", 10, 8]]],
+                "footprint": "",
+            },
+            {
+                "ref_des": "C1",
+                "id_str": "Device:C_Small",
+                "category": "Device",
+                "description": "10uF input cap",
+                "for_component": "U2",
+                "ops": [["rectangle", ["start", -4, -3], ["end", 4, 3]]],
+                "footprint": "",
+            },
+            {
+                "ref_des": "C2",
+                "id_str": "Device:C_Small",
+                "category": "Device",
+                "description": "10uF output cap",
+                "for_component": "U2",
+                "ops": [["rectangle", ["start", -4, -3], ["end", 4, 3]]],
+                "footprint": "",
+            },
+            {
+                "ref_des": "C3",
+                "id_str": "Device:C_Small",
+                "category": "Device",
+                "description": "100nF decoupling",
+                "for_component": "U1",
+                "ops": [["rectangle", ["start", -3, -2], ["end", 3, 2]]],
+                "footprint": "",
+            },
+        ],
+        "netlist": [
+            {"source": "J1:VBUS", "target": "U2:VIN", "net": "VBUS"},
+            {"source": "C1:1", "target": "U2:VIN", "net": "VBUS"},
+            {"source": "U2:VOUT", "target": "U1:3V3", "net": "3V3"},
+            {"source": "C2:1", "target": "U2:VOUT", "net": "3V3"},
+            {"source": "C3:1", "target": "U1:3V3", "net": "3V3"},
+        ],
+        "pin_matrix": {
+            "J1:VBUS":  {"x": -8, "y": 2, "angle": 180},
+            "U2:VIN":   {"x": -6, "y": -2, "angle": 180},
+            "U2:VOUT":  {"x": 6, "y": -2, "angle": 0},
+            "U1:3V3":   {"x": -10, "y": 4, "angle": 180},
+            "C1:1":     {"x": 4, "y": 0, "angle": 0},
+            "C2:1":     {"x": 4, "y": 0, "angle": 0},
+            "C3:1":     {"x": 3, "y": 0, "angle": 0},
+        },
+    }

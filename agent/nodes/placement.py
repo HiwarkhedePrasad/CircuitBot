@@ -1,6 +1,6 @@
 """Placement node — runs component placement ONCE and locks."""
 
-from agent.layout_engine import BackendLayoutEngine
+from agent.placement import PlacementEngine
 from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 
@@ -21,24 +21,27 @@ def placement_node(state, config):
     emit_assistant_message(config, "Running schematic placement...")
     emit_tool_event(config, "Placement", "running", "Placing components...")
 
-    engine = BackendLayoutEngine()
+    # Build component dicts in the format expected by the placement engines
+    components = []
     for comp in comps:
         ref_des = comp["ref_des"]
         ops = comp_ops.get(ref_des)
         if not ops:
             continue
-        engine.add_component(ref_des, ops, comp["category"],
-                             comp.get("id_str", ""),
-                             comp.get("for_component", ""))
+        components.append({
+            "ref_des": ref_des,
+            "ops": ops,
+            "category": comp["category"],
+            "id_str": comp.get("id_str", ""),
+            "for_component": comp.get("for_component", ""),
+        })
 
-    if not engine.components:
+    if not components:
         emit_tool_event(config, "Placement", "failed", "No components could be placed.")
         return {}
 
-    # Run placement with built-in 5-retry loop (best-score selected)
-    engine.execute_placement(pin_matrix=pin_matrix, netlist=netlist)
-
-    placements = engine.get_placements()
+    engine = PlacementEngine.create()
+    placements = engine.place(components, netlist, pin_matrix)
 
     emit_tool_event(config, "Placement", "completed",
                     f"Placed {len(placements)} components")

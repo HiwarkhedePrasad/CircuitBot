@@ -66,3 +66,4 @@ class AgentState(TypedDict, total=False):
     _erc_affected_nets: Optional[List[str]]  # net names affected by last ERC repair (targeted re-route)
     _validation_issues: Optional[List[dict]]  # all validation issues collected across stages
     _power_net_repaired: bool           # True after power_net_repair runs
+    synthesis_graph: Optional["dict"]   # serialised SynthesisGraph (set by netlist_node)

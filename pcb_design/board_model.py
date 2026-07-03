@@ -77,6 +77,7 @@ class BoardComponent:
     layer: str = "F.Cu"
     value: str = ""
     pads: list[PadDef] = field(default_factory=list)
+    graphics: list[dict] = field(default_factory=list)
     bbox: Optional[tuple[float, float, float, float]] = None
 
     def pad_polygons(self) -> list[Polygon]:
@@ -140,6 +141,7 @@ class BoardModel:
     nets: list[dict] = field(default_factory=list)
     power_pins: list[dict] = field(default_factory=list)
     power_labels: list[dict] = field(default_factory=list)
+    outline_segments: list[dict] = field(default_factory=list)
 
     outline: Optional["Polygon"] = None
     layers: list[tuple[int, str, str]] = field(default_factory=lambda: [
@@ -236,6 +238,7 @@ class BoardModel:
                     }
                     for p in c.pads
                 ],
+                "graphics": c.graphics,
             }
 
         return {
@@ -263,6 +266,7 @@ class BoardModel:
             ],
             "power_pins": self.power_pins,
             "power_labels": self.power_labels,
+            "outline_segments": self.outline_segments,
         }
 
     @staticmethod
@@ -273,6 +277,7 @@ class BoardModel:
             nets=data.get("nets", []),
             power_pins=data.get("power_pins", []),
             power_labels=data.get("power_labels", []),
+            outline_segments=data.get("outline_segments", []),
         )
         model.normalize_nets()
         for cd in data.get("components", []):
@@ -291,6 +296,7 @@ class BoardModel:
                 x=cd["x"], y=cd["y"], rotation=cd.get("rotation", 0.0),
                 layer=cd.get("layer", "F.Cu"), value=cd.get("value", ""),
                 pads=pads,
+                graphics=cd.get("graphics", []),
             ))
         for td in data.get("traces", []):
             path = [(p["x"], p["y"]) for p in td.get("path", [])]

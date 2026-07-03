@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchBtn = document.getElementById('searchBtn');
     const searchResults = document.getElementById('searchResults');
     const loading = document.getElementById('loading');
-    const componentInfo = document.getElementById('componentInfo');
     const addBtn = document.getElementById('addBtn');
     const viewSchematicBtn = document.getElementById('viewSchematicBtn');
     const viewSymbolBtn = document.getElementById('viewSymbolBtn');
@@ -18,7 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentBtn = document.getElementById('agentBtn');
     const agentPrompt = document.getElementById('agentPrompt');
     const agentConversation = document.getElementById('agentConversation');
-    const agentThinking = document.getElementById('agentThinking');
+    const agentPulse = document.getElementById('agentPulse');
+    const agentDot = document.getElementById('agentDot');
+    const agentStatus = document.getElementById('agentStatus');
     const coordDisplay = document.getElementById('coordDisplay');
     const zoomLevelDisplay = document.getElementById('zoomLevel');
 
@@ -26,6 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPreviewOps = null;
     let agentBusy = false;
     let currentSchematic = null;
+    let schematicWireStart = null;
+    const MAX_CONVERSATION_MESSAGES = 500;
+    const MAX_CONVERSATION_ITEMS = 300;
+    const MAX_APPROVAL_BUTTONS = 10;
 
     // ── Tab Management ────────────────────────────────────────────────────────
 
@@ -69,21 +74,11 @@ document.addEventListener('DOMContentLoaded', () => {
             showViewport('pcb');
             document.getElementById('routePrompt').classList.add('hidden');
             pcbUploadArea.classList.add('hidden');
-            if (_useLegacyPcbViewer) {
-                if (pcbState.boardModel) {
-                    pcbSetupCanvas();
-                    pcbDraw();
-                } else {
-                    showPcbUploadOverlay();
-                }
+            if (pcbState.boardModel) {
+                pcbSetupCanvas();
+                pcbDraw();
             } else {
-                if (pcbState.boardModel) {
-                    if (window.TscircuitViewer) {
-                        window.TscircuitViewer.mount('tscircuit-container');
-                    }
-                } else {
-                    showPcbUploadOverlay();
-                }
+                showPcbUploadOverlay();
             }
         });
     }
@@ -104,17 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function getRenderer() {
         if (!renderer) {
             renderer = new SchematicRenderer('canvasContainer', {
-                onSelect: (comp) => {
-                    if (comp) {
-                        componentInfo.innerHTML = `<div class="prop-group">
-                            <div class="prop-row"><span class="prop-key">Ref</span><span class="prop-val">${comp.refDesignator}</span></div>
-                            <div class="prop-row"><span class="prop-key">Name</span><span class="prop-val">${comp.name.split(':').pop()}</span></div>
-                            <div class="prop-row"><span class="prop-key">Category</span><span class="prop-val">${comp.category}</span></div>
-                            <div class="prop-row"><span class="prop-key">Position</span><span class="prop-val">${comp.x.toFixed(2)}, ${comp.y.toFixed(2)} mm</span></div>
-                        </div>`;
-                    } else {
-                        componentInfo.innerHTML = '<div class="empty-state">No component selected</div>';
-                    }
+                onSelect: () => {},
+                onPinClick: (pin, world) => {
+                    handleSchematicPinClick(pin, world);
                 },
                 onCoordChange: (wx, wy) => {
                     if (coordDisplay) coordDisplay.textContent = `X: ${wx.toFixed(2)} Y: ${wy.toFixed(2)}`;
@@ -123,10 +110,141 @@ document.addEventListener('DOMContentLoaded', () => {
                     const pct = Math.round(zoom / (_initialRenderZoom || zoom) * 100);
                     if (zoomLevelDisplay) zoomLevelDisplay.textContent = `${pct}%`;
                 },
+                onComponentMoved: (comp, dx, dy) => {
+                    const event = {
+                        edit_event_type: 'schematic_move_component',
+                        ref_des: comp.refDesignator,
+                        new_center: { x: comp.x, y: comp.y },
+                    };
+                    applySchematicEditEvents([event]);
+                },
             });
             _initialRenderZoom = renderer.zoom;
         }
         return renderer;
+    }
+
+    function orthogonalWirePath(a, b) {
+        const midX = snapToGrid((a.x + b.x) / 2);
+        return [
+            { x: snapToGrid(a.x), y: snapToGrid(a.y) },
+            { x: midX, y: snapToGrid(a.y) },
+            { x: midX, y: snapToGrid(b.y) },
+            { x: snapToGrid(b.x), y: snapToGrid(b.y) },
+        ].filter((pt, index, arr) => {
+            if (index === 0) return true;
+            const prev = arr[index - 1];
+            return Math.abs(prev.x - pt.x) > 0.001 || Math.abs(prev.y - pt.y) > 0.001;
+        });
+    }
+
+    async function applySchematicEditEvents(editEvents) {
+        if (!Array.isArray(editEvents) || editEvents.length === 0) return false;
+        const hasMoveEvents = editEvents.some(e =>
+            (e.edit_event_type || '').includes('move') ||
+            (e.edit_event_type || '').includes('location')
+        );
+        try {
+            const res = await fetch('/api/apply_edits', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ edit_events: editEvents }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+                throw new Error(data.error || `apply_edits failed (${res.status})`);
+            }
+            if (currentSchematic && data.wire_paths) {
+                currentSchematic.wirePaths = data.wire_paths;
+            }
+            if (hasMoveEvents && currentSchematic && data.component_placements) {
+                for (const p of data.component_placements) {
+                    const comp = currentSchematic.components.find(c => c.refDesignator === p.ref_des);
+                    if (comp) { comp.x = p.x; comp.y = p.y; }
+                }
+            }
+            if (renderer) renderer.refresh();
+            updateCompletenessBadge(
+                currentSchematic ? currentSchematic.wirePaths : [],
+                currentSchematic ? currentSchematic.netlist : []
+            );
+            return true;
+        } catch (err) {
+            const saved = await persistSchematicLayoutFallback();
+            addLogEntry(
+                'Schematic edit sync failed: ' + (err.message || err) + (saved ? ' (layout saved)' : ''),
+                saved ? 'log' : 'error'
+            );
+            return false;
+        }
+    }
+
+    async function persistSchematicLayoutFallback() {
+        if (!currentSchematic) return false;
+        try {
+            const res = await fetch('/api/save_layout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    placements: currentSchematic.components.map(c => ({
+                        ref_des: c.refDesignator,
+                        x: c.x,
+                        y: c.y,
+                    })),
+                    wire_paths: currentSchematic.wirePaths || [],
+                    power_labels: currentSchematic.powerLabels || [],
+                }),
+            });
+            return res.ok;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function handleSchematicPinClick(pin, world) {
+        if (!currentSchematic || !renderer) return;
+        if (!schematicWireStart) {
+            schematicWireStart = pin;
+            renderer.setActivePin(pin);
+            renderer.setWireDraft(pin, world);
+            addLogEntry(`Wire start: ${pin.key}`, 'log');
+            return;
+        }
+        if (schematicWireStart.key === pin.key) {
+            schematicWireStart = null;
+            renderer.clearWireDraft();
+            return;
+        }
+
+        const start = schematicWireStart;
+        const wireId = `schematic_wire_${Date.now()}`;
+        const path = orthogonalWirePath(start, pin);
+        schematicWireStart = null;
+        renderer.clearWireDraft();
+        const optimisticWire = {
+            wire_id: wireId,
+            source: start.key,
+            target: pin.key,
+            path,
+            manual: true,
+        };
+        if (!Array.isArray(currentSchematic.wirePaths)) currentSchematic.wirePaths = [];
+        currentSchematic.wirePaths = currentSchematic.wirePaths.filter(w => w.wire_id !== wireId);
+        currentSchematic.wirePaths.push(optimisticWire);
+        renderer.refresh();
+        updateCompletenessBadge(currentSchematic.wirePaths, currentSchematic.netlist || []);
+        const event = {
+            edit_event_type: 'schematic_add_wire',
+            source: start.key,
+            target: pin.key,
+            path,
+            wire_id: wireId,
+            edit_event_id: wireId,
+            in_progress: false,
+        };
+        applySchematicEditEvents([event]).then(ok => {
+            addLogEntry(`Wired ${start.key} to ${pin.key}${ok ? '' : ' locally'}`, ok ? 'success' : 'log');
+        });
     }
 
     function isPCBMode() {
@@ -137,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return document.getElementById('viewSymbolBtn').classList.contains('active');
     }
 
-    let _useLegacyPcbViewer = false;
+    let _useLegacyPcbViewer = true;
 
     function showViewport(active) {
         const container = document.getElementById('canvasContainer');
@@ -147,13 +265,8 @@ document.addEventListener('DOMContentLoaded', () => {
         container.style.display = active === 'schematic' ? '' : 'none';
         symbolCanvas.style.display = active === 'symbol' ? '' : 'none';
         if (active === 'pcb') {
-            if (_useLegacyPcbViewer) {
-                pcbCanvas.style.display = '';
-                tscircuitContainer.style.display = 'none';
-            } else {
-                pcbCanvas.style.display = 'none';
-                tscircuitContainer.style.display = '';
-            }
+            pcbCanvas.style.display = '';
+            tscircuitContainer.style.display = 'none';
         } else {
             pcbCanvas.style.display = 'none';
             tscircuitContainer.style.display = 'none';
@@ -176,6 +289,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const pcbCanvas = document.getElementById('pcbCanvas');
     if (pcbCanvas) {
+        pcbCanvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
         pcbCanvas.addEventListener('mousemove', (e) => {
             if (isPCBMode()) pcbHandleMouseMove(e);
         });
@@ -195,12 +311,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Global keyboard handler for PCB view shortcuts (Escape to cancel drawing)
     document.addEventListener('keydown', (e) => {
-        if (isPCBMode() && _useLegacyPcbViewer) pcbHandleKeyDown(e);
+        if (isPCBMode()) pcbHandleKeyDown(e);
     });
 
     // ── SocketIO ──────────────────────────────────────────────────────────────
 
     function connectSocket() {
+        if (socket) {
+            socket.removeAllListeners();
+            socket.disconnect();
+        }
         socket = io();
         socket.on('connect', () => {
             addLogEntry('Connected to agent backend.', 'system');
@@ -209,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addLogEntry('Disconnected from agent backend.', 'system');
         });
         socket.on('agent:thinking', (data) => {
-            showAgentStatus(data.message || 'Thinking...');
+            showAgentStatus(data.message || 'Thinking...', 'thinking');
         });
         socket.on('agent:log', (data) => {
             addLogEntry(data.message || '', 'log');
@@ -223,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('agent:done', (data) => {
             agentBusy = false;
             updateAgentButton();
-            showAgentStatus('');
+            showAgentStatus('Design complete', 'completed');
             addConversationMessage('system', data.message || 'Design complete.');
             updateComponentListUI();
             updateSchematicButtons();
@@ -237,6 +357,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         socket.on('agent:pcb_approval', (data) => {
             addConversationMessage('assistant', data.message || 'Schematic complete. Proceed to PCB layout?');
+            const existingButtons = agentConversation.querySelectorAll('.conv-approval-buttons');
+            existingButtons.forEach(node => node.remove());
             const btnDiv = document.createElement('div');
             btnDiv.className = 'conv-approval-buttons';
             btnDiv.innerHTML = `
@@ -244,29 +366,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="btn-skip" onclick="socket.emit('agent:pcb_approve', {approved: false})">Skip PCB</button>
             `;
             agentConversation.appendChild(btnDiv);
+            while (agentConversation.querySelectorAll('.conv-approval-buttons').length > MAX_APPROVAL_BUTTONS) {
+                agentConversation.querySelector('.conv-approval-buttons')?.remove();
+            }
             agentConversation.scrollTop = agentConversation.scrollHeight;
         });
         socket.on('agent:pcb_ready', (data) => {
             if (data.board_model) {
                 pcbLoadBoard(data.board_model);
+                addLogEntry('PCB editor loaded with white airwires for manual routing.', 'log');
                 addLogEntry('PCB model loaded for board view.', 'success');
                 exportPCBBtn.disabled = false;
                 importPCBBtn.disabled = false;
-                // Drive the tscircuit viewer: mount if it has never been
-                // mounted yet, otherwise refresh into the existing container.
-                if (window.TscircuitViewer && !_useLegacyPcbViewer) {
-                    if (window.TscircuitViewer.isMounted && window.TscircuitViewer.isMounted()) {
-                        window.TscircuitViewer.refresh();
-                    } else {
-                        window.TscircuitViewer.mount('tscircuit-container');
-                    }
-                }
             }
         });
         socket.on('agent:error', (data) => {
             agentBusy = false;
             updateAgentButton();
-            showAgentStatus('');
+            showAgentStatus('Error: ' + (data.message || 'Unknown error'), 'error');
             addLogEntry('Error: ' + (data.message || 'Unknown error'), 'error');
         });
         socket.on('agent:conversation', (data) => {
@@ -282,76 +399,115 @@ document.addEventListener('DOMContentLoaded', () => {
         const empty = agentConversation.querySelector('.conv-empty');
         if (empty) empty.remove();
         const entry = document.createElement('div');
-        entry.className = 'conv-message conv-' + (type || 'log');
-        entry.textContent = text;
+        const isDetail = typeof text === 'string' && (text.startsWith('  ') || text.includes('='));
+        if (type === 'error') {
+            entry.className = 'conv-error-msg';
+        } else if (isDetail) {
+            entry.className = 'conv-detail';
+            entry.textContent = text.trimStart();
+        } else {
+            entry.className = 'conv-milestone';
+            entry.textContent = text;
+        }
         agentConversation.appendChild(entry);
+        trimConversationDom();
         agentConversation.scrollTop = agentConversation.scrollHeight;
     }
 
-    function showAgentStatus(text) {
-        agentThinking.textContent = text || '';
-        agentThinking.classList.toggle('active', !!text);
+    function trimConversationDom() {
+        while (agentConversation.children.length > MAX_CONVERSATION_ITEMS) {
+            agentConversation.removeChild(agentConversation.firstElementChild);
+        }
+    }
+
+    function showAgentStatus(text, state) {
+        if (agentStatus) {
+            agentStatus.textContent = text || 'Ready';
+            agentStatus.className = 'agent-status-text';
+            if (state === 'thinking') agentStatus.classList.add('thinking');
+        }
+        const bar = document.getElementById('agentThinkingBar');
+        if (bar) {
+            bar.classList.toggle('active', state === 'thinking');
+        }
     }
 
     function updateAgentButton() {
         agentBtn.disabled = agentBusy || !agentPrompt.value.trim();
         agentBtn.textContent = agentBusy ? 'Building...' : 'Build';
+        agentBtn.className = 'btn-send' + (agentBusy ? ' running' : '');
     }
 
-    const conversation = []; // append-only conversation log
+    const conversation = [];
+    let _toolCardIdCounter = 0;
 
     function handleConversationEvent(data) {
         if (!data || !data.type) return;
         conversation.push(data);
+        if (conversation.length > MAX_CONVERSATION_MESSAGES) {
+            conversation.splice(0, conversation.length - MAX_CONVERSATION_MESSAGES);
+        }
         const empty = agentConversation.querySelector('.conv-empty');
         if (empty) empty.remove();
 
         if (data.type === 'assistant') {
-            const bubble = document.createElement('div');
-            bubble.className = 'conv-assistant';
-            bubble.textContent = data.content || '';
-            agentConversation.appendChild(bubble);
+            const msg = document.createElement('div');
+            msg.className = 'conv-agent-msg';
+            msg.textContent = data.content || '';
+            agentConversation.appendChild(msg);
         } else if (data.type === 'tool_card') {
-            const card = document.createElement('div');
-            card.className = `conv-tool-card ${data.status || 'running'}`;
-
-            let detailsHtml = '';
-            if (data.details) {
-                const detailStr = typeof data.details === 'object'
-                    ? Object.entries(data.details).map(([k, v]) => `${k}: ${v}`).join('\n')
-                    : data.details;
-                detailsHtml = `<div class="tc-details" hidden>${escapeHtml(detailStr)}</div>`;
+            const tcId = data.id || `tc_${++_toolCardIdCounter}`;
+            if (data.status === 'running') {
+                const p = document.createElement('div');
+                p.className = 'conv-progress';
+                p.textContent = (data.title || 'Working') + '...';
+                p.dataset.toolCardId = tcId;
+                agentConversation.appendChild(p);
+            } else if (data.status === 'completed' || data.status === 'failed') {
+                const existing = agentConversation.querySelector(`[data-tool-card-id="${tcId}"]`);
+                if (existing) {
+                    existing.className = 'conv-agent-msg';
+                    existing.textContent = data.summary || data.title || '';
+                } else {
+                    const msg = document.createElement('div');
+                    msg.className = data.status === 'failed' ? 'conv-error-msg' : 'conv-agent-msg';
+                    msg.textContent = data.summary || data.title || '';
+                    agentConversation.appendChild(msg);
+                }
             }
-
-            card.innerHTML = `
-                <div class="tc-header">
-                    <span class="tc-dot ${data.status || 'running'}"></span>
-                    <span class="tc-title">${escapeHtml(data.title)}</span>
-                    <span class="tc-status">${data.status || 'running'}</span>
-                </div>
-                ${data.summary ? `<div class="tc-summary">${escapeHtml(data.summary)}</div>` : ''}
-                ${detailsHtml}
-            `;
-
-            const header = card.querySelector('.tc-header');
-            const detailsDiv = card.querySelector('.tc-details');
-            if (detailsDiv) {
-                header.style.cursor = 'pointer';
-                header.addEventListener('click', () => {
-                    detailsDiv.hidden = !detailsDiv.hidden;
-                    card.classList.toggle('expanded', !detailsDiv.hidden);
-                });
-            }
-
-            agentConversation.appendChild(card);
         }
 
         agentConversation.scrollTop = agentConversation.scrollHeight;
+        trimConversationDom();
     }
 
     function clearConversation() {
         conversation.length = 0;
         agentConversation.innerHTML = '';
+    }
+
+    if (searchResults) {
+        searchResults.addEventListener('click', (e) => {
+            const li = e.target.closest('li[data-id-str]');
+            if (!li || !searchResults.contains(li)) return;
+            document.querySelectorAll('#searchResults li').forEach(el => el.classList.remove('selected'));
+            li.classList.add('selected');
+            previewComponent(li.dataset.idStr || '', li.dataset.text || '');
+        });
+    }
+
+    if (componentList) {
+        componentList.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.comp-remove');
+            if (!removeBtn) return;
+            const li = e.target.closest('li[data-comp-id]');
+            if (!li || !componentList.contains(li) || !currentSchematic) return;
+            e.stopPropagation();
+            currentSchematic.removeComponent(li.dataset.compId);
+            updateComponentListUI();
+            updateSchematicButtons();
+            if (currentSchematic.mode === 'schematic') enterSchematicView();
+        });
     }
 
     function escapeHtml(str) {
@@ -393,97 +549,10 @@ document.addEventListener('DOMContentLoaded', () => {
         badge.classList.remove('hidden');
     }
 
-    function pruneDisconnectedNetIslands(traces, netlist) {
-        const safeTraces = Array.isArray(traces) ? traces : [];
-        const safeNetlist = Array.isArray(netlist) ? netlist : [];
-        if (safeTraces.length === 0) return [];
-
-        const expectedRefsByNet = {};
-        for (const conn of safeNetlist) {
-            const net = conn.net || '';
-            if (!net) continue;
-            if (!expectedRefsByNet[net]) expectedRefsByNet[net] = new Set();
-            const s = (conn.source || '').split(':')[0];
-            const t = (conn.target || '').split(':')[0];
-            if (s) expectedRefsByNet[net].add(s);
-            if (t) expectedRefsByNet[net].add(t);
-        }
-
-        const tracesByNet = {};
-        for (const tr of safeTraces) {
-            const net = tr.net || '';
-            if (!net) continue;
-            if (!tracesByNet[net]) tracesByNet[net] = [];
-            tracesByNet[net].push(tr);
-        }
-
-        const keep = new Set();
-        for (const [net, netTraces] of Object.entries(tracesByNet)) {
-            const expected = expectedRefsByNet[net] || new Set();
-            if (expected.size <= 2) {
-                for (const tr of netTraces) keep.add(tr);
-                continue;
-            }
-
-            const adj = {};
-            for (const ref of expected) adj[ref] = new Set();
-
-            for (const tr of netTraces) {
-                const s = (tr.source || '').split(':')[0];
-                const t = (tr.target || '').split(':')[0];
-                if (!s || !t) continue;
-                if (adj[s] && adj[t]) {
-                    adj[s].add(t);
-                    adj[t].add(s);
-                }
-            }
-
-            const visited = new Set();
-            const groups = [];
-            for (const ref of expected) {
-                if (visited.has(ref) || !adj[ref] || adj[ref].size === 0) continue;
-                const stack = [ref];
-                const group = new Set();
-                while (stack.length) {
-                    const cur = stack.pop();
-                    if (visited.has(cur)) continue;
-                    visited.add(cur);
-                    group.add(cur);
-                    for (const nxt of adj[cur]) {
-                        if (!visited.has(nxt)) stack.push(nxt);
-                    }
-                }
-                if (group.size > 0) groups.push(group);
-            }
-
-            if (groups.length <= 1) {
-                for (const tr of netTraces) keep.add(tr);
-                continue;
-            }
-
-            let mainGroup = groups[0];
-            for (let i = 1; i < groups.length; i++) {
-                if (groups[i].size > mainGroup.size) mainGroup = groups[i];
-            }
-            for (const tr of netTraces) {
-                const s = (tr.source || '').split(':')[0];
-                const t = (tr.target || '').split(':')[0];
-                if (mainGroup.has(s) && mainGroup.has(t)) {
-                    keep.add(tr);
-                }
-            }
-        }
-
-        return safeTraces.filter(tr => {
-            const net = tr.net || '';
-            return !net || keep.has(tr);
-        });
-    }
-
     function handleAgentLayoutReady(data) {
         if (!currentSchematic) return;
         const placements = data.placements || [];
-        const traces = pruneDisconnectedNetIslands(data.traces || [], data.netlist || []);
+        const traces = data.traces || [];
         const powerLabels = data.power_labels || [];
 
         // Apply backend placements directly
@@ -493,6 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         currentSchematic.wirePaths = traces;
         currentSchematic.powerLabels = powerLabels;
+        currentSchematic.netlist = data.netlist || [];
         updateCompletenessBadge(traces, data.netlist || []);
         displayNetlist(data.netlist || [], data.power_pins || []);
         enterSchematicView();
@@ -582,6 +652,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     connectSocket();
+
+    // ── Edit-sync event listeners (tscircuit + legacy) ─────────────────────────
+
+    window.addEventListener('tscircuit:edit-sync', (e) => {
+        const detail = e.detail || {};
+        if (detail.ok) {
+            addLogEntry(`Edit sync OK: ${detail.applied} applied, ${detail.ignored} ignored`, 'success');
+        } else {
+            const fb = detail.fallback_saved ? ' (fallback saved)' : ' (fallback failed)';
+            addLogEntry(`Edit sync failed: ${detail.error}${fb}`, 'error');
+        }
+    });
+
+    window.addEventListener('tscircuit:board-model-updated', (e) => {
+        const detail = e.detail || {};
+        if (detail.board_model) {
+            if (pcbState) {
+                pcbState.boardModel = detail.board_model;
+            }
+            if (typeof pcbDraw === 'function') {
+                pcbDraw();
+            }
+        }
+    });
 
     // ── Netlist copy button ────────────────────────────────────────────────────
 
@@ -687,13 +781,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 data.forEach(item => {
                     const li = document.createElement('li');
+                    li.dataset.idStr = item.id_str;
+                    li.dataset.text = item.text;
                     li.innerHTML = `<div class="result-id">${item.id_str}</div>
                                     <div class="result-text">${item.text}</div>`;
-                    li.addEventListener('click', () => {
-                        document.querySelectorAll('#searchResults li').forEach(el => el.classList.remove('selected'));
-                        li.classList.add('selected');
-                        previewComponent(item.id_str, item.text);
-                    });
                     searchResults.appendChild(li);
                 });
             }
@@ -705,7 +796,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function previewComponent(id_str, textDesc) {
-        componentInfo.textContent = `Loading ${id_str}...`;
         try {
             const sexpr = await fetchSExpr(id_str);
             const category = id_str.split(':')[0];
@@ -716,14 +806,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setActiveTab('viewSymbolBtn');
             showViewport('symbol');
             renderOps(ops);
-            componentInfo.innerHTML = `<div class="prop-group">
-                <div class="prop-row"><span class="prop-key">ID</span><span class="prop-val">${id_str}</span></div>
-                <div class="prop-row"><span class="prop-key">Description</span><span class="prop-val">${textDesc || 'Inherited'}</span></div>
-                <div class="prop-row"><span class="prop-key">Ops</span><span class="prop-val">${ops.length}</span></div>
-            </div>`;
             updateAddButton();
         } catch (err) {
-            componentInfo.textContent = `Error loading ${id_str}:\n${err.message}`;
             selectedComponent = null;
             updateAddButton();
         }
@@ -746,6 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSchematic.components.forEach(comp => {
             const li = document.createElement('li');
             li.className = `col-${comp.column}`;
+            li.dataset.compId = comp.id;
             li.innerHTML = `
                 <div class="comp-label">
                     <div class="comp-name">${comp.refDesignator} - ${comp.name.split(':').pop()}</div>
@@ -753,13 +838,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <button class="comp-remove" title="Remove">&times;</button>
             `;
-            li.querySelector('.comp-remove').addEventListener('click', (e) => {
-                e.stopPropagation();
-                currentSchematic.removeComponent(comp.id);
-                updateComponentListUI();
-                updateSchematicButtons();
-                if (currentSchematic.mode === 'schematic') enterSchematicView();
-            });
             componentList.appendChild(li);
         });
     }
@@ -786,7 +864,11 @@ document.addEventListener('DOMContentLoaded', () => {
         updateAgentButton();
         clearConversation();
         agentConversation.innerHTML = '';
-        showAgentStatus('Starting agent...');
+        const userMsg = document.createElement('div');
+        userMsg.className = 'conv-user-msg';
+        userMsg.textContent = prompt;
+        agentConversation.appendChild(userMsg);
+        showAgentStatus('Starting agent...', 'thinking');
         displayNetlist([]);
         if (!currentSchematic) currentSchematic = new Schematic();
         socket.emit('agent:generate', { prompt });
@@ -818,17 +900,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Zoom & UI ─────────────────────────────────────────────────────────────
 
     document.getElementById('zoomInBtn').addEventListener('click', () => {
-        if (isPCBMode() && _useLegacyPcbViewer) { pcbState.zoom = Math.min(pcbState.zoom * 1.3, 50); pcbDraw(); }
+        if (isPCBMode() && _useLegacyPcbViewer) { pcbZoomBy(1.18); }
         else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
         else if (renderer) renderer.setZoom(renderer.zoom * 1.3);
     });
     document.getElementById('zoomOutBtn').addEventListener('click', () => {
-        if (isPCBMode() && _useLegacyPcbViewer) { pcbState.zoom = Math.max(pcbState.zoom / 1.3, 0.05); pcbDraw(); }
+        if (isPCBMode() && _useLegacyPcbViewer) { pcbZoomBy(1 / 1.18); }
         else if (isSymbolPreviewMode() && currentPreviewOps) { zoomLevel = Math.max(zoomLevel / 1.3, 0.05); drawSymbol(); }
         else if (renderer) renderer.setZoom(renderer.zoom / 1.3);
     });
     document.getElementById('zoomResetBtn').addEventListener('click', () => {
-        if (isPCBMode() && _useLegacyPcbViewer) { pcbComputeTransform(); pcbDraw(); }
+        if (isPCBMode() && _useLegacyPcbViewer) { pcbResetView(); }
         else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
         else if (currentSchematic && currentSchematic.components.length > 0) { enterSchematicView(); }
     });

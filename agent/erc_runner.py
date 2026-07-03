@@ -145,7 +145,7 @@ def run_kicad_erc(sch_text: str) -> dict | None:
         }
 
     except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError) as e:
-        return {"error": str(e), "total_errors": 0, "fixable_count": 0, "fixable": []}
+        return {"error": str(e), "errors": [], "warnings": [], "total_errors": 0, "total_warnings": 0, "fixable_count": 0, "fixable": []}
     finally:
         for p in (tmp_sch, tmp_out):
             if p is not None:

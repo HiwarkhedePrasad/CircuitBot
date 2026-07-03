@@ -63,7 +63,8 @@ Use EXACTLY these KiCad symbols for generic supporting parts:
 - 3.3V Voltage Regulators: "Regulator_Linear:AMS1117-3.3"
 - I2C Temperature Sensors: "Sensor_Temperature:TMP117xxYBG"
 - 1-Wire Temperature Sensors: "Sensor_Temperature:DS18B20"
-- AVR/ATmega ICSP Headers: "Connector:AVR-ISP-6"
+- AVR/ATmega ICSP Headers (SPI): "Connector:AVR-ISP-6"
+- UART Programming Headers (ESP32, STM32, etc.): "Connector:Conn_01x04_Pin" or "Connector:Conn_01x06_Pin"
 - Overcurrent PTC Fuses: "Device:Polyfuse"
 
 Output ONLY a JSON array of objects:

@@ -363,6 +363,8 @@ def _ref_prefix_for(id_str: str, category: str) -> str:
         return 'BT'
     if 'RELAY' in hints:
         return 'K'
+    if 'PWR_FLAG' in hints or id_str == 'power:PWR_FLAG':
+        return '#FLG'
     return 'U'
 
 
@@ -472,8 +474,6 @@ def _generate_nets_fallback(pin_matrix: dict,
     for name in list(by_name.keys()):
         if _is_power_net(name):
             canon = name.lstrip('+')
-            if canon in ("VCC", "VDD"):
-                canon = "3V3"
             power_groups.setdefault(canon, []).extend(by_name.pop(name))
     for canon, pins_list in power_groups.items():
         nets.append({"net": canon, "pins": pins_list})
@@ -671,7 +671,7 @@ def _route_after_validate(state, config=None) -> str:
     errors = state.get("validation_errors", [])
     retry_count = state.get("retry_count", 0)
     if errors and retry_count < MAX_VALIDATION_RETRIES:
-        return "select"
+        return "validate_repair"
     if errors:
         return "error_end"
     return "dispatch"

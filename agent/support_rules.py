@@ -91,14 +91,16 @@ RULES: list[Rule] = [
     ),
     # ── ESP32 / wireless MCU: USB-UART programming bridge ──
     # Must come BEFORE generic MCU rule — first match wins.
-    # EXEMPT: DevKit/dev-board modules (DEVKIT, MINI, WEMOS, NODEMCU) —
-    # these already integrate the bridge, regulator, and USB connector.
+    # EXEMPT: DevKit/dev-board/module parts (WEMOS, NODEMCU, DEVKIT, MINI,
+    # WROOM, RF_Module) — these already integrate the bridge, regulator,
+    # and USB connector.
     (
         lambda c: (
             any(kw in (c.get("id_str", "") or "").upper()
                 for kw in ["ESP32", "ESP8266"])
             and not any(kw in (c.get("id_str", "") or "").upper()
-                        for kw in ["WEMOS", "NODEMCU", "DEVKIT", "MINI"])
+                        for kw in ["WEMOS", "NODEMCU", "DEVKIT", "MINI", "WROOM"])
+            and not (c.get("id_str", "") or "").upper().startswith("RF_MODULE:")
         ),
         [
             {"search_query": "USB to UART bridge CP2102N", "preferred_id_str": "Interface_USB:CP2102N",
@@ -113,7 +115,8 @@ RULES: list[Rule] = [
     (
         lambda c: (
             (_has_lib(c, "MCU_", "Module_") or "MCU" in _id(c) or "ESP32" in _id(c) or "RP2040" in _id(c) or "STM32" in _id(c))
-            and not any(dev in _id(c) for dev in ["WEMOS", "NODEMCU", "DEVKIT", "MINI"])
+            and not any(dev in _id(c) for dev in ["WEMOS", "NODEMCU", "DEVKIT", "MINI", "WROOM"])
+            and not _has_lib(c, "RF_Module")
             # Exclude AVR — already handled by the specific rule above
             and not any(kw in _id(c) for kw in ["ATMEGA", "ATTINY", "AT90", "ATXMEGA"])
             and not _has_lib(c, "MCU_Microchip_AVR")

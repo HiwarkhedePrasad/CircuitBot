@@ -32,9 +32,10 @@ def dispatch_node(state, config):
                 pass
         if not ops:
             skipped_refs.append({"ref_des": ref_des, "id_str": id_str})
+            fp = comp.get("footprint", "") or "no footprint"
             _emit(config, "agent:log", {
                 "message": f"  ⚠ SKIPPED {ref_des} ({id_str}): no symbol found — "
-                           f"this component will be MISSING from the final design"
+                           f"footprint={fp}. This component MISSING from PCB."
             })
             continue
         _emit(config, "agent:component", {

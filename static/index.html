@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CircuitBot EDA</title>
     <link rel="stylesheet" href="/static/style.css">
-    <!-- Font for that EDA feel -->
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="eda-app">
@@ -15,13 +14,6 @@
             <div class="brand">
                 <span class="logo">⚡</span>
                 <span class="title">CircuitBot <span class="version">v0.8.2</span></span>
-            </div>
-            <div class="menu-bar">
-                <span class="menu-item">File</span>
-                <span class="menu-item">Edit</span>
-                <span class="menu-item">View</span>
-                <span class="menu-item">Tools</span>
-                <span class="menu-item">Help</span>
             </div>
             <div class="toolbar">
                 <button id="addBtn" class="tool-btn" title="Add Selected Component to Schematic" disabled>
@@ -43,20 +35,15 @@
         <div class="eda-workspace">
             <!-- Left Sidebar: Library & Hierarchy -->
             <aside class="eda-sidebar left-panel">
-                <div class="panel-section library-section">
+                <div class="panel-section netlist-section">
                     <div class="panel-header">
-                        <span class="panel-title">Library Browser</span>
+                        <span class="panel-title">Netlist</span>
+                        <button id="copyNetlistBtn" class="icon-btn" title="Copy netlist to clipboard">📋</button>
+                        <span id="netlistCount" class="badge">0</span>
                     </div>
-                    <div class="search-container">
-                        <input type="text" id="searchInput" placeholder="Search components (e.g. ESP32, AMS1117)..." autocomplete="off">
-                        <button id="searchBtn" class="search-icon-btn">🔍</button>
+                    <div id="netlistDisplay" class="netlist-content">
+                        <div class="netlist-placeholder">Waiting for agent to generate netlist...</div>
                     </div>
-                    <div id="loading" class="loading-indicator hidden">
-                        <span class="spinner"></span> Searching...
-                    </div>
-                    <ul id="searchResults" class="list-view">
-                        <!-- Results populated by app.js -->
-                    </ul>
                 </div>
                 
                 <div class="panel-divider horizontal"></div>
@@ -94,6 +81,7 @@
                     <div id="canvasContainer"></div>
                     <canvas id="pcbCanvas" style="display:none"></canvas>
                     <canvas id="symbolCanvas" style="display:none"></canvas>
+                    <div id="tscircuit-container" style="display:none;width:100%;height:100%"></div>
                     <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
                     <div id="completenessBadge" class="completeness-badge hidden"></div>
                     
@@ -119,37 +107,31 @@
                         <span class="status-item" id="coordDisplay">X: 0.00 Y: 0.00</span>
                     </div>
                     <div class="status-right">
-                        <span class="status-item">Engine: v8-elk-fixed-side</span>
-                        <span class="status-item">Renderer: PixiJS</span>
                     </div>
                 </footer>
             </main>
 
-            <!-- Right Sidebar: Properties & AI -->
+            <!-- Right Sidebar: AI Design Co-Pilot -->
             <aside class="eda-sidebar right-panel">
-                <div class="panel-section properties-section">
-                    <div class="panel-header">
-                        <span class="panel-title">Property Inspector</span>
-                    </div>
-                    <div id="componentInfo" class="properties-view">
-                        <div class="empty-state">No component selected</div>
-                    </div>
-                </div>
-
-                <div class="panel-divider horizontal"></div>
-
                 <div class="panel-section agent-section">
                     <div class="panel-header">
                         <span class="panel-title">AI Design Co-Pilot</span>
                     </div>
-                    <div class="agent-container">
-                        <div class="agent-thinking" id="agentThinking"></div>
-                        <div class="agent-conversation" id="agentConversation">
-                            <div class="conv-empty">Design co-pilot ready. Enter a prompt to generate circuits.</div>
+                    <div class="agent-workspace">
+                        <!-- Thinking bar — thin line indicator -->
+                        <div class="agent-thinking-bar" id="agentThinkingBar"></div>
+                        <!-- Compact status bar -->
+                        <div class="agent-status-bar">
+                            <span class="agent-status-text" id="agentStatus">Ready</span>
                         </div>
+                        <!-- Activity stream -->
+                        <div class="agent-conversation" id="agentConversation">
+                            <div class="conv-empty">Describe a circuit and I'll design it for you.</div>
+                        </div>
+                        <!-- Command input -->
                         <div class="agent-input-group">
-                            <textarea id="agentPrompt" placeholder="Describe a circuit..." rows="2"></textarea>
-                            <button id="agentBtn" class="btn-primary">Build Design</button>
+                            <textarea id="agentPrompt" placeholder="Describe a circuit..." rows="1"></textarea>
+                            <button id="agentBtn" class="btn-send" disabled>Build</button>
                         </div>
                     </div>
                 </div>
@@ -164,6 +146,7 @@
     <script src="/static/renderer_legacy.js?v=10"></script>
     <script src="/static/schematic_renderer.js?v=2"></script>
     <script src="/static/pcb_viewer.js?v=1"></script>
-    <script src="/static/app.js?v=12"></script>
+    <script src="/static/tscircuit-bridge.js?v=1"></script>
+    <script src="/static/app.js?v=13"></script>
 </body>
 </html>

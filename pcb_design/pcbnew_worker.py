@@ -131,13 +131,12 @@ def _create_board(payload: dict) -> dict:
 
     board = pcbnew.NewBoard("")
 
-    # ── 1. Build net index ──────────────────────────────────────────
-    net_names = set()
+    # ── 1. Build net index from net names, not component refs ──────
+    net_names: set[str] = set()
     for conn in netlist:
-        for key in (conn["source"], conn["target"]):
-            ref = key.split(":")[0] if ":" in key else key
-            if ref:
-                net_names.add(ref)
+        net_name = conn.get("net", "")
+        if net_name:
+            net_names.add(net_name)
 
     # Add GND as net 1 always
     net_names.discard("GND")
@@ -340,24 +339,49 @@ def _add_gnd_pour(board, net_index):
         zone.SetIslandRemovalMode(True)
         zone.SetMinIslandArea(1000000)  # 1 mm² in nm²
 
-        settings = zone.GetZoneSettings()
         from pcbnew import ZONE_CONNECTION_THERMAL
-        settings.SetPadConnection(ZONE_CONNECTION_THERMAL)
-        settings.SetThermalReliefGap(pcbnew.FromMM(0.254))
-        settings.SetThermalSpokeWidth(pcbnew.FromMM(0.254))
-        zone.SetZoneSettings(settings)
+        if hasattr(zone, "GetZoneSettings"):
+            settings = zone.GetZoneSettings()
+            settings.SetPadConnection(ZONE_CONNECTION_THERMAL)
+            # Defensive: pcbnew renamed these across versions. A missing
+            # setter must not abort the whole routing run.
+            try:
+                settings.SetThermalReliefGap(pcbnew.FromMM(0.254))
+            except AttributeError:
+                pass
+            try:
+                settings.SetThermalReliefSpokeWidth(pcbnew.FromMM(0.254))
+            except AttributeError:
+                pass
+            zone.SetZoneSettings(settings)
+        else:
+            zone.SetPadConnection(ZONE_CONNECTION_THERMAL)
+            try:
+                zone.SetThermalReliefGap(pcbnew.FromMM(0.254))
+            except AttributeError:
+                pass
+            try:
+                zone.SetThermalReliefSpokeWidth(pcbnew.FromMM(0.254))
+            except AttributeError:
+                pass
 
-        zone.OutlinePushBack(outline)
-
-        # Append the corner polygon for the outline
+        # KiCad 8+/10 removed OutlinePushBack; use SetOutline via
+        # SHAPE_POLY_SET instead.  Try the old path first for older KiCad.
         from pcbnew import SHAPE_POLY_SET
         poly = SHAPE_POLY_SET()
         poly.AddOutline(outline)
-        # KiCad 10 zone API — set the outline polygon
+        try:
+            zone.OutlinePushBack(outline)
+        except AttributeError:
+            pass
+        try:
+            zone.SetOutline(poly)
+        except AttributeError:
+            pass
         try:
             zone.SetPolygon(poly)
         except AttributeError:
-            pass  # older API
+            pass
 
         board.Add(zone)
 

@@ -61,8 +61,8 @@ def _assign_ref_des(components: list[dict], sheet_map: dict[str, int] | None = N
     # Pass 1: register max counter from existing valid refs
     for comp in components:
         existing = comp.get('ref_des', '')
-        if existing and re.fullmatch(r'[A-Z]+\d+', existing):
-            m = re.match(r'([A-Z]+)(\d+)', existing)
+        if existing and re.fullmatch(r'#?[A-Z]+\d+', existing):
+            m = re.match(r'#?([A-Z]+)(\d+)', existing)
             if m:
                 letter = m.group(1)
                 num = int(m.group(2))
@@ -77,19 +77,19 @@ def _assign_ref_des(components: list[dict], sheet_map: dict[str, int] | None = N
     ref_counts: dict[str, int] = {}
     for comp in components:
         existing = comp.get('ref_des', '')
-        if existing and re.fullmatch(r'[A-Z]+\d+', existing):
+        if existing and re.fullmatch(r'#?[A-Z]+\d+', existing):
             ref_counts[existing] = ref_counts.get(existing, 0) + 1
 
     # Pass 3: Pre-register all unique valid refs to seen_refs
     for comp in components:
         existing = comp.get('ref_des', '')
-        if existing and re.fullmatch(r'[A-Z]+\d+', existing) and ref_counts.get(existing, 0) == 1:
+        if existing and re.fullmatch(r'#?[A-Z]+\d+', existing) and ref_counts.get(existing, 0) == 1:
             seen_refs.add(existing)
 
     # Pass 4: assign refs — keep unique valid refs, generate new ones for collisions, invalid, or empty refs
     for comp in components:
         existing = comp.get('ref_des', '')
-        if existing and re.fullmatch(r'[A-Z]+\d+', existing) and ref_counts.get(existing, 0) == 1:
+        if existing and re.fullmatch(r'#?[A-Z]+\d+', existing) and ref_counts.get(existing, 0) == 1:
             continue
         cat = comp.get('category', '')
         id_str = comp.get('id_str', '')
@@ -182,15 +182,50 @@ def select_node(state, config):
         user_parts = _extract_part_numbers(state.get("prompt", ""))
         if user_parts and ranked:
             up_upper = [p.strip().upper() for p in user_parts]
+            # H-02: exact match first (full id_str), then exact match on the
+            # part after the library prefix, then substring fallback.
+            found_idx = None
             for rank_idx, cand in enumerate(ranked):
                 cid = cand.get("id_str", "").upper()
-                if rank_idx > 0 and any(p in cid for p in up_upper):
-                    _emit(config, "agent:log", {
-                        "message": f"  User-requested part {cand['id_str']} at rank #{rank_idx+1} "
-                                   f"— promoting to #1 (user named this part in prompt)"
-                    })
-                    ranked.insert(0, ranked.pop(rank_idx))
+                if rank_idx == 0:
+                    continue
+                for p in up_upper:
+                    if cid == p:
+                        found_idx = rank_idx
+                        break
+                if found_idx is not None:
                     break
+            # Second pass: exact match against the part AFTER the library prefix
+            if found_idx is None:
+                for rank_idx, cand in enumerate(ranked):
+                    cid = cand.get("id_str", "").upper()
+                    if rank_idx == 0:
+                        continue
+                    cid_part = cid.split(":", 1)[-1] if ":" in cid else cid
+                    for p in up_upper:
+                        if cid_part == p:
+                            found_idx = rank_idx
+                            break
+                    if found_idx is not None:
+                        break
+            # Third pass: substring fallback (least preferred)
+            if found_idx is None:
+                for rank_idx, cand in enumerate(ranked):
+                    cid = cand.get("id_str", "").upper()
+                    if rank_idx == 0:
+                        continue
+                    for p in up_upper:
+                        if p in cid:
+                            found_idx = rank_idx
+                            break
+                    if found_idx is not None:
+                        break
+            if found_idx is not None:
+                _emit(config, "agent:log", {
+                    "message": f"  User-requested part {ranked[found_idx]['id_str']} at rank #{found_idx+1} "
+                               f"— promoting to #1 (user named this part in prompt)"
+                })
+                ranked.insert(0, ranked.pop(found_idx))
         best = ranked[0] if ranked else None
         if not best:
             if existing_ids:
@@ -228,6 +263,9 @@ def select_node(state, config):
                                    f"— {_best_lib} already selected: {existing_match['id_str']}"
                     })
                     continue
+            is_user_part = bool(user_parts) and any(
+                p.upper() in best["id_str"].upper() for p in user_parts
+            )
             selected.append({
                 "id_str": best["id_str"],
                 "ref_des": "",  # assigned in dedup step
@@ -236,6 +274,7 @@ def select_node(state, config):
                 "justification": best.get("justification", ""),
                 "datasheet_text": "",
                 "subsystem": sub.get("subsystem", ""),
+                "user_locked": is_user_part,
             })
             _emit(config, "agent:log", {
                 "message": f"  Selected {best['id_str']} (score={best_score}) for '{sub.get('subsystem', '')}'"
@@ -356,6 +395,8 @@ def select_node(state, config):
     _emit(config, "agent:thinking", {"message": "Adding supporting components..."})
     support_parts = []
     for s in selected:
+        if s.get("user_locked"):
+            continue
         parts = get_supporting_components(s)
         covered = covered_prefixes_by_subsystem.get(s.get("subsystem", ""), set())
         for p in parts:

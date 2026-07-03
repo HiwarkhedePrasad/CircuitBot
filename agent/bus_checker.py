@@ -18,6 +18,7 @@ calls, and runs in O(nets × pins).
 import re
 from typing import Optional
 
+from agent.power_domains import POWER_NETS as _CANONICAL_POWER_NETS, GND_NETS as _CANONICAL_GND_NETS
 from agent.utils import (
     _is_gnd_net, _is_power_net, _merge_net,
     _canonical_signal_name, PIN_ALIASES,
@@ -37,11 +38,8 @@ _POWER_SAFE_ETYPES = frozenset({
 # Net-name patterns that look like I2C buses
 _I2C_CANONICAL = frozenset({"SDA", "SCL"})
 
-# Net names that are definitely power rails
-_HARD_POWER_NETS = frozenset({
-    "GND", "GROUND", "VCC", "VDD", "3V3", "5V", "VBAT",
-    "VIN", "VBUS", "VSYS", "VOUT", "V+", "V-",
-})
+# Net names that are definitely power rails (canonical source: power_domains.py)
+_HARD_POWER_NETS = frozenset(_CANONICAL_POWER_NETS | _CANONICAL_GND_NETS)
 
 
 # ── Rule helpers ────────────────────────────────────────────────────────────

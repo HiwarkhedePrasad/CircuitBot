@@ -65,3 +65,20 @@ Thumbs.db
 # Large data files (not suitable for git)
 *.sqlite
 *dataset.json
+
+# tscircuit standalone viewer bundle (10MB, built from npm)
+static/tscircuit-viewer.min.js
+
+# Generated PCB/Schematic output files
+*.kicad_pcb
+*.kicad_sch
+~*.kicad_sch.lck
+
+# Debug scripts
+debug_*.py
+
+# Test output
+test_e2e_result.json
+
+# Experiments
+netlist-preprocessing-experiment/

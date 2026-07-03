@@ -1,0 +1,148 @@
+import re
+
+from agent.tools import search_components
+from agent.utils import (
+    _emit, emit_assistant_message, emit_tool_event, _stage_result,
+    _is_passive,
+)
+
+
+def _ref_prefix(category: str, id_str: str = '') -> str:
+    text = f"{category} {id_str}".upper()
+    rules = [
+        ('CONNECTOR',  'J'), ('USB',  'J'), ('JACK',  'J'),
+        ('FUSE',       'F'), ('POLYFUSE', 'F'),
+        ('CAPACITOR',  'C'), ('C_SMALL', 'C'), ('C_POLARIZED', 'C'),
+        ('RESISTOR',   'R'), ('R_SMALL', 'R'),
+        ('INDUCTOR',   'L'),
+        ('DIODE',      'D'), ('LED', 'D'), ('ZENER', 'D'),
+        ('TRANSISTOR', 'Q'), ('MOSFET', 'Q'), ('BJT', 'Q'),
+        ('REGULATOR',  'U'), ('LDO', 'U'), ('SENSOR', 'U'), ('DISPLAY', 'U'),
+        ('MCU',        'U'), ('PROCESSOR', 'U'), ('CPU', 'U'),
+        ('ESP32',      'U'), ('STM32', 'U'), ('FPGA', 'U'), ('MEMORY', 'U'),
+        ('DRIVER',     'U'), ('AMS', 'U'), ('DS18', 'U'), ('ATMEGA', 'U'),
+        ('OLED',       'U'), ('SSD', 'U'), ('ESD', 'U'), ('TPD', 'U'),
+        ('SWITCH',     'SW'), ('BUTTON', 'SW'), ('TACTILE', 'SW'),
+        ('SPEAKER',    'LS'), ('BUZZER', 'LS'),
+        ('RELAY',      'K'),
+        ('MOTOR',      'M'), ('FAN', 'M'),
+        ('BATTERY',    'BT'),
+        ('CRYSTAL',    'Y'), ('OSCILLATOR', 'Y'), ('RESONATOR', 'Y'),
+        ('PWR_FLAG',   '#FLG'),
+    ]
+    for keyword, prefix in rules:
+        if keyword in text:
+            return prefix
+    return 'U'
+
+
+def _is_rejected(comp, rejected_ids):
+    return (comp.get("id_str", "") in rejected_ids or
+            comp.get("ref_des", "") in rejected_ids)
+
+
+def validate_repair_node(state, config):
+    comps = state.get("selected_components", [])
+    rejected_ids = set(state.get("rejected_ids", []))
+    research = state.get("research_results", [])
+    retry_count = state.get("retry_count", 0)
+
+    if not rejected_ids:
+        return _stage_result(state, "validate_repair", {
+            "selected_components": comps,
+            "retry_count": retry_count + 1,
+        })
+
+    failing = [c for c in comps if _is_rejected(c, rejected_ids)]
+    passing = [c for c in comps if not _is_rejected(c, rejected_ids)]
+    unrecognized = rejected_ids - {c.get("id_str", "") for c in comps} - {c.get("ref_des", "") for c in comps}
+
+    if unrecognized:
+        _emit(config, "agent:log", {
+            "message": f"  Repair: {len(unrecognized)} rejected_id(s) don't match any component — likely structural errors: {sorted(unrecognized)}"
+        })
+
+    _emit(config, "agent:log", {
+        "message": f"  Repair: preserving {len(passing)} component(s), replacing {len(failing)} failed one(s)"
+    })
+
+    if not failing:
+        return _stage_result(state, "validate_repair", {
+            "selected_components": comps,
+            "retry_count": retry_count + 1,
+        })
+
+    emit_assistant_message(config, f"Replacing {len(failing)} failed component(s) from validation...")
+    emit_tool_event(config, "Validation Repair", "running",
+                    f"Replacing {len(failing)} failed component(s)")
+
+    replacements = []
+    subsystem_map = {}
+    for sub in research:
+        name = sub.get("subsystem", "")
+        if name:
+            subsystem_map[name] = sub.get("results", [])
+
+    for c in failing:
+        subsystem = c.get("subsystem", "")
+        candidates = subsystem_map.get(subsystem, [])
+        candidates = [r for r in candidates if not _is_rejected(r, rejected_ids)]
+        best = None
+        if candidates:
+            from agent.reranker import rank_candidates
+            sub_data = {"subsystem": subsystem, "results": candidates}
+            ranked = rank_candidates(
+                sub_data, candidates,
+                existing_components=passing + replacements,
+                user_prompt=state.get("prompt", ""),
+                config=config,
+            )
+            best = ranked[0] if ranked else None
+        if not best:
+            query = c.get("description", c.get("id_str", ""))
+            try:
+                results = search_components(query, k=3)
+                best = results[0] if results else None
+            except Exception:
+                best = None
+        if best:
+            replacements.append({
+                "id_str": best["id_str"],
+                "ref_des": "",
+                "category": best.get("category", best["id_str"].split(":")[0] if ":" in best["id_str"] else "General"),
+                "description": best.get("text", best.get("description", c.get("description", ""))),
+                "justification": c.get("justification", ""),
+                "datasheet_text": "",
+                "subsystem": subsystem,
+            })
+            _emit(config, "agent:log", {
+                "message": f"  Repair: {c.get('id_str', '?')} [{c.get('ref_des', '?')}] → {best['id_str']} for '{subsystem}'"
+            })
+        else:
+            _emit(config, "agent:log", {
+                "message": f"  Repair: no replacement for {c.get('id_str', '?')} [{c.get('ref_des', '?')}] — removing"
+            })
+
+    new_comps = passing + replacements
+
+    existing_refs = {comp["ref_des"] for comp in new_comps if comp.get("ref_des")}
+    for comp in new_comps:
+        if comp.get("ref_des"):
+            continue
+        prefix = _ref_prefix(comp.get("category", ""), comp.get("id_str", ""))
+        num = 1
+        while f"{prefix}{num}" in existing_refs:
+            num += 1
+        comp["ref_des"] = f"{prefix}{num}"
+        existing_refs.add(comp["ref_des"])
+
+    _emit(config, "agent:log", {
+        "message": f"  Repair: {len(new_comps)} components after repair ({len(passing)} preserved, {len(replacements)} replaced)"
+    })
+    emit_tool_event(config, "Validation Repair", "completed",
+                    f"{len(passing)} preserved, {len(replacements)} replaced")
+
+    return _stage_result(state, "validate_repair", {
+        "selected_components": new_comps,
+        "retry_count": retry_count + 1,
+    })
