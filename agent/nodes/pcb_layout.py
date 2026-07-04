@@ -19,6 +19,63 @@ from pcb_design.geometry import board_outline_polygon, HAS_SHAPELY
 from pcb_design.pour import pour_ground
 
 
+def _pad_from_dict(pd: dict) -> PadDef:
+    """Convert either database pad JSON or BoardModel-style pad JSON."""
+    return PadDef(
+        number=str(pd.get("number", "")),
+        x=float(pd.get("x", 0) or 0),
+        y=float(pd.get("y", 0) or 0),
+        width=float(pd.get("width", pd.get("sx", 1)) or 1),
+        height=float(pd.get("height", pd.get("sy", 1)) or 1),
+        shape=pd.get("shape", "rect"),
+        type=pd.get("type", "smd"),
+        rotation=float(pd.get("rotation", pd.get("ox", 0)) or 0),
+        drill=pd.get("drill"),
+        layers=pd.get("layers", ["F.Cu", "F.Mask", "F.Paste"]),
+    )
+
+
+def _load_footprint_component(comp: dict) -> BoardComponent | None:
+    """Parse the KiCad footprint file so the PCB view gets pads and graphics."""
+    footprint = comp.get("footprint", "")
+    if not footprint:
+        return None
+    try:
+        from kicad_rag.store import footprint_path_for
+        from pcb_design.pcb_import import _parse_footprint, parse_sexp
+
+        fp_path = footprint_path_for(footprint)
+        if not fp_path.is_file():
+            return None
+        ast = parse_sexp(fp_path.read_text(encoding="utf-8"))
+        if isinstance(ast, list) and ast and ast[0] not in ("footprint", "module"):
+            ast[0] = "footprint"
+        return _parse_footprint(ast)
+    except Exception:
+        return None
+
+
+def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], str]:
+    """Return pads, footprint graphics, and footprint name for a selected component."""
+    hydrated = dict(comp)
+    if (not hydrated.get("footprint") or not hydrated.get("pads")) and hydrated.get("id_str"):
+        try:
+            from agent.tools import fetch_footprint
+            info = fetch_footprint(hydrated["id_str"])
+            if info:
+                hydrated["footprint"] = hydrated.get("footprint") or info.get("footprint", "")
+                hydrated["pads"] = hydrated.get("pads") or info.get("pads", [])
+        except Exception:
+            pass
+
+    parsed_fp = _load_footprint_component(hydrated)
+    if parsed_fp and parsed_fp.pads:
+        return parsed_fp.pads, parsed_fp.graphics, hydrated.get("footprint", parsed_fp.footprint)
+
+    pads = [_pad_from_dict(pd) for pd in hydrated.get("pads", [])]
+    return pads, (parsed_fp.graphics if parsed_fp else []), hydrated.get("footprint", "")
+
+
 def pcb_layout_node(state, config):
     _emit(config, "agent:thinking", {"message": "Routing PCB traces..."})
     emit_assistant_message(config, "Laying out components on the PCB and routing traces...")
@@ -46,28 +103,35 @@ def pcb_layout_node(state, config):
         power_labels=power_labels,
     )
 
+    missing_footprints = []
+    missing_pads = []
     for comp in comps:
         ref = comp["ref_des"]
-        pads = []
-        if comp.get("pads"):
-            for pd in comp["pads"]:
-                pads.append(PadDef(
-                    number=str(pd.get("number", "")),
-                    x=pd.get("x", 0), y=pd.get("y", 0),
-                    width=pd.get("width", 1), height=pd.get("height", 1),
-                    shape=pd.get("shape", "rect"), type=pd.get("type", "smd"),
-                    rotation=pd.get("rotation", 0), drill=pd.get("drill"),
-                ))
+        pads, graphics, footprint = _hydrate_component_for_pcb(comp)
+        if not footprint:
+            missing_footprints.append(ref)
+        if not pads:
+            missing_pads.append(ref)
         bx, by, brot = pcb_pos.get(ref, (0, 0, 0))
         model.components.append(BoardComponent(
             ref=ref,
-            footprint=comp.get("footprint", ""),
+            footprint=footprint,
             x=bx, y=by,
             rotation=brot,
             value=comp.get("id_str", "").rpartition(":")[2] if comp else "",
             pads=pads,
+            graphics=graphics,
             bbox=(0, 0, 10, 10),
         ))
+
+    if missing_footprints:
+        _emit(config, "agent:log", {
+            "message": "  PCB warning: missing footprint for " + ", ".join(missing_footprints)
+        })
+    if missing_pads:
+        _emit(config, "agent:log", {
+            "message": "  PCB warning: no pads available for " + ", ".join(missing_pads)
+        })
 
     if HAS_SHAPELY:
         model.outline = board_outline_polygon(

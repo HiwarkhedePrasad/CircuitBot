@@ -50,8 +50,37 @@ def _find_one(node: list, *path: str) -> Optional[list]:
     return found[0] if found else None
 
 
+def _direct_children(node: list, *names: str) -> list[list]:
+    """Return direct child lists whose head matches one of *names*."""
+    wanted = set(names)
+    results: list[list] = []
+    for child in node[1:]:
+        if isinstance(child, list) and child and isinstance(child[0], str) and child[0] in wanted:
+            results.append(child)
+    return results
+
+
 def _get_str(n: list, idx: int = 1, default: str = "") -> str:
     return str(n[idx]) if len(n) > idx and n[idx] is not None else default
+
+
+def _normalize_layer_name(value: Any, default: str = "F.Cu") -> str:
+    raw = str(value if value is not None else default).strip().strip('"').strip("'")
+    aliases = {
+        "front_c": "F.Cu",
+        "front_copper": "F.Cu",
+        "f.cu": "F.Cu",
+        "f_cu": "F.Cu",
+        "top": "F.Cu",
+        "top_copper": "F.Cu",
+        "back_c": "B.Cu",
+        "back_copper": "B.Cu",
+        "b.cu": "B.Cu",
+        "b_cu": "B.Cu",
+        "bottom": "B.Cu",
+        "bottom_copper": "B.Cu",
+    }
+    return aliases.get(raw.lower(), raw or default)
 
 
 def _get_float(n: list, idx: int = 1, default: float = 0.0) -> float:
@@ -97,7 +126,7 @@ def _parse_pad(node: list) -> Optional[PadDef]:
             pad.width = _get_float(child, 1)
             pad.height = _get_float(child, 2)
         elif key == "layers":
-            pad.layers = [str(s) for s in child[1:]]
+            pad.layers = [_normalize_layer_name(s) for s in child[1:]]
         elif key == "drill":
             if isinstance(child[1], (int, float)):
                 pad.drill = float(child[1])
@@ -123,7 +152,7 @@ def _parse_fp_graphic(node: list) -> Optional[dict]:
                 if isinstance(pt, list) and pt and pt[0] == "xy":
                     points.append({"x": _get_float(pt, 1), "y": _get_float(pt, 2)})
         elif key == "layer":
-            item["layer"] = _get_str(child, 1, "F.SilkS")
+            item["layer"] = _normalize_layer_name(_get_str(child, 1, "F.SilkS"), "F.SilkS")
         elif key == "stroke":
             width_node = _find_one(child, "width")
             if width_node:
@@ -158,7 +187,7 @@ def _parse_property_text(node: list) -> Optional[dict]:
             if len(child) > 3 and isinstance(child[3], (int, float)):
                 item["rotation"] = float(child[3])
         elif child[0] == "layer":
-            item["layer"] = _get_str(child, 1, "F.SilkS")
+            item["layer"] = _normalize_layer_name(_get_str(child, 1, "F.SilkS"), "F.SilkS")
     return item
 
 
@@ -176,7 +205,7 @@ def _parse_trace(node: list) -> Optional[BoardTrace]:
         elif key == "end":
             end = (_get_float(child, 1), _get_float(child, 2))
         elif key == "layer":
-            layer = str(child[1]) if len(child) > 1 else "F.Cu"
+            layer = _normalize_layer_name(child[1] if len(child) > 1 else "F.Cu")
         elif key == "net":
             net = str(child[1]) if len(child) > 1 else ""
         elif key == "width":
@@ -204,7 +233,7 @@ def _parse_via(node: list) -> Optional[BoardVia]:
         elif key == "size":
             diameter = _get_float(child, 1, 0.6)
         elif key == "layers":
-            layers = [str(s) for s in child[1:]]
+            layers = [_normalize_layer_name(s) for s in child[1:]]
         elif key == "net":
             net = str(child[1]) if len(child) > 1 else ""
     return BoardVia(x=x, y=y, drill=drill, diameter=diameter, layers=layers, net=net)
@@ -219,28 +248,32 @@ def _parse_footprint(node: list) -> Optional[BoardComponent]:
     layer = "F.Cu"
     pads = []
     graphics = []
-    at_node = _find_one(node, "at")
-    if at_node:
-        x = _get_float(at_node, 1)
-        y = _get_float(at_node, 2)
-        if len(at_node) > 3 and isinstance(at_node[3], (int, float)):
-            rotation = float(at_node[3])
-    layer_node = _find_one(node, "layer")
-    if layer_node:
-        layer = _get_str(layer_node, 1, "F.Cu")
-    for prop in _find_all(node, "property"):
-        if len(prop) > 2 and prop[1] == "Reference":
-            ref = str(prop[2])
-        elif len(prop) > 2 and prop[1] == "Value":
-            value = str(prop[2])
-        text_item = _parse_property_text(prop)
-        if text_item:
-            graphics.append(text_item)
-    for pad_node in _find_all(node, "pad"):
-        pad = _parse_pad(pad_node)
-        if pad:
-            pads.append(pad)
     for child in node[2:]:
+        if not isinstance(child, list) or not child:
+            continue
+        if child[0] == "at":
+            x = _get_float(child, 1)
+            y = _get_float(child, 2)
+            if len(child) > 3 and isinstance(child[3], (int, float)):
+                rotation = float(child[3])
+            continue
+        if child[0] == "layer":
+            layer = _normalize_layer_name(_get_str(child, 1, "F.Cu"))
+            continue
+        if child[0] == "property":
+            if len(child) > 2 and child[1] == "Reference":
+                ref = str(child[2])
+            elif len(child) > 2 and child[1] == "Value":
+                value = str(child[2])
+            text_item = _parse_property_text(child)
+            if text_item:
+                graphics.append(text_item)
+            continue
+        if child[0] == "pad":
+            pad = _parse_pad(child)
+            if pad:
+                pads.append(pad)
+            continue
         graphic = _parse_fp_graphic(child)
         if graphic:
             graphics.append(graphic)
@@ -260,7 +293,7 @@ def _parse_zone(node: list) -> Optional[BoardZone]:
         net = _get_str(net_node, 1)
     layer_node = _find_one(node, "layer")
     if layer_node:
-        layer = _get_str(layer_node, 1, "F.Cu")
+        layer = _normalize_layer_name(_get_str(layer_node, 1, "F.Cu"))
     priority_node = _find_one(node, "priority")
     if priority_node:
         priority = int(_get_float(priority_node, 1, 0))
@@ -294,7 +327,7 @@ def _parse_gr_line(node: list) -> Optional[list[tuple[float, float]]]:
         elif key == "end":
             end = (_get_float(child, 1), _get_float(child, 2))
         elif key == "layer":
-            layer = _get_str(child, 1, "Edge.Cuts")
+            layer = _normalize_layer_name(_get_str(child, 1, "Edge.Cuts"), "Edge.Cuts")
     if start and end and layer == "Edge.Cuts":
         return [start, end]
     return None
@@ -318,7 +351,7 @@ def _parse_outline_segment(node: list) -> Optional[dict]:
                 if isinstance(pt, list) and pt and pt[0] == "xy":
                     points.append({"x": _get_float(pt, 1), "y": _get_float(pt, 2)})
         elif key == "layer":
-            item["layer"] = _get_str(child, 1, "Edge.Cuts")
+            item["layer"] = _normalize_layer_name(_get_str(child, 1, "Edge.Cuts"), "Edge.Cuts")
     if item.get("layer") != "Edge.Cuts":
         return None
     if points:
@@ -326,23 +359,19 @@ def _parse_outline_segment(node: list) -> Optional[dict]:
     return item
 
 
-def _build_net_pin_map(ast: list) -> dict[int, list[str]]:
-    """Walk the import AST and build ``net_id → [pin_key, ...]``.
-
-    Each pad node inside a footprint may have a ``(net nid)`` child;
-    this function collects all ``ref:padnum`` keys per net ID.
-    """
+def _build_net_pin_map(footprint_nodes: list[list]) -> dict[int, list[str]]:
+    """Build ``net_id -> [pin_key, ...]`` from footprint/module nodes."""
     net_pins: dict[int, list[str]] = {}
-    for fp_node in _find_all(ast, "footprint") + _find_all(ast, "module"):
+    for fp_node in footprint_nodes:
         ref = ""
-        for prop in _find_all(fp_node, "property"):
+        for prop in _direct_children(fp_node, "property"):
             if len(prop) > 2 and prop[1] == "Reference":
                 ref = str(prop[2])
                 break
         if not ref:
             fp_name = str(fp_node[1]) if len(fp_node) > 1 else "UNKNOWN"
             ref = fp_name
-        for pad_node in _find_all(fp_node, "pad"):
+        for pad_node in _direct_children(fp_node, "pad"):
             pnum = str(pad_node[1]) if len(pad_node) > 1 else "0"
             net_id = None
             for child in pad_node[2:]:
@@ -355,6 +384,31 @@ def _build_net_pin_map(ast: list) -> dict[int, list[str]]:
                 pin_key = f"{ref}:{pnum}"
                 net_pins.setdefault(net_id, []).append(pin_key)
     return net_pins
+
+
+def _collect_board_nodes(ast: list) -> dict[str, list[list]]:
+    """Collect top-level board items in one pass over the KiCad AST."""
+    buckets: dict[str, list[list]] = {
+        "net": [],
+        "footprint": [],
+        "module": [],
+        "segment": [],
+        "arc": [],
+        "via": [],
+        "zone": [],
+        "gr_line": [],
+        "gr_arc": [],
+        "gr_rect": [],
+        "gr_circle": [],
+        "gr_poly": [],
+    }
+    for child in ast[1:]:
+        if not isinstance(child, list) or not child:
+            continue
+        key = child[0]
+        if key in buckets:
+            buckets[key].append(child)
+    return buckets
 
 
 def import_board(path: str) -> BoardModel:
@@ -370,7 +424,9 @@ def import_board(path: str) -> BoardModel:
     if version_node:
         model.version = str(version_node[1])
 
-    nets = _find_all(ast, "net")
+    nodes = _collect_board_nodes(ast)
+
+    nets = nodes["net"]
     parsed_nets = []
     net_id_to_name: dict[int, str] = {}
     for n in nets:
@@ -381,7 +437,8 @@ def import_board(path: str) -> BoardModel:
             parsed_nets.append({"name": name, "pins": []})
     model.nets = parsed_nets
 
-    net_pins = _build_net_pin_map(ast)
+    footprint_nodes = nodes["footprint"] + nodes["module"]
+    net_pins = _build_net_pin_map(footprint_nodes)
 
     # Populate pins from the net-pin map, using the canonical name key
     for net_entry in model.nets:
@@ -391,37 +448,33 @@ def import_board(path: str) -> BoardModel:
                 net_entry["pins"] = pin_list
                 break
 
-    for fp_node in _find_all(ast, "footprint"):
+    for fp_node in footprint_nodes:
         comp = _parse_footprint(fp_node)
         if comp:
             model.components.append(comp)
-    for mod_node in _find_all(ast, "module"):
-        comp = _parse_footprint(mod_node)
-        if comp:
-            model.components.append(comp)
 
-    for seg_node in _find_all(ast, "segment"):
+    for seg_node in nodes["segment"] + nodes["arc"]:
         trace = _parse_trace(seg_node)
         if trace:
             model.traces.append(trace)
 
-    for via_node in _find_all(ast, "via"):
+    for via_node in nodes["via"]:
         via = _parse_via(via_node)
         if via:
             model.vias.append(via)
 
-    for zone_node in _find_all(ast, "zone"):
+    for zone_node in nodes["zone"]:
         zone = _parse_zone(zone_node)
         if zone:
             model.zones.append(zone)
 
     edge_pts = []
     outline_segments = []
-    for gr_node in _find_all(ast, "gr_line"):
+    for gr_node in nodes["gr_line"]:
         seg = _parse_gr_line(gr_node)
         if seg:
             edge_pts.extend(seg)
-    for gr_node in _find_all(ast, "gr_line") + _find_all(ast, "gr_arc") + _find_all(ast, "gr_rect") + _find_all(ast, "gr_circle") + _find_all(ast, "gr_poly"):
+    for gr_node in nodes["gr_line"] + nodes["gr_arc"] + nodes["gr_rect"] + nodes["gr_circle"] + nodes["gr_poly"]:
         segment = _parse_outline_segment(gr_node)
         if segment:
             outline_segments.append(segment)

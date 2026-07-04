@@ -346,8 +346,10 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
     padding: 0 12px;
-    height: 35px;
+    min-height: 35px;
+    flex-wrap: wrap;
 }
 
 .tabs {
@@ -373,6 +375,68 @@ body {
     color: var(--text-bright);
     border-bottom: 1px solid var(--bg-main);
     margin-bottom: -1px;
+}
+
+.pcb-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+}
+
+.pcb-tool-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pcb-tool-chip {
+    min-width: 58px;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #171717;
+    color: var(--text-main);
+    font: 600 12px var(--font-ui);
+    cursor: pointer;
+}
+
+.pcb-tool-chip:hover {
+    border-color: var(--border-bright);
+    background: #212121;
+}
+
+.pcb-tool-chip.active {
+    border-color: rgba(0, 122, 204, 0.9);
+    background: rgba(0, 122, 204, 0.18);
+    color: var(--text-bright);
+}
+
+.pcb-tool-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.pcb-tool-field select {
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #171717;
+    color: var(--text-main);
+    font: 500 12px var(--font-ui);
+}
+
+.pcb-tool-field select:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 .canvas-viewport {

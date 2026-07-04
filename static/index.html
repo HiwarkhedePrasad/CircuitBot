@@ -67,6 +67,33 @@
                         <button id="viewPCBBtn" class="tab">PCB View</button>
                         <button id="viewSymbolBtn" class="tab">Symbol Preview</button>
                     </div>
+                    <div id="pcbToolbar" class="pcb-toolbar hidden" aria-label="PCB tools">
+                        <div class="pcb-tool-group" role="group" aria-label="PCB interaction tools">
+                            <button id="pcbPanToolBtn" class="pcb-tool-chip active" type="button" title="Pan board">Pan</button>
+                            <button id="pcbSelectToolBtn" class="pcb-tool-chip" type="button" title="Select and move components">Select</button>
+                            <button id="pcbRouteToolBtn" class="pcb-tool-chip" type="button" title="Route traces">Route</button>
+                            <button id="pcbViaToolBtn" class="pcb-tool-chip" type="button" title="Place vias">Via</button>
+                        </div>
+                        <div class="pcb-tool-group" role="group" aria-label="PCB routing settings">
+                            <label class="pcb-tool-field" for="pcbLayerSelect">
+                                <span>Layer</span>
+                                <select id="pcbLayerSelect">
+                                    <option value="F.Cu">F.Cu</option>
+                                    <option value="B.Cu">B.Cu</option>
+                                </select>
+                            </label>
+                            <label class="pcb-tool-field" for="pcbWidthSelect">
+                                <span>Width</span>
+                                <select id="pcbWidthSelect">
+                                    <option value="0.2">0.20 mm</option>
+                                    <option value="0.254" selected>0.254 mm</option>
+                                    <option value="0.3">0.30 mm</option>
+                                    <option value="0.5">0.50 mm</option>
+                                    <option value="1">1.00 mm</option>
+                                </select>
+                            </label>
+                        </div>
+                    </div>
                     <div class="canvas-controls">
                         <div class="zoom-group">
                             <button id="zoomOutBtn" title="Zoom Out">-</button>

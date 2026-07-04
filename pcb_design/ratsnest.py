@@ -55,35 +55,57 @@ def _pad_position(model: BoardModel, pin_key: str) -> Optional[tuple[float, floa
     return (comp.x + rx, comp.y + ry)
 
 
-def _pads_already_connected(
-    model: BoardModel,
-    net_name: str,
-    pin_a: str,
-    pin_b: str,
-) -> bool:
-    """Return True if *pin_a* and *pin_b* are already joined by copper traces."""
-    pos_a = _pad_position(model, pin_a)
-    pos_b = _pad_position(model, pin_b)
-    if pos_a is None or pos_b is None:
-        return False
+def _build_trace_endpoint_map(model: BoardModel, net_name: str) -> dict[tuple[int, int], list[tuple[int, int]]]:
+    """Build an endpoint adjacency map for traces on a single net."""
+    adjacency: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    target_net = net_name.upper()
     for trace in model.traces:
-        if trace.net.upper() != net_name.upper():
+        if trace.net.upper() != target_net:
             continue
         path = trace.path
         if len(path) < 2:
             continue
         start = path[0]
         end = path[-1]
-        # Check if trace endpoints match our pad positions
-        da1 = math.hypot(start[0] - pos_a[0], start[1] - pos_a[1])
-        db1 = math.hypot(end[0] - pos_b[0], end[1] - pos_b[1])
-        if da1 < 0.01 and db1 < 0.01:
-            return True
-        da2 = math.hypot(end[0] - pos_a[0], end[1] - pos_a[1])
-        db2 = math.hypot(start[0] - pos_b[0], start[1] - pos_b[1])
-        if da2 < 0.01 and db2 < 0.01:
-            return True
-    return False
+        start_key = (round(start[0], 2), round(start[1], 2))
+        end_key = (round(end[0], 2), round(end[1], 2))
+        adjacency.setdefault(start_key, []).append(end_key)
+        adjacency.setdefault(end_key, []).append(start_key)
+    return adjacency
+
+
+def _connected_pad_groups(
+    positions: list[tuple[str, tuple[float, float]]],
+    adjacency: dict[tuple[int, int], list[tuple[int, int]]],
+) -> list[int]:
+    """Return component ids for pads connected through trace endpoint chains."""
+    groups: list[int] = [-1] * len(positions)
+    point_to_indices: dict[tuple[int, int], list[int]] = {}
+    for index, (_, pos) in enumerate(positions):
+        key = (round(pos[0], 2), round(pos[1], 2))
+        point_to_indices.setdefault(key, []).append(index)
+
+    group_id = 0
+    for index, (_, pos) in enumerate(positions):
+        if groups[index] != -1:
+            continue
+        start_key = (round(pos[0], 2), round(pos[1], 2))
+        stack = [start_key]
+        seen_points = set()
+        while stack:
+            point = stack.pop()
+            if point in seen_points:
+                continue
+            seen_points.add(point)
+            for pad_index in point_to_indices.get(point, []):
+                groups[pad_index] = group_id
+            for neighbor in adjacency.get(point, []):
+                if neighbor not in seen_points:
+                    stack.append(neighbor)
+        if groups[index] == -1:
+            groups[index] = group_id
+        group_id += 1
+    return groups
 
 
 def compute_ratsnest(model: BoardModel) -> dict[str, list[dict]]:
@@ -117,15 +139,9 @@ def compute_ratsnest(model: BoardModel) -> dict[str, list[dict]]:
         if n < 2:
             continue
 
-        # Phase 1: union-find groups for pads already joined by traces
-        parent, rank = _union_find(n)
-        for i in range(n):
-            for j in range(i + 1, n):
-                if _pads_already_connected(model, net_name, positions[i][0], positions[j][0]):
-                    _union(parent, rank, i, j)
-
-        # Count unique groups
-        group_of = [_find(parent, i) for i in range(n)]
+        # Phase 1: group pads joined by chains of trace endpoints on the same net.
+        adjacency = _build_trace_endpoint_map(model, net_name)
+        group_of = _connected_pad_groups(positions, adjacency)
         unique_groups = set(group_of)
         if len(unique_groups) < 2:
             continue  # fully routed

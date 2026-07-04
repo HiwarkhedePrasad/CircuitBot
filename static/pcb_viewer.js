@@ -39,9 +39,19 @@ const PCB_MODE = {
     ROUTE: 'route',
 };
 
+const PCB_TOOL = {
+    PAN: 'pan',
+    SELECT: 'select',
+    ROUTE: 'route',
+    VIA: 'via',
+};
+
+const PCB_POINTER_DRAG_THRESHOLD_PX = 4;
+
 let pcbState = {
     boardModel: null,
     mode: PCB_MODE.IDLE,
+    activeTool: PCB_TOOL.PAN,
     zoom: 1,
     panX: 0,
     panY: 0,
@@ -55,7 +65,9 @@ let pcbState = {
     selectedComponentRef: null,
     hoveredPadKey: null,
     hoveredComponentRef: null,
+    hoveredViaIndex: null,
     dragComponentRef: null,
+    dragViaIndex: null,
     dragOrigin: null,
     dragPointerStart: null,
     routeStartAnchor: null,
@@ -66,6 +78,9 @@ let pcbState = {
     routeVias: [],
     routeCursor: null,
     lastPointerWorld: null,
+    pointerDownScreen: null,
+    pointerDownWorld: null,
+    pointerDragMoved: false,
     undoStack: [],
     redoStack: [],
 };
@@ -89,6 +104,23 @@ function normalizePoint(point) {
     return null;
 }
 
+function normalizeCopperLayerName(layer, fallback = 'F.Cu') {
+    const raw = String(layer || fallback).trim();
+    const aliases = {
+        front_c: 'F.Cu',
+        front_copper: 'F.Cu',
+        f_cu: 'F.Cu',
+        top: 'F.Cu',
+        top_copper: 'F.Cu',
+        back_c: 'B.Cu',
+        back_copper: 'B.Cu',
+        b_cu: 'B.Cu',
+        bottom: 'B.Cu',
+        bottom_copper: 'B.Cu',
+    };
+    return aliases[raw.toLowerCase()] || raw;
+}
+
 function normalizeBoardModel(boardModel) {
     const model = deepClone(boardModel || {});
     model.components = Array.isArray(model.components) ? model.components : [];
@@ -109,10 +141,12 @@ function normalizeBoardModel(boardModel) {
             pad.height = toFiniteNumber(pad.height, 1);
             pad.rotation = toFiniteNumber(pad.rotation);
             if (pad.drill != null) pad.drill = toFiniteNumber(pad.drill, 0);
-            pad.layers = Array.isArray(pad.layers) ? pad.layers : ['F.Cu'];
+            pad.layers = (Array.isArray(pad.layers) ? pad.layers : ['F.Cu'])
+                .map((layer) => normalizeCopperLayerName(layer));
         }
     }
     for (const trace of model.traces) {
+        trace.layer = normalizeCopperLayerName(trace.layer, 'F.Cu');
         trace.width = toFiniteNumber(trace.width, 0.254);
         trace.path = (Array.isArray(trace.path) ? trace.path : [])
             .map(normalizePoint)
@@ -123,7 +157,8 @@ function normalizeBoardModel(boardModel) {
         via.y = toFiniteNumber(via.y);
         via.drill = toFiniteNumber(via.drill, 0.3);
         via.diameter = toFiniteNumber(via.diameter, 0.6);
-        via.layers = Array.isArray(via.layers) ? via.layers : ['F.Cu', 'B.Cu'];
+        via.layers = (Array.isArray(via.layers) ? via.layers : ['F.Cu', 'B.Cu'])
+            .map((layer) => normalizeCopperLayerName(layer));
     }
     for (const segment of model.outline_segments) {
         for (const key of ['start', 'end', 'center', 'mid']) {
@@ -200,6 +235,20 @@ function getNetNameForPad(model, ref, padNumber) {
     return '_manual';
 }
 
+function isBottomCopperLayer(layer) {
+    const name = String(layer || '').trim();
+    return name === 'B.Cu' || name.startsWith('B.');
+}
+
+function isFrontCopperLayer(layer) {
+    const name = String(layer || '').trim();
+    return name === 'F.Cu' || name.startsWith('F.');
+}
+
+function copperColorForLayer(layer) {
+    return isBottomCopperLayer(layer) ? PCB_COLORS.bottomCopper : PCB_COLORS.topCopper;
+}
+
 function compactFootprintName(footprint) {
     const raw = String(footprint || '').trim();
     if (!raw) return '';
@@ -257,6 +306,72 @@ function pointToSegmentDistance(point, start, end) {
     return {
         distance: Math.hypot(point.x - hit.x, point.y - hit.y),
         point: hit,
+    };
+}
+
+function pcbToolsEnabled() {
+    return !!pcbState.boardModel;
+}
+
+function hasPointerExceededThreshold(event) {
+    if (!pcbState.pointerDownScreen || !event) return false;
+    const dx = event.clientX - pcbState.pointerDownScreen.x;
+    const dy = event.clientY - pcbState.pointerDownScreen.y;
+    return Math.hypot(dx, dy) >= PCB_POINTER_DRAG_THRESHOLD_PX;
+}
+
+function dispatchPcbInteractionUpdated() {
+    try {
+        window.dispatchEvent(new CustomEvent('pcb:interaction-updated', {
+            detail: {
+                tool: pcbState.activeTool,
+                mode: pcbState.mode,
+                routeLayer: pcbState.routeLayer,
+                routeWidth: pcbState.routeWidth,
+                toolsEnabled: pcbToolsEnabled(),
+            },
+        }));
+    } catch (_) {}
+}
+
+function syncRouteStyleFromAnchor(anchorLike) {
+    if (!anchorLike) return;
+    if (anchorLike.pad) {
+        pcbState.routeLayer = (anchorLike.pad.layers || []).some((layer) => isBottomCopperLayer(layer)) ? 'B.Cu' : 'F.Cu';
+        pcbState.routeNetName = getNetNameForPad(pcbState.boardModel, anchorLike.component.ref, anchorLike.pad.number);
+        return;
+    }
+    if (anchorLike.trace) {
+        pcbState.routeLayer = anchorLike.trace.layer || pcbState.routeLayer || 'F.Cu';
+        pcbState.routeNetName = anchorLike.trace.net || pcbState.routeNetName || '_manual';
+    }
+}
+
+function beginRoute(anchor) {
+    if (!anchor) return false;
+    syncRouteStyleFromAnchor(anchor);
+    pcbState.routeStartAnchor = {
+        kind: anchor.trace ? 'trace' : 'pad',
+        key: anchor.key,
+        x: anchor.x,
+        y: anchor.y,
+    };
+    pcbState.routePoints = [routePoint(anchor)];
+    pcbState.routeVias = [];
+    pcbState.routeCursor = routePoint(anchor);
+    pcbSetMode(PCB_MODE.ROUTE);
+    pcbEditor.requestOverlayRefresh();
+    return true;
+}
+
+function buildViaDraft(point, netName = '') {
+    return {
+        x: snapToGrid(point.x),
+        y: snapToGrid(point.y),
+        drill: 0.3,
+        diameter: 0.7,
+        layers: ['F.Cu', 'B.Cu'],
+        net: netName || '',
     };
 }
 
@@ -404,16 +519,26 @@ class PcbEditor {
         this.ensure();
         if (!this._app) return;
         pcbState.boardModel = normalizeBoardModel(boardModel || { components: [], traces: [], vias: [], nets: [] });
+        pcbState.ratsnest = boardModel && typeof boardModel === 'object' && boardModel.ratsnest
+            ? boardModel.ratsnest
+            : {};
+        pcbState.activeTool = PCB_TOOL.PAN;
         pcbState.selectedComponentRef = null;
         pcbState.hoveredPadKey = null;
         pcbState.hoveredComponentRef = null;
+        pcbState.hoveredViaIndex = null;
+        pcbState.dragViaIndex = null;
         pcbState.routeStartAnchor = null;
         pcbState.routeNetName = '';
         pcbState.routePoints = [];
         pcbState.routeVias = [];
         pcbState.routeCursor = null;
+        pcbState.pointerDownScreen = null;
+        pcbState.pointerDownWorld = null;
+        pcbState.pointerDragMoved = false;
         this._computeView();
         this.refresh();
+        dispatchPcbInteractionUpdated();
     }
 
     _resize() {
@@ -744,34 +869,34 @@ class PcbEditor {
 
     _drawTraces() {
         const model = pcbState.boardModel || {};
+        const top = new PIXI.Graphics();
+        const bottom = new PIXI.Graphics();
         for (const trace of model.traces || []) {
-            const g = new PIXI.Graphics();
-            const color = trace.layer === 'B.Cu' ? PCB_COLORS.bottomCopper : PCB_COLORS.topCopper;
+            const g = isBottomCopperLayer(trace.layer) ? bottom : top;
+            const points = trace.path || [];
+            if (points.length < 2) continue;
             g.lineStyle({
                 width: Math.max(trace.width || 0.254, 0.18),
-                color,
-                alpha: 1,
+                color: copperColorForLayer(trace.layer),
+                alpha: 0.96,
                 cap: PIXI.LINE_CAP.ROUND,
                 join: PIXI.LINE_JOIN.ROUND,
             });
-            const points = trace.path || [];
-            if (points.length < 2) continue;
             g.moveTo(points[0].x, points[0].y);
             for (let index = 1; index < points.length; index += 1) {
                 g.lineTo(points[index].x, points[index].y);
             }
-            this._traceLayer.addChild(g);
         }
+        const vias = new PIXI.Graphics();
         for (const via of model.vias || []) {
-            const outer = new PIXI.Graphics();
-            outer.beginFill(PCB_COLORS.viaCopper, 1);
-            outer.drawCircle(via.x, via.y, Math.max(via.diameter || 0.6, 0.6) / 2);
-            outer.endFill();
-            outer.beginFill(PCB_COLORS.viaDrill, 1);
-            outer.drawCircle(via.x, via.y, Math.max(via.drill || 0.3, 0.25) / 2);
-            outer.endFill();
-            this._traceLayer.addChild(outer);
+            vias.beginFill(PCB_COLORS.viaCopper, 1);
+            vias.drawCircle(via.x, via.y, Math.max(via.diameter || 0.6, 0.6) / 2);
+            vias.endFill();
+            vias.beginFill(PCB_COLORS.viaDrill, 1);
+            vias.drawCircle(via.x, via.y, Math.max(via.drill || 0.3, 0.25) / 2);
+            vias.endFill();
         }
+        this._traceLayer.addChild(bottom, top, vias);
     }
 
     _drawFootprints() {
@@ -870,7 +995,7 @@ class PcbEditor {
             const padWidth = pad.width || 1.0;
             const padHeight = pad.height || 1.0;
             const padGraphic = new PIXI.Graphics();
-            const isBottom = (pad.layers || []).some((layer) => String(layer).startsWith('B.'));
+            const isBottom = (pad.layers || []).some((layer) => isBottomCopperLayer(layer));
             const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht' || pad.drill;
             const fill = isThrough ? PCB_COLORS.throughPad : (isBottom ? PCB_COLORS.smdBottom : PCB_COLORS.smdTop);
             const mask = new PIXI.Graphics();
@@ -891,7 +1016,7 @@ class PcbEditor {
             } else {
                 this._footprintLayer.addChild(padGraphic);
             }
-            if (pad.number != null && Math.max(padWidth, padHeight) >= 0.75) {
+            if (pad.number != null && Math.max(padWidth, padHeight) >= 0.75 && pcbState.zoom >= 1.2) {
                 const label = this._makeText(pad.number, {
                     x: center.x,
                     y: center.y,
@@ -923,7 +1048,7 @@ class PcbEditor {
             rotation: component.rotation || 0,
         });
         this._textLayer.addChild(reference);
-        if (valueText && valueText !== referenceText) {
+        if (pcbState.zoom >= 0.9 && valueText && valueText !== referenceText) {
             const value = this._makeText(valueText, {
                 x: component.x + valueOffset.x,
                 y: component.y + valueOffset.y,
@@ -953,11 +1078,14 @@ class PcbEditor {
         if (pcbState.hoveredPadKey) {
             this._drawPadHover(pcbState.hoveredPadKey);
         }
+        if (pcbState.hoveredViaIndex != null) {
+            this._drawViaHover(pcbState.hoveredViaIndex);
+        }
         if (pcbState.routePoints.length > 0) {
             const preview = new PIXI.Graphics();
             preview.lineStyle({
                 width: Math.max(pcbState.routeWidth, 0.18),
-                color: PCB_COLORS.routeGhost,
+                color: copperColorForLayer(pcbState.routeLayer),
                 alpha: 0.95,
                 cap: PIXI.LINE_CAP.ROUND,
                 join: PIXI.LINE_JOIN.ROUND,
@@ -967,6 +1095,18 @@ class PcbEditor {
             for (let index = 1; index < points.length; index += 1) {
                 preview.lineTo(points[index].x, points[index].y);
             }
+            this._overlayLayer.addChild(preview);
+        }
+        if (pcbState.activeTool === PCB_TOOL.VIA && pcbState.lastPointerWorld) {
+            const via = buildViaDraft(pcbState.lastPointerWorld);
+            const preview = new PIXI.Graphics();
+            preview.lineStyle(0.08, PCB_COLORS.selection, 0.95);
+            preview.beginFill(PCB_COLORS.viaCopper, 0.92);
+            preview.drawCircle(via.x, via.y, via.diameter / 2);
+            preview.endFill();
+            preview.beginFill(PCB_COLORS.viaDrill, 1);
+            preview.drawCircle(via.x, via.y, via.drill / 2);
+            preview.endFill();
             this._overlayLayer.addChild(preview);
         }
     }
@@ -979,20 +1119,28 @@ class PcbEditor {
             parts.push('left click waypoint');
             parts.push('right click finish');
             parts.push('V via');
+        } else if (pcbState.activeTool === PCB_TOOL.VIA) {
+            parts.push('Via tool');
+            parts.push('click to place');
         } else if (pcbState.mode === PCB_MODE.DRAG_COMPONENT) {
             parts.push(`Move ${pcbState.dragComponentRef || 'component'}`);
             parts.push('release to save');
         } else if (pcbState.mode === PCB_MODE.PANNING) {
             parts.push('Pan');
+        } else if (pcbState.activeTool === PCB_TOOL.ROUTE) {
+            parts.push('Route tool');
+            parts.push('click pad or trace');
+        } else if (pcbState.activeTool === PCB_TOOL.SELECT) {
+            parts.push('Select tool');
+            parts.push('drag component');
         } else if (pcbState.hoveredPadKey) {
-            parts.push('Click pad to route');
+            parts.push('Pan tool');
             parts.push(pcbState.hoveredPadKey);
         } else if (pcbState.selectedComponentRef) {
             parts.push(`Selected ${pcbState.selectedComponentRef}`);
         } else {
             parts.push('PCB editor');
-            parts.push('drag board');
-            parts.push('click pad to route');
+            parts.push(pcbState.activeTool === PCB_TOOL.PAN ? 'drag board' : `${pcbState.activeTool} tool`);
         }
         const label = parts.join('  |  ');
         const boxW = Math.min(Math.max(label.length * 0.32, 13), Math.max(bounds.maxX - bounds.minX - 3, 13));
@@ -1065,6 +1213,17 @@ class PcbEditor {
         this._overlayLayer.addChild(text);
     }
 
+    _drawViaHover(index) {
+        const via = (pcbState.boardModel.vias || [])[index];
+        if (!via) return;
+        const halo = new PIXI.Graphics();
+        halo.lineStyle(0.14, PCB_COLORS.selection, 1);
+        halo.beginFill(PCB_COLORS.selection, 0.12);
+        halo.drawCircle(via.x, via.y, Math.max(via.diameter || 0.7, 0.9));
+        halo.endFill();
+        this._overlayLayer.addChild(halo);
+    }
+
     hitTestPad(screenX, screenY) {
         const world = this.screenToWorld(screenX, screenY);
         const tolerance = 0.9 / Math.max(pcbState.zoom, 0.4);
@@ -1115,6 +1274,24 @@ class PcbEditor {
                         y: hit.point.y,
                     };
                 }
+            }
+        }
+        return best;
+    }
+
+    hitTestVia(screenX, screenY) {
+        const world = this.screenToWorld(screenX, screenY);
+        const vias = pcbState.boardModel.vias || [];
+        let best = null;
+        let bestDistance = Infinity;
+        const tolerance = 1.1 / Math.max(pcbState.zoom, 0.4);
+        for (let index = 0; index < vias.length; index += 1) {
+            const via = vias[index];
+            const distance = Math.hypot(world.x - via.x, world.y - via.y);
+            const radius = Math.max(via.diameter || 0.6, 0.6) / 2;
+            if (distance <= Math.max(radius, tolerance) && distance < bestDistance) {
+                bestDistance = distance;
+                best = { index, via };
             }
         }
         return best;
@@ -1272,10 +1449,17 @@ function pcbSetupCanvas() {
     pcbEditor._resize();
 }
 
-function pcbLoadBoard(boardModel) {
+function pcbLoadBoard(boardModel, options = {}) {
+    const shouldFetchRatsnest = options.fetchRatsnest !== false;
     pcbEditor.load(boardModel);
+    if (!shouldFetchRatsnest) {
+        pcbEditor.refresh();
+        return;
+    }
     pcbEditor.fetchRatsnest().catch(() => {
-        pcbState.ratsnest = {};
+        pcbState.ratsnest = boardModel && typeof boardModel === 'object' && boardModel.ratsnest
+            ? boardModel.ratsnest
+            : {};
         pcbEditor.refresh();
     });
 }
@@ -1311,17 +1495,56 @@ function pcbSetCursor(cursor) {
     if (canvas) canvas.style.cursor = cursor;
 }
 
+function pcbUpdateCursor() {
+    if (pcbState.mode === PCB_MODE.ROUTE || pcbState.activeTool === PCB_TOOL.ROUTE) {
+        pcbSetCursor('crosshair');
+    } else if (pcbState.activeTool === PCB_TOOL.VIA) {
+        pcbSetCursor('copy');
+    } else if (pcbState.mode === PCB_MODE.PANNING) {
+        pcbSetCursor('grabbing');
+    } else if (pcbState.mode === PCB_MODE.DRAG_COMPONENT) {
+        pcbSetCursor('move');
+    } else if (pcbState.activeTool === PCB_TOOL.SELECT) {
+        pcbSetCursor(pcbState.hoveredPadKey ? 'pointer' : 'default');
+    } else {
+        pcbSetCursor('grab');
+    }
+}
+
 function pcbSetMode(mode) {
     pcbState.mode = mode;
-    if (mode === PCB_MODE.ROUTE) {
-        pcbSetCursor('crosshair');
-    } else if (mode === PCB_MODE.PANNING) {
-        pcbSetCursor('grabbing');
-    } else if (mode === PCB_MODE.DRAG_COMPONENT) {
-        pcbSetCursor('move');
-    } else {
-        pcbSetCursor(pcbState.hoveredPadKey ? 'crosshair' : 'grab');
+    pcbUpdateCursor();
+    dispatchPcbInteractionUpdated();
+}
+
+function pcbSetTool(tool) {
+    if (!Object.values(PCB_TOOL).includes(tool)) return;
+    if (pcbState.activeTool === tool && pcbState.mode !== PCB_MODE.ROUTE) {
+        dispatchPcbInteractionUpdated();
+        return;
     }
+    if (tool !== PCB_TOOL.ROUTE) {
+        pcbState.routeStartAnchor = null;
+        pcbState.routeNetName = '';
+        pcbState.routePoints = [];
+        pcbState.routeVias = [];
+        pcbState.routeCursor = null;
+    }
+    pcbState.hoveredViaIndex = null;
+    pcbState.dragViaIndex = null;
+    pcbState.activeTool = tool;
+    pcbSetMode(PCB_MODE.IDLE);
+    pcbEditor.requestOverlayRefresh();
+}
+
+function pcbSetRouteStyle(style = {}) {
+    if (style.layer === 'F.Cu' || style.layer === 'B.Cu') {
+        pcbState.routeLayer = style.layer;
+    }
+    if (style.width != null) {
+        pcbState.routeWidth = Math.max(toFiniteNumber(style.width, pcbState.routeWidth), 0.1);
+    }
+    dispatchPcbInteractionUpdated();
 }
 
 function pcbCancelDraw() {
@@ -1331,6 +1554,9 @@ function pcbCancelDraw() {
     pcbState.routePoints = [];
     pcbState.routeVias = [];
     pcbState.routeCursor = null;
+    pcbState.pointerDownScreen = null;
+    pcbState.pointerDownWorld = null;
+    pcbState.pointerDragMoved = false;
     pcbEditor.requestOverlayRefresh();
 }
 
@@ -1366,24 +1592,75 @@ async function commitRouteToBoard(targetPad) {
     }
 }
 
+async function placeViaAt(point) {
+    if (!pcbState.boardModel) return;
+    const before = deepClone(pcbState.boardModel);
+    const via = buildViaDraft(point);
+    pcbState.boardModel.vias = pcbState.boardModel.vias || [];
+    pcbState.boardModel.vias.push(via);
+    const after = deepClone(pcbState.boardModel);
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('place via', before, after);
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
 function pcbHandleWheel(event) {
     event.preventDefault();
-    const delta = event.deltaY > 0 ? 0.92 : 1.08;
-    pcbZoomBy(delta);
+    if (!pcbState.boardModel) return;
+    const canvas = pcbEditor._canvas;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const sx = (event.clientX - rect.left) * (pcbEditor._app.screen.width / rect.width);
+    const sy = (event.clientY - rect.top) * (pcbEditor._app.screen.height / rect.height);
+
+    const factor = event.deltaY > 0 ? 0.92 : 1.08;
+    const oldZoom = pcbState.zoom;
+    const newZoom = Math.min(Math.max(oldZoom * factor, 0.1), 25);
+    const actualFactor = newZoom / oldZoom;
+
+    pcbState.panX = (sx - pcbState.cx) * (1 - actualFactor) + pcbState.panX * actualFactor;
+    pcbState.panY = (sy - pcbState.cy) * (1 - actualFactor) + pcbState.panY * actualFactor;
+    pcbState.zoom = newZoom;
+
+    pcbEditor._applyCamera();
+    pcbEditor.requestOverlayRefresh();
+    pcbEditor.requestSettledRefresh();
 }
 
 function pcbHandleMouseDown(event) {
     if (!pcbState.boardModel) return;
+    pcbState.pointerDownScreen = { x: event.clientX, y: event.clientY };
+    pcbState.pointerDownWorld = pcbEditor.screenToWorld(event.clientX, event.clientY);
+    pcbState.pointerDragMoved = false;
     const padHit = pcbEditor.hitTestPad(event.clientX, event.clientY);
     const traceHit = pcbEditor.hitTestTrace(event.clientX, event.clientY);
+    const viaHit = pcbEditor.hitTestVia(event.clientX, event.clientY);
     const compHit = pcbEditor.hitTestComponent(event.clientX, event.clientY);
-    if (pcbState.mode === PCB_MODE.ROUTE) {
+    if (pcbState.mode === PCB_MODE.ROUTE || pcbState.activeTool === PCB_TOOL.ROUTE) {
         if (event.button === 2) {
             if (pcbState.routePoints.length >= 2) {
                 const finalTarget = pcbState.routeCursor || pcbState.routePoints[pcbState.routePoints.length - 1];
                 commitRouteToBoard(finalTarget);
             } else {
                 pcbCancelDraw();
+            }
+            return;
+        }
+        if (event.button !== 0) return;
+        if (pcbState.mode !== PCB_MODE.ROUTE) {
+            if (padHit && beginRoute(padHit)) return;
+            if (traceHit) {
+                beginRoute({
+                    trace: traceHit.trace,
+                    key: `trace:${traceHit.x}:${traceHit.y}`,
+                    x: traceHit.x,
+                    y: traceHit.y,
+                });
             }
             return;
         }
@@ -1400,35 +1677,30 @@ function pcbHandleMouseDown(event) {
         pcbEditor.requestOverlayRefresh();
         return;
     }
-    if (event.button !== 0) return;
-    if (padHit) {
-        pcbState.routeStartAnchor = { kind: 'pad', key: padHit.key, x: padHit.x, y: padHit.y };
-        pcbState.routeNetName = getNetNameForPad(pcbState.boardModel, padHit.component.ref, padHit.pad.number);
-        pcbState.routeLayer = (padHit.pad.layers || []).some((layer) => String(layer).startsWith('B.')) ? 'B.Cu' : 'F.Cu';
-        pcbState.routePoints = [routePoint(padHit)];
-        pcbState.routeVias = [];
-        pcbState.routeCursor = routePoint(padHit);
-        pcbSetMode(PCB_MODE.ROUTE);
-        pcbEditor.requestOverlayRefresh();
+    if (event.button !== 0 && event.button !== 1) return;
+    if (pcbState.activeTool === PCB_TOOL.VIA && event.button === 0) {
+        if (viaHit) {
+            pcbState.dragViaIndex = viaHit.index;
+            pcbState.dragOrigin = { x: viaHit.via.x, y: viaHit.via.y };
+            pcbState.dragPointerStart = pcbState.pointerDownWorld;
+            pcbSetMode(PCB_MODE.DRAG_COMPONENT);
+            pcbEditor.requestOverlayRefresh();
+            return;
+        }
+        placeViaAt(pcbState.pointerDownWorld);
         return;
     }
-    if (traceHit) {
-        pcbState.routeStartAnchor = { kind: 'trace', key: `trace:${traceHit.x}:${traceHit.y}`, x: traceHit.x, y: traceHit.y };
-        pcbState.routeNetName = traceHit.trace.net || '_manual';
-        pcbState.routeLayer = traceHit.trace.layer || 'F.Cu';
-        pcbState.routePoints = [routePoint(traceHit)];
-        pcbState.routeVias = [];
-        pcbState.routeCursor = routePoint(traceHit);
-        pcbSetMode(PCB_MODE.ROUTE);
-        pcbEditor.requestOverlayRefresh();
-        return;
-    }
-    if (compHit) {
+    if (pcbState.activeTool === PCB_TOOL.SELECT && event.button === 0 && compHit) {
         pcbState.selectedComponentRef = compHit.ref;
         pcbState.dragComponentRef = compHit.ref;
         pcbState.dragOrigin = { x: compHit.x, y: compHit.y };
-        pcbState.dragPointerStart = pcbEditor.screenToWorld(event.clientX, event.clientY);
+        pcbState.dragPointerStart = pcbState.pointerDownWorld;
         pcbSetMode(PCB_MODE.DRAG_COMPONENT);
+        pcbEditor.requestOverlayRefresh();
+        return;
+    }
+    if (pcbState.activeTool === PCB_TOOL.SELECT && event.button === 0) {
+        pcbState.selectedComponentRef = compHit ? compHit.ref : null;
         pcbEditor.requestOverlayRefresh();
         return;
     }
@@ -1440,21 +1712,42 @@ function pcbHandleMouseMove(event) {
     if (!pcbState.boardModel) return;
     const world = pcbEditor.screenToWorld(event.clientX, event.clientY);
     const padHit = pcbEditor.hitTestPad(event.clientX, event.clientY);
+    const viaHit = pcbEditor.hitTestVia(event.clientX, event.clientY);
     const prevHoveredPadKey = pcbState.hoveredPadKey;
-    pcbState.hoveredPadKey = padHit ? padHit.key : null;
+    pcbState.hoveredPadKey = pcbState.activeTool === PCB_TOOL.ROUTE ? (padHit ? padHit.key : null) : null;
+    pcbState.hoveredViaIndex = pcbState.activeTool === PCB_TOOL.VIA && viaHit ? viaHit.index : null;
     pcbState.lastPointerWorld = world;
+    if (!pcbState.pointerDragMoved && hasPointerExceededThreshold(event)) {
+        pcbState.pointerDragMoved = true;
+    }
     if (pcbState.mode === PCB_MODE.PANNING && pcbState.dragPointerStart) {
         pcbState.panX += event.clientX - pcbState.dragPointerStart.x;
         pcbState.panY += event.clientY - pcbState.dragPointerStart.y;
         pcbState.dragPointerStart = { x: event.clientX, y: event.clientY };
         pcbEditor._applyCamera();
+        pcbEditor.requestOverlayRefresh();
         return;
     }
     if (pcbState.mode === PCB_MODE.DRAG_COMPONENT && pcbState.dragComponentRef && pcbState.dragPointerStart) {
+        if (!pcbState.pointerDragMoved) {
+            return;
+        }
         const component = (pcbState.boardModel.components || []).find((item) => item.ref === pcbState.dragComponentRef);
         if (component) {
             component.x = snapToGrid(pcbState.dragOrigin.x + (world.x - pcbState.dragPointerStart.x));
             component.y = snapToGrid(pcbState.dragOrigin.y + (world.y - pcbState.dragPointerStart.y));
+            pcbEditor.requestRefresh();
+        }
+        return;
+    }
+    if (pcbState.mode === PCB_MODE.DRAG_COMPONENT && pcbState.dragViaIndex != null && pcbState.dragPointerStart) {
+        if (!pcbState.pointerDragMoved) {
+            return;
+        }
+        const via = (pcbState.boardModel.vias || [])[pcbState.dragViaIndex];
+        if (via) {
+            via.x = snapToGrid(pcbState.dragOrigin.x + (world.x - pcbState.dragPointerStart.x));
+            via.y = snapToGrid(pcbState.dragOrigin.y + (world.y - pcbState.dragPointerStart.y));
             pcbEditor.requestRefresh();
         }
         return;
@@ -1469,7 +1762,7 @@ function pcbHandleMouseMove(event) {
         pcbEditor.requestOverlayRefresh();
         return;
     }
-    pcbSetCursor(pcbState.hoveredPadKey ? 'crosshair' : 'grab');
+    pcbUpdateCursor();
     if (prevHoveredPadKey !== pcbState.hoveredPadKey) {
         pcbEditor.requestOverlayRefresh();
     }
@@ -1479,6 +1772,9 @@ function pcbHandleMouseUp(event) {
     if (pcbState.mode === PCB_MODE.PANNING) {
         pcbSetMode(PCB_MODE.IDLE);
         pcbEditor.requestSettledRefresh(20);
+        pcbState.pointerDownScreen = null;
+        pcbState.pointerDownWorld = null;
+        pcbState.pointerDragMoved = false;
         return;
     }
     if (pcbState.mode === PCB_MODE.DRAG_COMPONENT && pcbState.dragComponentRef) {
@@ -1488,6 +1784,9 @@ function pcbHandleMouseUp(event) {
         pcbSetMode(PCB_MODE.IDLE);
         pcbState.dragComponentRef = null;
         pcbState.dragPointerStart = null;
+        pcbState.pointerDownScreen = null;
+        pcbState.pointerDownWorld = null;
+        pcbState.pointerDragMoved = false;
         if (!changed) {
             pcbEditor.requestOverlayRefresh();
             return;
@@ -1507,9 +1806,43 @@ function pcbHandleMouseUp(event) {
         });
         return;
     }
+    if (pcbState.mode === PCB_MODE.DRAG_COMPONENT && pcbState.dragViaIndex != null) {
+        const viaIndex = pcbState.dragViaIndex;
+        const after = deepClone(pcbState.boardModel);
+        const via = (pcbState.boardModel.vias || [])[viaIndex];
+        const changed = via && (Math.abs(via.x - pcbState.dragOrigin.x) > 0.001 || Math.abs(via.y - pcbState.dragOrigin.y) > 0.001);
+        pcbSetMode(PCB_MODE.IDLE);
+        pcbState.dragViaIndex = null;
+        pcbState.dragPointerStart = null;
+        pcbState.pointerDownScreen = null;
+        pcbState.pointerDownWorld = null;
+        pcbState.pointerDragMoved = false;
+        if (!changed) {
+            pcbEditor.requestOverlayRefresh();
+            return;
+        }
+        const before = deepClone(after);
+        const original = (before.vias || [])[viaIndex];
+        if (original) {
+            original.x = pcbState.dragOrigin.x;
+            original.y = pcbState.dragOrigin.y;
+        }
+        pcbEditor.saveBoardModel().then(() => {
+            pcbEditor.pushHistory('move via', before, after);
+        }).catch((error) => {
+            pcbState.boardModel = before;
+            pcbEditor.refresh();
+            dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+        });
+        return;
+    }
     if (event && event.button === 2) {
         pcbCancelDraw();
+        return;
     }
+    pcbState.pointerDownScreen = null;
+    pcbState.pointerDownWorld = null;
+    pcbState.pointerDragMoved = false;
 }
 
 function pcbRefreshRatsnest() {
@@ -1519,6 +1852,27 @@ function pcbRefreshRatsnest() {
 function pcbHandleKeyDown(event) {
     if (event.key === 'Escape') {
         pcbCancelDraw();
+        return;
+    }
+    if (event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        pcbResetView();
+        return;
+    }
+    if (event.key.toLowerCase() === 'h') {
+        pcbSetTool(PCB_TOOL.PAN);
+        return;
+    }
+    if (event.key.toLowerCase() === 's') {
+        pcbSetTool(PCB_TOOL.SELECT);
+        return;
+    }
+    if (event.key.toLowerCase() === 'r') {
+        pcbSetTool(PCB_TOOL.ROUTE);
+        return;
+    }
+    if (event.key.toLowerCase() === 'v' && !event.ctrlKey && !event.metaKey && pcbState.mode !== PCB_MODE.ROUTE) {
+        pcbSetTool(PCB_TOOL.VIA);
         return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && event.shiftKey) {
@@ -1543,6 +1897,7 @@ function pcbHandleKeyDown(event) {
         pcbState.routeVias.push(via);
         pcbState.routePoints = appendRoutePoint(pcbState.routePoints, pcbState.routeCursor);
         pcbState.routeLayer = pcbState.routeLayer === 'F.Cu' ? 'B.Cu' : 'F.Cu';
+        dispatchPcbInteractionUpdated();
         pcbEditor.refresh();
     }
 }
@@ -1554,6 +1909,8 @@ window.pcbSetupCanvas = pcbSetupCanvas;
 window.pcbScreenToWorld = pcbScreenToWorld;
 window.pcbResetView = pcbResetView;
 window.pcbZoomBy = pcbZoomBy;
+window.pcbSetTool = pcbSetTool;
+window.pcbSetRouteStyle = pcbSetRouteStyle;
 window.pcbHandleWheel = pcbHandleWheel;
 window.pcbHandleMouseDown = pcbHandleMouseDown;
 window.pcbHandleMouseMove = pcbHandleMouseMove;
@@ -1564,6 +1921,7 @@ window.pcbRefreshRatsnest = pcbRefreshRatsnest;
 window.pcbFetchRatsnest = pcbRefreshRatsnest;
 window.pcbState = pcbState;
 window.PCB_MODE = PCB_MODE;
+window.PCB_TOOL = PCB_TOOL;
 window.__PCB_TEST__ = {
     snapToGrid,
     normalizePoint,
@@ -1578,4 +1936,5 @@ window.__PCB_TEST__ = {
     getComponentPadPosition,
     getComponentBounds,
     arcPoints,
+    PCB_TOOL,
 };
