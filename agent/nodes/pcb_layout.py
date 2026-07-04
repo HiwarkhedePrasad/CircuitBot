@@ -1,22 +1,22 @@
-"""PCB layout node — force-directed placement, KiCad pcbnew routing, GND pour, DRC.
+"""PCB layout node — placement + ratsnest only (no autorouting).
 
-Handles:
-  1. Force-directed PCB component placement (connectivity-aware).
+Pipeline:
+  1. Force-directed PCB component placement (graph-driven clustering).
   2. Build BoardModel from state + placement results.
-  3. Route PCB traces via KiCad's pcbnew (subprocess).
-  4. GND copper pour on F.Cu + B.Cu with 4-spoke thermal relief.
-  5. Shapely-based DRC (clearance, width, keepout).
-  6. Emit agent:pcb_ready + agent:done events.
+  3. Build model.nets from netlist as single source of truth.
+  4. Compute ratsnest (airwire guide lines).
+  5. Emit agent:pcb_ready + agent:done events.
 """
+
+from collections import defaultdict
 
 from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 from pcb_design.board_model import (
-    BoardModel, BoardComponent, PadDef, BoardTrace, BoardVia, DRCConfig,
+    BoardModel, BoardComponent, PadDef,
 )
 from pcb_design.placement import place_components
 from pcb_design.geometry import board_outline_polygon, HAS_SHAPELY
-from pcb_design.pour import pour_ground
 
 
 def _pad_from_dict(pd: dict) -> PadDef:
@@ -76,29 +76,58 @@ def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], st
     return pads, (parsed_fp.graphics if parsed_fp else []), hydrated.get("footprint", "")
 
 
+def _build_nets_from_netlist(netlist: list[dict], pin_matrix: dict) -> list[dict]:
+    """Build model.nets from netlist as the single source of truth.
+
+    Groups all netlist entries by net name and collects unique pin keys
+    for each net.  Falls back to grouping by signal name when a net
+    entry has no *net* field.
+    """
+    net_groups: dict[str, set[str]] = defaultdict(set)
+    for conn in netlist:
+        src = conn.get("source", "")
+        tgt = conn.get("target", "")
+        net = conn.get("net", "")
+        if not net:
+            # Derive net name from the source pin name in pin_matrix
+            if src in pin_matrix:
+                net = pin_matrix[src].get("name", "")
+            if not net and tgt in pin_matrix:
+                net = pin_matrix[tgt].get("name", "")
+            if not net:
+                net = f"_signal_{src}_{tgt}"
+        if src:
+            net_groups[net].add(src)
+        if tgt:
+            net_groups[net].add(tgt)
+    return [{"name": n, "pins": sorted(p)} for n, p in net_groups.items()]
+
+
 def pcb_layout_node(state, config):
-    _emit(config, "agent:thinking", {"message": "Routing PCB traces..."})
-    emit_assistant_message(config, "Laying out components on the PCB and routing traces...")
-    emit_tool_event(config, "PCB Layout", "running", "Force-directed placement...")
+    _emit(config, "agent:thinking", {"message": "Placing components on PCB..."})
+    emit_assistant_message(config, "Laying out components on the PCB...")
+    emit_tool_event(config, "PCB Layout", "running", "Graph-driven placement...")
 
     comps = state.get("selected_components", [])
     pin_matrix = state.get("pin_matrix", {})
     netlist = state.get("netlist", [])
     power_pins = state.get("power_pins", [])
     power_labels = state.get("power_labels", [])
-    component_placements = state.get("component_placements", [])
 
     if not comps:
         _emit(config, "agent:log", {"message": "No components for PCB layout."})
         return {}
 
-    # ── 1. Force-directed PCB component placement ──────────────────
+    # ── 1. Build nets from netlist (single source of truth) ────────
+    nets = _build_nets_from_netlist(netlist, pin_matrix)
+
+    # ── 2. Graph-driven placement ──────────────────────────────────
     pcb_placements = place_components(comps, netlist, pin_matrix=pin_matrix)
     pcb_pos = {p["ref_des"]: (p["x"], p["y"], p.get("rotation", 0)) for p in pcb_placements}
 
-    # ── 2. Build BoardModel ────────────────────────────────────────
+    # ── 3. Build BoardModel ────────────────────────────────────────
     model = BoardModel(
-        nets=state.get("nets", []),
+        nets=nets,
         power_pins=power_pins,
         power_labels=power_labels,
     )
@@ -139,120 +168,27 @@ def pcb_layout_node(state, config):
              for c in model.components]
         )
 
-    emit_tool_event(config, "PCB Layout", "running", f"Placed {len(model.components)} components (force-directed)")
+    emit_tool_event(config, "PCB Layout", "running",
+                    f"Placed {len(model.components)} components (graph-driven)")
 
-    drc_config = DRCConfig()
-
-    # ── 3. Route PCB traces via KiCad pcbnew ───────────────────────
-    from pcb_design.pcbnew_runner import build_board_via_subprocess
-
-    try:
-        board_dict = model.to_dict()
-        # Merge power_pins into the connection list so the PCB router
-        # sees all connectivity, not just signal nets
-        all_connections = list(netlist)
-        seen_net_names = {c.get("net", "") for c in all_connections}
-        for pp in power_pins:
-            net_name = pp.get("net", "")
-            if net_name and net_name not in seen_net_names:
-                seen_net_names.add(net_name)
-        pcb_result = build_board_via_subprocess(board_dict, all_connections)
-
-        if pcb_result.get("status") == "ok" and pcb_result.get("traces"):
-            # Populate model from pcbnew output
-            for t in pcb_result["traces"]:
-                model.traces.append(BoardTrace(
-                    net=t.get("net", ""),
-                    layer=t.get("layer", "F.Cu"),
-                    width=t.get("width", 0.254),
-                    path=[(p[0], p[1]) for p in t.get("path", [])],
-                ))
-
-            for v in pcb_result.get("vias", []):
-                model.vias.append(BoardVia(
-                    x=v.get("x", 0), y=v.get("y", 0),
-                    drill=v.get("drill", 0.3),
-                    diameter=v.get("diameter", 0.6),
-                    net=v.get("net", ""),
-                ))
-
-            model._pcbnew_content = pcb_result.get("kicad_pcb", "")
-
-            n_power = sum(1 for t in model.traces if t.net.upper() in
-                          {"VCC", "VDD", "VBAT", "VIN", "VBUS", "VSYS", "VOUT",
-                           "+5V", "+3.3V", "3.3V", "5V", "3V3"})
-            n_gnd = sum(1 for t in model.traces if t.net.upper() in {"GND", "GROUND"})
-            n_sig = len(model.traces) - n_power - n_gnd
-
-            _emit(config, "agent:log", {
-                "message": (f"  pcbnew: routed {len(model.traces)} traces "
-                            f"({n_power} power, {n_gnd} GND, {n_sig} signal) "
-                            f"with {len(model.vias)} vias")
-            })
-            emit_tool_event(config, "PCB Layout", "running",
-                            f"Routed {len(model.traces)} connections ({len(model.vias)} vias)")
-        else:
-            n_traces = len(pcb_result.get("traces", []))
-            _emit(config, "agent:log", {
-                "message": f"  pcbnew: routed {n_traces} traces (limited routing)"
-            })
-    except FileNotFoundError as e:
-        _emit(config, "agent:error", {
-            "message": f"PCB generation unavailable: {e}",
-        })
-        emit_tool_event(config, "PCB Layout", "failed",
-                        "KiCad not found — no PCB generated")
-        _emit(config, "agent:done", {
-            "message": "Schematic complete (PCB skipped — KiCad not available)",
-        })
-        return {}
-    except RuntimeError as e:
-        _emit(config, "agent:log", {
-            "message": f"  ⚠ pcbnew routing failed: {e}",
-        })
-        emit_tool_event(config, "PCB Layout", "failed",
-                        "pcbnew routing failed — continuing with placement only")
-
-    # ── 4. GND copper pour ─────────────────────────────────────────
-    zone_count = pour_ground(model,
-        clearance=drc_config.zone_clearance,
-        min_zone_area=drc_config.min_zone_area,
-        thermal_relief_gap=drc_config.thermal_relief_gap,
-        thermal_spoke_width=drc_config.thermal_spoke_width,
-    )
-    if zone_count:
-        _emit(config, "agent:log", {
-            "message": f"  Poured {zone_count} GND zones on F.Cu + B.Cu (4-spoke thermal relief)"
-        })
-
-    # ── 5. DRC ─────────────────────────────────────────────────────
-    # DRC is handled internally by KiCad via the pcbnew subprocess.
-    # The .kicad_pcb file produced by pcbnew passes KiCad's native DRC.
-    # For now, emit a simplified report based on trace counts.
-    avg_width = sum(t.width for t in model.traces) / max(len(model.traces), 1)
-    _emit(config, "agent:log", {
-        "message": (f"  DRC: {len(model.traces)} traces, "
-                    f"avg width {avg_width:.3f}mm, "
-                    f"KiCad-native DRC available in exported .kicad_pcb")
-    })
-    n_err = 0
-    n_warn = 0
-
-    # ── 6. Emit final events ───────────────────────────────────────
+    # ── 4. Compute ratsnest (airwire guide lines) ──────────────────
     board_dict = model.to_dict()
     try:
         from pcb_design.ratsnest import compute_ratsnest
         board_dict["ratsnest"] = compute_ratsnest(model)
     except Exception:
         board_dict["ratsnest"] = {}
+
+    # ── 5. Emit final events ───────────────────────────────────────
     _emit(config, "agent:pcb_ready", {"board_model": board_dict})
     _emit(config, "agent:done", {
-        "message": (f"Design complete: {len(model.components)} components, "
-                    f"{len(model.traces)} PCB traces, {len(model.vias)} vias, "
-                    f"{zone_count} GND zones, DRC: {n_err} err / {n_warn} warn")
+        "message": (f"Design complete: {len(model.components)} components. "
+                    f"Ratsnest guide lines ready — route traces manually in the PCB viewer.")
     })
     emit_tool_event(config, "PCB Layout", "completed",
-                    f"{len(model.components)} components, {len(model.traces)} traces, {zone_count} GND zones, DRC: {n_err} err / {n_warn} warn")
-    emit_assistant_message(config, f"PCB complete — {len(model.components)} components, {len(model.traces)} traces, DRC: {n_err} errors / {n_warn} warnings.")
+                    f"{len(model.components)} components placed — manual routing required")
+    emit_assistant_message(config,
+                           f"PCB complete — {len(model.components)} components placed. "
+                           f"Use the PCB viewer to route traces manually.")
 
     return {"board_model": board_dict, "_board_model": board_dict}

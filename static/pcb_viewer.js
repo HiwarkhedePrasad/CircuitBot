@@ -846,7 +846,7 @@ class PcbEditor {
         g.alpha = 0.88;
         for (const edges of Object.values(pcbState.ratsnest || {})) {
             for (const edge of edges) {
-                this._drawDashedLine(g, { x: edge.x1, y: edge.y1 }, { x: edge.x2, y: edge.y2 }, 1.25, 0.6, PCB_COLORS.airwire, 0.13);
+                this._drawDashedLine(g, { x: edge.x1, y: edge.y1 }, { x: edge.x2, y: edge.y2 }, 1.25, 0.6, PCB_COLORS.airwireDim, 0.18);
             }
         }
         this._airwireLayer.addChild(g);
