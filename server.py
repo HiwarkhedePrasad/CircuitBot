@@ -1,5 +1,6 @@
 import os
 import json
+import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, send_from_directory, Response
@@ -97,6 +98,11 @@ def index():
 @app.route('/static/<path:path>')
 def serve_static(path):
     return send_from_directory('static', path)
+
+
+@app.route('/kicanvas/<path:path>')
+def serve_kicanvas(path):
+    return send_from_directory('kicanvas', path)
 
 
 @app.route('/api/search')
@@ -205,6 +211,83 @@ def api_export_pcb():
         import traceback
         traceback.print_exc()
         return f"PCB export failed: {e}", 500
+
+
+@app.route('/api/pcb_render_source')
+def api_pcb_render_source():
+    """Return KiCad PCB text for the current board state.
+
+    Unlike /api/export_pcb, this works for imported boards and manual PCB edits
+    that only populate LAST_DESIGN['board_model'].
+    """
+    with design_lock:
+        if not LAST_DESIGN.get('board_model') and not LAST_DESIGN.get('selected_components'):
+            return "No PCB state available yet.", 404
+        design_copy = LAST_DESIGN.copy()
+    try:
+        from pcb_design.pcb_export import generate_kicad_pcb
+        board_model = design_copy.get("board_model") or {}
+        if board_model.get("_pcbnew_content"):
+            text = generate_kicad_pcb(design_copy)
+        elif board_model.get("_render_from_model"):
+            text = generate_kicad_pcb(design_copy)
+        elif design_copy.get("selected_components"):
+            rich_design = dict(design_copy)
+            rich_design.pop("board_model", None)
+            text = generate_kicad_pcb(rich_design)
+        else:
+            text = generate_kicad_pcb(design_copy)
+        return Response(text, mimetype='text/plain; charset=utf-8')
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"PCB render source failed: {e}", 500
+
+
+@app.route('/api/pcb_enriched_board_model')
+def api_pcb_enriched_board_model():
+    """Return a BoardModel re-imported from generated KiCad PCB text.
+
+    This preserves the current app editing model while enriching footprint and
+    pad geometry from the KiCad PCB representation.
+    """
+    with design_lock:
+        if not LAST_DESIGN.get('board_model') and not LAST_DESIGN.get('selected_components'):
+            return jsonify({"error": "No PCB state available yet."}), 404
+        design_copy = LAST_DESIGN.copy()
+    try:
+        from pcb_design.pcb_export import generate_kicad_pcb
+        from pcb_design.pcb_import import import_board
+        from pcb_design.ratsnest import compute_ratsnest
+
+        board_model = design_copy.get("board_model") or {}
+        if board_model.get("_pcbnew_content") and not board_model.get("_render_from_model"):
+            pcb_text = board_model["_pcbnew_content"]
+        elif design_copy.get("selected_components") and not board_model.get("_render_from_model"):
+            rich_design = dict(design_copy)
+            rich_design.pop("board_model", None)
+            pcb_text = generate_kicad_pcb(rich_design)
+        else:
+            pcb_text = generate_kicad_pcb(design_copy)
+
+        with tempfile.NamedTemporaryFile("w", suffix=".kicad_pcb", delete=False, encoding="utf-8") as handle:
+            handle.write(pcb_text)
+            temp_path = handle.name
+        try:
+            model = import_board(temp_path)
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+        payload = model.to_dict()
+        payload["ratsnest"] = compute_ratsnest(model)
+        return jsonify({"board_model": payload})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/ratsnest', methods=['POST'])
@@ -548,7 +631,10 @@ def api_apply_edits():
         new_board = None
         if model is not None:
             from pcb_design.ratsnest import compute_ratsnest
+            if applied > 0:
+                model._pcbnew_content = None
             new_board = model.to_dict()
+            new_board["_render_from_model"] = True
             new_board["ratsnest"] = compute_ratsnest(model)
             LAST_DESIGN["board_model"] = new_board
             _WIREBENDER_LAYOUT["board_model"] = new_board
@@ -579,6 +665,10 @@ def api_save_board_model():
     if not board_model:
         return jsonify({"ok": False, "error": "No board_model provided"}), 400
 
+    if isinstance(board_model, dict):
+        board_model.pop("_pcbnew_content", None)
+        board_model["_render_from_model"] = True
+
     with design_lock:
         LAST_DESIGN["board_model"] = board_model
         _WIREBENDER_LAYOUT["board_model"] = board_model
@@ -592,19 +682,24 @@ def api_import_pcb():
     if 'pcb_file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     file = request.files['pcb_file']
-    tmp = Path(f"/tmp/_import_{os.urandom(4).hex()}.kicad_pcb")
+    tmp_path = None
     try:
-        file.save(str(tmp))
+        with tempfile.NamedTemporaryFile(suffix=".kicad_pcb", delete=False) as handle:
+            tmp_path = handle.name
+        file.save(tmp_path)
         from pcb_design.pcb_import import import_board
-        model = import_board(str(tmp))
+        model = import_board(tmp_path)
         return jsonify({'board_model': model.to_dict()})
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     finally:
-        if tmp.exists():
-            tmp.unlink()
+        if tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 # ── WebSocket Events ─────────────────────────────────────────────────────────

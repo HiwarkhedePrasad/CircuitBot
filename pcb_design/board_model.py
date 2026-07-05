@@ -132,6 +132,7 @@ class BoardZone:
 class BoardModel:
     version: str = "20260206"
     generator: str = "circuitbot"
+    _pcbnew_content: str | None = None
 
     components: list[BoardComponent] = field(default_factory=list)
     traces: list[BoardTrace] = field(default_factory=list)
@@ -198,7 +199,7 @@ class BoardModel:
             pad = next((p for p in comp.pads if str(p.number) == pnum), None)
             if pad is None:
                 continue
-            angle = math.radians(comp.rotation + (pad.rotation or 0))
+            angle = math.radians(comp.rotation)
             rx = pad.x * math.cos(angle) - pad.y * math.sin(angle)
             ry = pad.x * math.sin(angle) + pad.y * math.cos(angle)
             results.append((comp.x + rx, comp.y + ry))
@@ -244,6 +245,7 @@ class BoardModel:
         return {
             "version": self.version,
             "generator": self.generator,
+            "_pcbnew_content": self._pcbnew_content,
             "components": [_comp_dict(c) for c in self.components],
             "traces": [
                 {
@@ -274,6 +276,7 @@ class BoardModel:
         model = BoardModel(
             version=data.get("version", "20260206"),
             generator=data.get("generator", "circuitbot"),
+            _pcbnew_content=data.get("_pcbnew_content"),
             nets=data.get("nets", []),
             power_pins=data.get("power_pins", []),
             power_labels=data.get("power_labels", []),

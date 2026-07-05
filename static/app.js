@@ -120,6 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pcbState.boardModel) {
                 pcbSetupCanvas();
                 pcbDraw();
+                refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
             } else {
                 showPcbUploadOverlay();
             }
@@ -128,10 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showPcbUploadOverlay() {
         pcbUploadArea.classList.remove('hidden');
-        if (!_useLegacyPcbViewer) {
-            const tsc = document.getElementById('tscircuit-container');
-            if (tsc) tsc.style.display = 'none';
-        }
+        const tsc = document.getElementById('tscircuit-container');
+        if (tsc) tsc.style.display = 'none';
     }
 
     if (pcbPanToolBtn) {
@@ -154,8 +153,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     window.addEventListener('pcb:interaction-updated', (event) => {
         updatePcbToolbar(event.detail || {});
+        updatePcbInteractionSurface((event.detail || {}).tool || 'pan');
     });
     updatePcbToolbar({ toolsEnabled: false });
+    updatePcbInteractionSurface('pan');
 
     // ── Renderer (PixiJS) ────────────────────────────────────────────────────
 
@@ -321,7 +322,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return document.getElementById('viewSymbolBtn').classList.contains('active');
     }
 
-    let _useLegacyPcbViewer = true;
+    if (typeof pcbSetRenderMode === 'function') {
+        pcbSetRenderMode('full');
+    }
+
+    function updatePcbInteractionSurface(_tool) {
+        const pcbCanvas = document.getElementById('pcbCanvas');
+        if (!pcbCanvas) return;
+        pcbCanvas.style.pointerEvents = 'auto';
+    }
+
+    async function refreshPcbGeometryFromBackend() {
+        if (!window.pcbState || !pcbState.boardModel) return;
+        const res = await fetch('/api/pcb_enriched_board_model');
+        if (!res.ok) throw new Error(`pcb_enriched_board_model failed (${res.status})`);
+        const data = await res.json();
+        if (!data || !data.board_model) return;
+        pcbLoadBoard(data.board_model, { fetchRatsnest: false });
+    }
 
     function showViewport(active) {
         const container = document.getElementById('canvasContainer');
@@ -441,6 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('agent:pcb_ready', (data) => {
             if (data.board_model) {
                 pcbLoadBoard(data.board_model);
+                refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
                 updatePcbToolbar({ toolsEnabled: true });
                 addLogEntry('PCB editor loaded with white airwires for manual routing.', 'log');
                 addLogEntry('PCB model loaded for board view.', 'success');
@@ -742,6 +761,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof pcbDraw === 'function') {
                 pcbDraw();
             }
+            refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
         }
     });
 
@@ -790,6 +810,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 pcbLoadBoard(data.board_model, { fetchRatsnest: false });
+                refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
                 addLogEntry(`Imported ${file.name}: ${data.board_model.components.length} components, ${data.board_model.traces.length} traces.`, 'success');
                 setActiveTab('viewPCBBtn');
                 viewPCBBtn.click();
@@ -968,17 +989,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Zoom & UI ─────────────────────────────────────────────────────────────
 
     document.getElementById('zoomInBtn').addEventListener('click', () => {
-        if (isPCBMode() && _useLegacyPcbViewer) { pcbZoomBy(1.18); }
+        if (isPCBMode()) {
+            pcbZoomBy(1.18);
+        }
         else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
         else if (renderer) renderer.setZoom(renderer.zoom * 1.3);
     });
     document.getElementById('zoomOutBtn').addEventListener('click', () => {
-        if (isPCBMode() && _useLegacyPcbViewer) { pcbZoomBy(1 / 1.18); }
+        if (isPCBMode()) {
+            pcbZoomBy(1 / 1.18);
+        }
         else if (isSymbolPreviewMode() && currentPreviewOps) { zoomLevel = Math.max(zoomLevel / 1.3, 0.05); drawSymbol(); }
         else if (renderer) renderer.setZoom(renderer.zoom / 1.3);
     });
     document.getElementById('zoomResetBtn').addEventListener('click', () => {
-        if (isPCBMode() && _useLegacyPcbViewer) { pcbResetView(); }
+        if (isPCBMode()) {
+            pcbResetView();
+        }
         else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
         else if (currentSchematic && currentSchematic.components.length > 0) { enterSchematicView(); }
     });
@@ -988,10 +1015,8 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             if (isPCBMode()) {
-                if (_useLegacyPcbViewer) {
-                    pcbSetupCanvas();
-                    if (pcbState.boardModel) pcbDraw();
-                }
+                pcbSetupCanvas();
+                if (pcbState.boardModel) pcbDraw();
             } else if (isSymbolPreviewMode() && currentPreviewOps) {
                 setupCanvasSize();
                 renderOps(currentPreviewOps);

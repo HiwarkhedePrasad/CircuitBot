@@ -50,5 +50,36 @@ def test_import_board_preserves_footprint_graphics_and_outline_segments():
     assert any(item["kind"] == "fp_line" for item in component.graphics)
     assert any(item["kind"] == "fp_rect" for item in component.graphics)
     assert any(item["kind"] == "property" and item["text"] == "R1" for item in component.graphics)
+    assert model._pcbnew_content is not None
+    assert '(footprint "Resistor_SMD:R_0805"' in model._pcbnew_content
     assert len(model.outline_segments) == 2
     assert model.outline_segments[0]["kind"] == "gr_line"
+
+
+def test_get_pads_for_net_does_not_move_pad_center_by_pad_rotation():
+    board_text = textwrap.dedent(
+        """
+        (kicad_pcb
+          (version 20240101)
+          (net 0 "")
+          (net 1 "SIG")
+          (footprint "Test:RotPad"
+            (layer "F.Cu")
+            (at 10 20 90)
+            (property "Reference" "U1" (at 0 -1 0) (layer "F.SilkS"))
+            (pad "1" smd rect (at 1 0 90) (size 1.2 0.8) (layers "F.Cu" "F.Paste" "F.Mask") (net 1 "SIG"))
+          )
+        )
+        """
+    ).strip()
+
+    with tempfile.NamedTemporaryFile("w", suffix=".kicad_pcb", delete=False, encoding="utf-8") as handle:
+        handle.write(board_text)
+        temp_path = handle.name
+
+    try:
+        model = import_board(temp_path)
+    finally:
+        os.unlink(temp_path)
+
+    assert model.get_pads_for_net("SIG") == [(10.0, 21.0)]

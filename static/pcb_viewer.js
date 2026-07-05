@@ -50,6 +50,7 @@ const PCB_POINTER_DRAG_THRESHOLD_PX = 4;
 
 let pcbState = {
     boardModel: null,
+    renderMode: 'full',
     mode: PCB_MODE.IDLE,
     activeTool: PCB_TOOL.PAN,
     zoom: 1,
@@ -84,6 +85,14 @@ let pcbState = {
     undoStack: [],
     redoStack: [],
 };
+
+function dispatchPcbViewChanged() {
+    try {
+        window.dispatchEvent(new CustomEvent('pcb:view-changed', {
+            detail: { bounds: pcbGetViewBounds() },
+        }));
+    } catch (_) {}
+}
 
 function deepClone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -218,7 +227,7 @@ function dedupePath(path) {
 }
 
 function getComponentPadPosition(component, pad) {
-    const rotated = rotatePoint(pad.x || 0, pad.y || 0, (component.rotation || 0) + (pad.rotation || 0));
+    const rotated = rotatePoint(pad.x || 0, pad.y || 0, component.rotation || 0);
     return {
         x: component.x + rotated.x,
         y: component.y + rotated.y,
@@ -439,6 +448,8 @@ class PcbEditor {
         this._refreshFrame = null;
         this._overlayFrame = null;
         this._settleRefreshTimer = null;
+        this._layerKeys = ['grid', 'outline', 'airwire', 'trace', 'footprint', 'text', 'overlay'];
+        this._dirtyLayers = new Set(this._layerKeys);
     }
 
     ensure() {
@@ -453,8 +464,9 @@ class PcbEditor {
             antialias: true,
             autoDensity: true,
             backgroundColor: PCB_COLORS.background,
+            backgroundAlpha: pcbState.renderMode === 'overlay' ? 0 : 1,
         });
-        this._canvas.style.background = '#0b1116';
+        this._canvas.style.background = pcbState.renderMode === 'overlay' ? 'transparent' : '#0b1116';
         this._world = new PIXI.Container();
         this._gridLayer = new PIXI.Container();
         this._outlineLayer = new PIXI.Container();
@@ -474,6 +486,7 @@ class PcbEditor {
         );
         this._app.stage.addChild(this._world);
         window.addEventListener('resize', this._resizeHandler);
+        this.markAllDirty();
         this._resize();
     }
 
@@ -515,6 +528,46 @@ class PcbEditor {
         }
     }
 
+    _layerForKey(key) {
+        return {
+            grid: this._gridLayer,
+            outline: this._outlineLayer,
+            airwire: this._airwireLayer,
+            trace: this._traceLayer,
+            footprint: this._footprintLayer,
+            text: this._textLayer,
+            overlay: this._overlayLayer,
+        }[key] || null;
+    }
+
+    markDirty(...keys) {
+        for (const key of keys) {
+            if (this._layerKeys.includes(key)) this._dirtyLayers.add(key);
+        }
+    }
+
+    markAllDirty() {
+        for (const key of this._layerKeys) this._dirtyLayers.add(key);
+    }
+
+    _redrawDirtyLayers() {
+        const drawPlan = [
+            ['grid', () => this._drawGrid()],
+            ['outline', () => this._drawBoardOutline()],
+            ['airwire', () => this._drawAirwires()],
+            ['trace', () => this._drawTraces()],
+            ['footprint', () => this._drawFootprints()],
+            ['text', () => this._drawTextLayer()],
+            ['overlay', () => this._drawOverlay()],
+        ];
+        for (const [key, draw] of drawPlan) {
+            if (!this._dirtyLayers.has(key)) continue;
+            this._clearLayer(this._layerForKey(key));
+            draw();
+            this._dirtyLayers.delete(key);
+        }
+    }
+
     load(boardModel) {
         this.ensure();
         if (!this._app) return;
@@ -537,6 +590,7 @@ class PcbEditor {
         pcbState.pointerDownWorld = null;
         pcbState.pointerDragMoved = false;
         this._computeView();
+        this.markAllDirty();
         this.refresh();
         dispatchPcbInteractionUpdated();
     }
@@ -550,6 +604,7 @@ class PcbEditor {
         pcbState.cx = width / 2;
         pcbState.cy = height / 2;
         this._applyCamera();
+        this.markDirty('grid', 'overlay');
         this.refresh();
     }
 
@@ -609,6 +664,7 @@ class PcbEditor {
         pcbState.cx = screenWidth / 2;
         pcbState.cy = screenHeight / 2;
         this._applyCamera();
+        this.markDirty('grid', 'text', 'overlay');
     }
 
     _applyCamera() {
@@ -619,6 +675,7 @@ class PcbEditor {
             pcbState.cx + pcbState.panX - pcbState.midX * scale,
             pcbState.cy + pcbState.panY + pcbState.midY * scale
         );
+        dispatchPcbViewChanged();
     }
 
     screenToWorld(screenX, screenY) {
@@ -647,24 +704,22 @@ class PcbEditor {
             this._settleRefreshTimer = null;
         }
         try {
-            for (const layer of [
-                this._gridLayer,
-                this._outlineLayer,
-                this._airwireLayer,
-                this._traceLayer,
-                this._footprintLayer,
-                this._textLayer,
-                this._overlayLayer,
-            ]) {
-                this._clearLayer(layer);
+            if (pcbState.renderMode === 'overlay') {
+                for (const layer of [
+                    this._gridLayer,
+                    this._outlineLayer,
+                    this._airwireLayer,
+                    this._traceLayer,
+                    this._footprintLayer,
+                    this._textLayer,
+                    this._overlayLayer,
+                ]) {
+                    this._clearLayer(layer);
+                }
+                this._drawOverlay();
+                return;
             }
-            this._drawGrid();
-            this._drawBoardOutline();
-            this._drawBoardTitle();
-            this._drawAirwires();
-            this._drawTraces();
-            this._drawFootprints();
-            this._drawOverlay();
+            this._redrawDirtyLayers();
         } catch (error) {
             console.error('PCB editor refresh failed', error);
             dispatchBoardSync(false, { error: error.message || String(error), fallback_saved: false });
@@ -673,6 +728,7 @@ class PcbEditor {
 
     requestRefresh() {
         if (!this._app || this._refreshFrame) return;
+        this.markDirty('outline', 'trace', 'footprint', 'text', 'overlay');
         this._refreshFrame = requestAnimationFrame(() => {
             this._refreshFrame = null;
             this.refresh();
@@ -682,8 +738,8 @@ class PcbEditor {
     refreshOverlay() {
         if (!this._app) return;
         try {
-            this._clearLayer(this._overlayLayer);
-            this._drawOverlay();
+            this.markDirty('overlay');
+            this._redrawDirtyLayers();
         } catch (error) {
             console.error('PCB overlay refresh failed', error);
         }
@@ -702,6 +758,7 @@ class PcbEditor {
         if (this._settleRefreshTimer) clearTimeout(this._settleRefreshTimer);
         this._settleRefreshTimer = setTimeout(() => {
             this._settleRefreshTimer = null;
+            this.markDirty('grid', 'text', 'overlay');
             this.requestRefresh();
         }, delay);
     }
@@ -904,18 +961,28 @@ class PcbEditor {
         for (const component of model.components || []) {
             this._drawComponentGraphics(component);
             this._drawComponentPads(component);
+        }
+    }
+
+    _drawTextLayer() {
+        this._drawBoardTitle();
+        const model = pcbState.boardModel || {};
+        for (const component of model.components || []) {
+            this._drawComponentPadLabels(component);
             this._drawComponentTexts(component);
         }
     }
 
     _drawComponentGraphics(component) {
-        const grouped = {
-            'F.SilkS': [],
-            'F.Fab': [],
-            'F.CrtYd': [],
-        };
+        const geometry = { 'F.SilkS': [], 'F.Fab': [], 'F.CrtYd': [] };
+        const textItems = { 'F.SilkS': [], 'F.Fab': [] };
         for (const item of component.graphics || []) {
-            if (grouped[item.layer]) grouped[item.layer].push(item);
+            if (item.kind === 'property') {
+                if (item.hidden) continue;
+                if (textItems[item.layer]) textItems[item.layer].push(item);
+            } else {
+                if (geometry[item.layer]) geometry[item.layer].push(item);
+            }
         }
         const drawGraphicItem = (item, color, alpha) => {
             const g = new PIXI.Graphics();
@@ -929,10 +996,28 @@ class PcbEditor {
             }
             this._footprintLayer.addChild(g);
         };
-        for (const item of grouped['F.CrtYd']) drawGraphicItem(item, PCB_COLORS.courtyard, 0.8);
-        for (const item of grouped['F.Fab']) drawGraphicItem(item, PCB_COLORS.fab, 0.9);
-        for (const item of grouped['F.SilkS']) drawGraphicItem(item, PCB_COLORS.silkscreen, 1);
-        if ((component.graphics || []).length === 0) {
+        const drawTextItem = (item, color) => {
+            const pos = this._transformGraphicPoints(component, [{ x: item.x, y: item.y }])[0];
+            const fontSize = Math.max(item.size || 1.0, 0.5) * 14;
+            const text = this._makeText(item.text || '', {
+                x: pos.x,
+                y: pos.y,
+                fontSize: fontSize,
+                fontWeight: '500',
+                fill: color,
+                scale: 0.035,
+                rotation: (component.rotation || 0) + (item.rotation || 0),
+            });
+            this._footprintLayer.addChild(text);
+        };
+        for (const item of geometry['F.CrtYd']) drawGraphicItem(item, PCB_COLORS.courtyard, 0.8);
+        for (const item of geometry['F.Fab']) drawGraphicItem(item, PCB_COLORS.fab, 0.9);
+        for (const item of geometry['F.SilkS']) drawGraphicItem(item, PCB_COLORS.silkscreen, 1);
+        for (const item of textItems['F.Fab']) drawTextItem(item, PCB_COLORS.fab);
+        for (const item of textItems['F.SilkS']) drawTextItem(item, PCB_COLORS.silkscreen);
+        const hasGeometry = geometry['F.SilkS'].length > 0 || geometry['F.Fab'].length > 0 || geometry['F.CrtYd'].length > 0;
+        const hasText = textItems['F.SilkS'].length > 0 || textItems['F.Fab'].length > 0;
+        if (!hasGeometry && !hasText) {
             const bounds = getComponentBounds(component);
             const fallback = new PIXI.Graphics();
             fallback.lineStyle(0.14, PCB_COLORS.silkscreen, 0.8);
@@ -1016,48 +1101,62 @@ class PcbEditor {
             } else {
                 this._footprintLayer.addChild(padGraphic);
             }
-            if (pad.number != null && Math.max(padWidth, padHeight) >= 0.75 && pcbState.zoom >= 1.2) {
-                const label = this._makeText(pad.number, {
-                    x: center.x,
-                    y: center.y,
-                    fontSize: 9,
-                    fontWeight: '700',
-                    fill: isThrough ? PCB_COLORS.hole : PCB_COLORS.silkscreen,
-                    scale: 0.028,
-                    rotation: component.rotation || 0,
-                });
-                this._textLayer.addChild(label);
-            }
+        }
+    }
+
+    _drawComponentPadLabels(component) {
+        for (const pad of component.pads || []) {
+            const padWidth = pad.width || 1.0;
+            const padHeight = pad.height || 1.0;
+            if (pad.number == null || Math.max(padWidth, padHeight) < 0.75 || pcbState.zoom < 2.5) continue;
+            const center = getComponentPadPosition(component, pad);
+            const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht' || pad.drill;
+            const label = this._makeText(pad.number, {
+                x: center.x,
+                y: center.y,
+                fontSize: 9,
+                fontWeight: '700',
+                fill: isThrough ? PCB_COLORS.hole : PCB_COLORS.silkscreen,
+                scale: 0.028,
+                rotation: component.rotation || 0,
+            });
+            this._textLayer.addChild(label);
         }
     }
 
     _drawComponentTexts(component) {
+        const graphics = component.graphics || [];
+        const hasRefText = graphics.some(g => g.kind === 'property' && g.name === 'Reference' && !g.hidden);
+        const hasValueText = graphics.some(g => g.kind === 'property' && g.name === 'Value' && !g.hidden);
         const bounds = getComponentBounds(component);
         const height = Math.max(bounds.maxY - bounds.minY, 2.5);
-        const referenceText = component.ref || '';
-        const valueText = component.value || compactFootprintName(component.footprint);
-        const refOffset = rotatePoint(0, -Math.max(height / 2, 2.4), component.rotation || 0);
-        const valueOffset = rotatePoint(0, Math.max(height / 2, 2.4), component.rotation || 0);
-        const reference = this._makeText(referenceText, {
-            x: component.x + refOffset.x,
-            y: component.y + refOffset.y,
-            fontSize: 15,
-            fontWeight: '800',
-            fill: PCB_COLORS.silkscreen,
-            scale: 0.045,
-            rotation: component.rotation || 0,
-        });
-        this._textLayer.addChild(reference);
-        if (pcbState.zoom >= 0.9 && valueText && valueText !== referenceText) {
-            const value = this._makeText(valueText, {
-                x: component.x + valueOffset.x,
-                y: component.y + valueOffset.y,
-                fontSize: 10,
-                fill: PCB_COLORS.textDim,
-                scale: 0.037,
+        if (!hasRefText) {
+            const refOffset = rotatePoint(0, -Math.max(height / 2, 2.4), component.rotation || 0);
+            const reference = this._makeText(component.ref || '', {
+                x: component.x + refOffset.x,
+                y: component.y + refOffset.y,
+                fontSize: 15,
+                fontWeight: '800',
+                fill: PCB_COLORS.silkscreen,
+                scale: 0.045,
                 rotation: component.rotation || 0,
             });
-            this._textLayer.addChild(value);
+            this._textLayer.addChild(reference);
+        }
+        if (!hasValueText && pcbState.zoom >= 0.9) {
+            const valueText = component.value || compactFootprintName(component.footprint);
+            if (valueText && valueText !== component.ref) {
+                const valueOffset = rotatePoint(0, Math.max(height / 2, 2.4), component.rotation || 0);
+                const value = this._makeText(valueText, {
+                    x: component.x + valueOffset.x,
+                    y: component.y + valueOffset.y,
+                    fontSize: 10,
+                    fill: PCB_COLORS.textDim,
+                    scale: 0.037,
+                    rotation: component.rotation || 0,
+                });
+                this._textLayer.addChild(value);
+            }
         }
     }
 
@@ -1299,6 +1398,7 @@ class PcbEditor {
 
     async saveBoardModel() {
         pcbState.boardModel = normalizeBoardModel(pcbState.boardModel);
+        this.markDirty('outline', 'trace', 'footprint', 'text', 'overlay');
         const response = await fetch('/api/save_board_model', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1323,6 +1423,7 @@ class PcbEditor {
         }
         pcbState.ratsnest = await response.json();
         dispatchBoardModelUpdated();
+        this.markDirty('airwire', 'overlay');
         this.refresh();
     }
 
@@ -1344,6 +1445,7 @@ class PcbEditor {
         pcbState.redoStack.push(action);
         pcbState.boardModel = deepClone(action.before);
         await this.saveBoardModel();
+        this.markAllDirty();
         this.refresh();
     }
 
@@ -1353,6 +1455,7 @@ class PcbEditor {
         pcbState.undoStack.push(action);
         pcbState.boardModel = deepClone(action.after);
         await this.saveBoardModel();
+        this.markAllDirty();
         this.refresh();
     }
 }
@@ -1479,6 +1582,43 @@ function pcbScreenToWorld(sx, sy) {
 function pcbResetView() {
     if (!pcbState.boardModel) return;
     pcbEditor._computeView();
+    pcbEditor.refresh();
+}
+
+function pcbSetRenderMode(mode) {
+    pcbState.renderMode = mode === 'overlay' ? 'overlay' : 'full';
+}
+
+function pcbGetViewBounds() {
+    const canvas = pcbEditor && pcbEditor._canvas;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const topLeft = pcbEditor.screenToWorld(rect.left, rect.top);
+    const bottomRight = pcbEditor.screenToWorld(rect.right, rect.bottom);
+    return {
+        minX: Math.min(topLeft.x, bottomRight.x),
+        minY: Math.min(topLeft.y, bottomRight.y),
+        maxX: Math.max(topLeft.x, bottomRight.x),
+        maxY: Math.max(topLeft.y, bottomRight.y),
+    };
+}
+
+function pcbSetViewBounds(bounds) {
+    if (!bounds || !pcbEditor || !pcbEditor._app) return;
+    const width = Math.max(bounds.maxX - bounds.minX, 1);
+    const height = Math.max(bounds.maxY - bounds.minY, 1);
+    pcbState.midX = (bounds.minX + bounds.maxX) / 2;
+    pcbState.midY = (bounds.minY + bounds.maxY) / 2;
+    pcbState.baseScale = Math.min(
+        pcbEditor._app.screen.width / width,
+        pcbEditor._app.screen.height / height
+    );
+    pcbState.zoom = 1;
+    pcbState.panX = 0;
+    pcbState.panY = 0;
+    pcbState.cx = pcbEditor._app.screen.width / 2;
+    pcbState.cy = pcbEditor._app.screen.height / 2;
+    pcbEditor._applyCamera();
     pcbEditor.refresh();
 }
 
@@ -1908,6 +2048,9 @@ window.pcbDrawCurrent = pcbDrawCurrent;
 window.pcbSetupCanvas = pcbSetupCanvas;
 window.pcbScreenToWorld = pcbScreenToWorld;
 window.pcbResetView = pcbResetView;
+window.pcbSetRenderMode = pcbSetRenderMode;
+window.pcbGetViewBounds = pcbGetViewBounds;
+window.pcbSetViewBounds = pcbSetViewBounds;
 window.pcbZoomBy = pcbZoomBy;
 window.pcbSetTool = pcbSetTool;
 window.pcbSetRouteStyle = pcbSetRouteStyle;
@@ -1936,5 +2079,7 @@ window.__PCB_TEST__ = {
     getComponentPadPosition,
     getComponentBounds,
     arcPoints,
+    pcbGetViewBounds,
+    pcbSetViewBounds,
     PCB_TOOL,
 };

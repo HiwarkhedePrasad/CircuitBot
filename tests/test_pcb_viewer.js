@@ -50,6 +50,14 @@ const center = JSON.parse(JSON.stringify(
 ));
 assert.deepStrictEqual(center, { x: 10, y: 21 });
 
+const centerWithPadRotation = JSON.parse(JSON.stringify(
+    helpers.getComponentPadPosition(
+        { x: 10, y: 20, rotation: 90 },
+        { x: 1, y: 0, rotation: 90 }
+    )
+));
+assert.deepStrictEqual(centerWithPadRotation, { x: 10, y: 21 });
+
 const bounds = JSON.parse(JSON.stringify(
     helpers.getComponentBounds({
         ref: 'R1',

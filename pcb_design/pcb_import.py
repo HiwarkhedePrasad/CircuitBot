@@ -177,6 +177,8 @@ def _parse_property_text(node: list) -> Optional[dict]:
         "x": 0.0,
         "y": 0.0,
         "rotation": 0.0,
+        "size": 1.0,
+        "hidden": False,
     }
     for child in node[3:]:
         if not isinstance(child, list) or not child:
@@ -188,6 +190,14 @@ def _parse_property_text(node: list) -> Optional[dict]:
                 item["rotation"] = float(child[3])
         elif child[0] == "layer":
             item["layer"] = _normalize_layer_name(_get_str(child, 1, "F.SilkS"), "F.SilkS")
+        elif child[0] == "effects":
+            font_node = _find_one(child, "font")
+            if font_node:
+                size_node = _find_one(font_node, "size")
+                if size_node:
+                    item["size"] = _get_float(size_node, 1, 1.0)
+        elif child[0] == "hide" or (isinstance(child, list) and child and child[0] == "hide"):
+            item["hidden"] = True
     return item
 
 
@@ -419,6 +429,7 @@ def import_board(path: str) -> BoardModel:
         raise ValueError(f"Not a valid KiCad PCB file: {path}")
 
     model = BoardModel()
+    model._pcbnew_content = raw
 
     version_node = _find_one(ast, "version")
     if version_node:
