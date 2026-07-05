@@ -1,18 +1,43 @@
 name: test
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: pip install -r requirements.txt
-      - run: python tests/test_fixes.py
-      - run: python tests/test_nets.py
-      - run: python tests/test_pin_extraction.py
-      - run: python tests/test_batched_netlist.py
-      - run: python tests/test_routing_export.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Run targeted Python regression tests
+        run: >
+          pytest
+          tests/test_apply_edits.py
+          tests/test_circuit_json_converter.py
+          tests/test_import_pcb_api.py
+          tests/test_pcb_import_graphics.py
+          tests/test_pcb_import_performance_shape.py
+          tests/test_pcb_save_export.py
+          tests/test_ratsnest.py
+          -q
+
+      - name: Run PCB viewer JS regression tests
+        run: node tests/test_pcb_viewer.js
+
+      - name: Run schematic renderer JS regression tests
+        run: node tests/test_schematic_renderer.js

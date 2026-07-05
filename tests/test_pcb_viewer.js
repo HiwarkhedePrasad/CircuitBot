@@ -20,7 +20,9 @@ const context = {
 
 vm.createContext(context);
 vm.runInContext(constantsSource, context);
-vm.runInContext(stateSource, context);
+vm.runInContext(`${stateSource}
+globalThis.pcbState = pcbState;
+`, context);
 vm.runInContext(`${utilsSource}
 globalThis.__PCB_TEST__ = {
     snapToGrid,
@@ -33,6 +35,12 @@ globalThis.__PCB_TEST__ = {
     compactFootprintName,
     modelBounds,
     dedupePath,
+    ensurePcbLayerVisibility,
+    isPcbLayerVisible,
+    setPcbLayerVisible,
+    sortedBoardLayerNames,
+    getPcbLayerLabel,
+    getPcbLayerColor,
 };
 `, context);
 
@@ -122,5 +130,27 @@ const deduped = JSON.parse(JSON.stringify(
     helpers.dedupePath([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 1.27, y: 0 }, { x: 1.27, y: 0 }])
 ));
 assert.deepStrictEqual(deduped, [{ x: 0, y: 0 }, { x: 1.27, y: 0 }]);
+
+context.pcbState.boardModel = normalized;
+helpers.ensurePcbLayerVisibility(normalized);
+assert.strictEqual(helpers.isPcbLayerVisible('F.Cu'), true);
+assert.strictEqual(helpers.isPcbLayerVisible('Edge.Cuts'), true);
+assert.strictEqual(helpers.isPcbLayerVisible('B.SilkS'), false);
+helpers.setPcbLayerVisible('B.SilkS', true);
+assert.strictEqual(helpers.isPcbLayerVisible('B.SilkS'), true);
+const sortedLayers = JSON.parse(JSON.stringify(helpers.sortedBoardLayerNames({
+    traces: [{ layer: 'B.Cu' }, { layer: 'F.Cu' }],
+    components: [{
+        layer: 'F.Cu',
+        pads: [{ layers: ['F.Cu', 'F.Mask'] }],
+        graphics: [{ layer: 'F.SilkS' }],
+    }],
+    vias: [{ layers: ['F.Cu', 'B.Cu'] }],
+    outline_segments: [{ layer: 'Edge.Cuts' }],
+})));
+assert.ok(sortedLayers.includes('F.Cu'));
+assert.ok(sortedLayers.includes('B.Cu'));
+assert.strictEqual(helpers.getPcbLayerLabel('F.Cu'), 'TOP');
+assert.strictEqual(helpers.getPcbLayerColor('Edge.Cuts'), '#19d7b0');
 
 console.log('pcb viewer helper test passed');
