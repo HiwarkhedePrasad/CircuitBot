@@ -29,6 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const pcbViaToolBtn = document.getElementById('pcbViaToolBtn');
     const pcbLayerSelect = document.getElementById('pcbLayerSelect');
     const pcbWidthSelect = document.getElementById('pcbWidthSelect');
+    const pcbLayersPanel = document.getElementById('pcbLayersPanel');
+    const pcbLayersList = document.getElementById('pcbLayersList');
 
     let selectedComponent = null;
     let currentPreviewOps = null;
@@ -50,6 +52,63 @@ document.addEventListener('DOMContentLoaded', () => {
     function setPcbToolbarVisibility(visible) {
         if (!pcbToolbar) return;
         pcbToolbar.classList.toggle('hidden', !visible);
+        if (pcbLayersPanel) {
+            pcbLayersPanel.classList.toggle('hidden', !visible);
+        }
+    }
+
+    function renderPcbLayersPanel() {
+        if (!pcbLayersPanel || !pcbLayersList) return;
+        const boardModel = window.pcbState ? pcbState.boardModel : null;
+        const visible = !!boardModel && !!(viewPCBBtn && viewPCBBtn.classList.contains('active'));
+        pcbLayersPanel.classList.toggle('hidden', !visible);
+        if (!visible) {
+            pcbLayersList.innerHTML = '';
+            return;
+        }
+        ensurePcbLayerVisibility(boardModel);
+        const layerNames = sortedBoardLayerNames(boardModel);
+        pcbLayersList.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        for (const layerName of layerNames) {
+            const isVisible = isPcbLayerVisible(layerName);
+            const row = document.createElement('div');
+            row.className = `pcb-layer-row${isVisible ? '' : ' is-hidden'}`;
+            row.setAttribute('role', 'button');
+            row.setAttribute('tabindex', '0');
+
+            const swatch = document.createElement('span');
+            swatch.className = 'pcb-layer-swatch';
+            swatch.style.backgroundColor = getPcbLayerColor(layerName);
+
+            const toggle = document.createElement('button');
+            toggle.className = 'pcb-layer-toggle';
+            toggle.type = 'button';
+            toggle.textContent = isVisible ? '◉' : '◌';
+            toggle.title = `${isVisible ? 'Hide' : 'Show'} ${layerName}`;
+            const toggleLayer = () => {
+                setPcbLayerVisible(layerName, !isVisible);
+                pcbDrawCurrent();
+            };
+            row.addEventListener('click', toggleLayer);
+            row.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleLayer();
+                }
+            });
+
+            const label = document.createElement('span');
+            label.className = 'pcb-layer-name';
+            label.textContent = getPcbLayerLabel(layerName);
+            label.title = layerName;
+
+            row.appendChild(swatch);
+            row.appendChild(toggle);
+            row.appendChild(label);
+            fragment.appendChild(row);
+        }
+        pcbLayersList.appendChild(fragment);
     }
 
     function updatePcbToolbar(detail = {}) {
@@ -120,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pcbState.boardModel) {
                 pcbSetupCanvas();
                 pcbDraw();
+                renderPcbLayersPanel();
                 refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
             } else {
                 showPcbUploadOverlay();
@@ -155,8 +215,12 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePcbToolbar(event.detail || {});
         updatePcbInteractionSurface((event.detail || {}).tool || 'pan');
     });
+    window.addEventListener('pcb:layers-updated', () => {
+        renderPcbLayersPanel();
+    });
     updatePcbToolbar({ toolsEnabled: false });
     updatePcbInteractionSurface('pan');
+    if (importPCBBtn) importPCBBtn.disabled = false;
 
     // ── Renderer (PixiJS) ────────────────────────────────────────────────────
 
@@ -459,6 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('agent:pcb_ready', (data) => {
             if (data.board_model) {
                 pcbLoadBoard(data.board_model);
+                renderPcbLayersPanel();
                 refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
                 updatePcbToolbar({ toolsEnabled: true });
                 addLogEntry('PCB editor loaded with white airwires for manual routing.', 'log');
@@ -761,6 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof pcbDraw === 'function') {
                 pcbDraw();
             }
+            renderPcbLayersPanel();
             refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
         }
     });
@@ -810,12 +876,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 pcbLoadBoard(data.board_model, { fetchRatsnest: false });
+                updatePcbToolbar({ toolsEnabled: true });
+                exportPCBBtn.disabled = false;
+                importPCBBtn.disabled = false;
+                setActiveTab('viewPCBBtn');
+                showViewport('pcb');
+                setPcbToolbarVisibility(true);
+                document.getElementById('routePrompt').classList.add('hidden');
+                pcbUploadArea.classList.add('hidden');
+                pcbSetupCanvas();
+                pcbDraw();
+                renderPcbLayersPanel();
                 refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
                 addLogEntry(`Imported ${file.name}: ${data.board_model.components.length} components, ${data.board_model.traces.length} traces.`, 'success');
-                setActiveTab('viewPCBBtn');
-                viewPCBBtn.click();
             } catch (err) {
                 addLogEntry(`Import error: ${err.message}`, 'error');
+            } finally {
+                pcbFileInput.value = '';
             }
         });
     }

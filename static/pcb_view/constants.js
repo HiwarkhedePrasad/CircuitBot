@@ -1,0 +1,86 @@
+const PCB_COLORS = {
+    background: 0x0b1116,
+    gridMinor: 0x151f25,
+    gridMajor: 0x253540,
+    boardFill: 0x10251f,
+    outline: 0x19d7b0,
+    outlineShadow: 0x063b32,
+    airwire: 0xffffff,
+    airwireDim: 0xaab8c8,
+    topCopper: 0xff563d,
+    bottomCopper: 0x356cff,
+    copperEdge: 0xffb199,
+    viaCopper: 0xdce8ef,
+    viaDrill: 0x071019,
+    smdTop: 0xf27a6a,
+    smdBottom: 0x5b93ff,
+    throughPad: 0xf2c8b8,
+    exposedPad: 0xf2b8d0,
+    maskPad: 0x12392f,
+    silkscreen: 0xe0f0ed,
+    silkscreenFill: 0xc8e6e0,
+    fab: 0x8eb0aa,
+    fabFill: 0x3a6860,
+    courtyard: 0x3d7570,
+    text: 0xe9f7f4,
+    textDim: 0x91aaa4,
+    selection: 0x4df1c2,
+    routeGhost: 0xfff1a8,
+    hoverFill: 0x0d1716,
+    hole: 0x0b1116,
+    pin1Marker: 0x4df1c2,
+    padNumber: 0xffffff,
+    padNumberShadow: 0x000000,
+};
+
+const PCB_TEXT_STYLE = {
+    fontFamily: '"JetBrains Mono", "Cascadia Mono", Consolas, monospace',
+    fontSize: 14,
+};
+
+const PCB_MODE = {
+    IDLE: 'idle',
+    PANNING: 'panning',
+    DRAG_COMPONENT: 'drag_component',
+    ROUTE: 'route',
+};
+
+const PCB_TOOL = {
+    PAN: 'pan',
+    SELECT: 'select',
+    ROUTE: 'route',
+    VIA: 'via',
+};
+
+const PCB_POINTER_DRAG_THRESHOLD_PX = 4;
+
+const PCB_LAYER_CATALOG = [
+    { name: 'F.Cu', label: 'TOP', color: '#ff563d', group: 'copper', visible: true },
+    { name: 'In1.Cu', label: 'GND1', color: '#d84d4d', group: 'copper', visible: false },
+    { name: 'In2.Cu', label: 'SIGNAL1-X', color: '#d98b2b', group: 'copper', visible: false },
+    { name: 'In3.Cu', label: 'SIGNAL2-Y', color: '#2fb8aa', group: 'copper', visible: false },
+    { name: 'In4.Cu', label: 'GND2', color: '#f05d8f', group: 'copper', visible: false },
+    { name: 'In5.Cu', label: 'SIGNAL3-X', color: '#a7a9d6', group: 'copper', visible: false },
+    { name: 'In6.Cu', label: 'SIGNAL4-Y', color: '#c88c7a', group: 'copper', visible: false },
+    { name: 'In7.Cu', label: 'GND3', color: '#cfd2d8', group: 'copper', visible: false },
+    { name: 'In8.Cu', label: 'PWR', color: '#eadb87', group: 'copper', visible: false },
+    { name: 'B.Cu', label: 'BOTTOM', color: '#356cff', group: 'copper', visible: true },
+    { name: 'F.Adhes', label: 'F.Adhes', color: '#8a00c8', group: 'aux', visible: false },
+    { name: 'B.Adhes', label: 'B.Adhes', color: '#3100ba', group: 'aux', visible: false },
+    { name: 'F.Paste', label: 'F.Paste', color: '#f2a0a0', group: 'aux', visible: false },
+    { name: 'B.Paste', label: 'B.Paste', color: '#2ed3c7', group: 'aux', visible: false },
+    { name: 'F.SilkS', label: 'F.SilkS', color: '#f4ef9f', group: 'graphics', visible: true },
+    { name: 'B.SilkS', label: 'B.SilkS', color: '#f7f3cf', group: 'graphics', visible: false },
+    { name: 'F.Mask', label: 'F.Mask', color: '#8d47aa', group: 'aux', visible: false },
+    { name: 'B.Mask', label: 'B.Mask', color: '#3d7f6c', group: 'aux', visible: false },
+    { name: 'Dwgs.User', label: 'Dwgs.User', color: '#cfd2d8', group: 'docs', visible: false },
+    { name: 'Cmts.User', label: 'Cmts.User', color: '#71a4ef', group: 'docs', visible: false },
+    { name: 'Eco1.User', label: 'Eco1.User', color: '#c8ddd7', group: 'docs', visible: false },
+    { name: 'Eco2.User', label: 'Eco2.User', color: '#ddd85d', group: 'docs', visible: false },
+    { name: 'Edge.Cuts', label: 'Edge.Cuts', color: '#19d7b0', group: 'outline', visible: true },
+    { name: 'Margin', label: 'Margin', color: '#ff2ad6', group: 'docs', visible: false },
+    { name: 'F.Fab', label: 'F.Fab', color: '#8eb0aa', group: 'graphics', visible: false },
+    { name: 'B.Fab', label: 'B.Fab', color: '#8eb0aa', group: 'graphics', visible: false },
+    { name: 'F.CrtYd', label: 'F.CrtYd', color: '#3d7570', group: 'graphics', visible: false },
+    { name: 'B.CrtYd', label: 'B.CrtYd', color: '#3d7570', group: 'graphics', visible: false },
+];

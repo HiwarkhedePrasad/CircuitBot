@@ -2,16 +2,16 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
+const constantsSource = fs.readFileSync('static/pcb_view/constants.js', 'utf8');
+const stateSource = fs.readFileSync('static/pcb_view/state.js', 'utf8');
+const utilsSource = fs.readFileSync('static/pcb_view/utils.js', 'utf8');
+
 const context = {
     console,
     window: {
-        addEventListener() {},
-        removeEventListener() {},
         dispatchEvent() {},
     },
-    document: {
-        getElementById() { return null; },
-    },
+    document: {},
     CustomEvent: function CustomEvent(name, payload) {
         this.type = name;
         this.detail = payload.detail;
@@ -19,10 +19,24 @@ const context = {
 };
 
 vm.createContext(context);
-const source = fs.readFileSync('static/pcb_viewer.js', 'utf8');
-vm.runInContext(source, context);
+vm.runInContext(constantsSource, context);
+vm.runInContext(stateSource, context);
+vm.runInContext(`${utilsSource}
+globalThis.__PCB_TEST__ = {
+    snapToGrid,
+    rotatePoint,
+    routePoint,
+    appendRoutePoint,
+    getComponentPadPosition,
+    getComponentBounds,
+    normalizeBoardModel,
+    compactFootprintName,
+    modelBounds,
+    dedupePath,
+};
+`, context);
 
-const helpers = context.window.__PCB_TEST__;
+const helpers = context.__PCB_TEST__;
 
 assert.strictEqual(helpers.snapToGrid(1.31), 1.27);
 const rotated = helpers.rotatePoint(1, 0, 90);

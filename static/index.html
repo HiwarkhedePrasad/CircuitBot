@@ -57,6 +57,12 @@
                         <!-- Placed items populated by app.js -->
                     </ul>
                 </div>
+                <div id="pcbLayersPanel" class="panel-section pcb-layers-section hidden">
+                    <div class="panel-header">
+                        <span class="panel-title">PCB Layers</span>
+                    </div>
+                    <div id="pcbLayersList" class="pcb-layers-list"></div>
+                </div>
             </aside>
 
             <!-- Center: Workspace Canvas -->
@@ -172,7 +178,12 @@
     <script src="/static/schematic.js?v=12"></script>
     <script src="/static/renderer_legacy.js?v=10"></script>
     <script src="/static/schematic_renderer.js?v=2"></script>
-    <script src="/static/pcb_viewer.js?v=1"></script>
+    <script src="/static/pcb_view/constants.js"></script>
+    <script src="/static/pcb_view/state.js"></script>
+    <script src="/static/pcb_view/utils.js"></script>
+    <script src="/static/pcb_view/gl_math.js"></script>
+    <script src="/static/pcb_view/editor_webgl.js"></script>
+    <script src="/static/pcb_view/events.js"></script>
     <script src="/static/tscircuit-bridge.js?v=1"></script>
     <script src="/static/app.js?v=13"></script>
 </body>
