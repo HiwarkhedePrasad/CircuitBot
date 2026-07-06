@@ -1,5 +1,10 @@
 import re
 
+from agent.nodes.select import (
+    _expected_buckets,
+    _candidate_buckets,
+    _normalize_part_family,
+)
 from agent.tools import search_components
 from agent.utils import (
     _emit, emit_assistant_message, emit_tool_event, _stage_result,
@@ -41,11 +46,28 @@ def _is_rejected(comp, rejected_ids):
             comp.get("ref_des", "") in rejected_ids)
 
 
+def _filter_repair_candidates(subsystem: str, prompt: str, candidates: list[dict], rejected_ids: set[str], rejected_families: set[str]) -> list[dict]:
+    filtered = []
+    expected = _expected_buckets({"subsystem": subsystem, "function": subsystem, "example_components": []}, prompt)
+    for candidate in candidates:
+        if _is_rejected(candidate, rejected_ids):
+            continue
+        family = _normalize_part_family(candidate.get("id_str", ""))
+        if family and family in rejected_families:
+            continue
+        if expected and not (_candidate_buckets(candidate) & expected):
+            continue
+        filtered.append(candidate)
+    return filtered
+
+
 def validate_repair_node(state, config):
     comps = state.get("selected_components", [])
     rejected_ids = set(state.get("rejected_ids", []))
+    rejected_families = set(state.get("rejected_families", []))
     research = state.get("research_results", [])
     retry_count = state.get("retry_count", 0)
+    repair_failures = list(state.get("repair_failures", []))
 
     if not rejected_ids:
         return _stage_result(state, "validate_repair", {
@@ -86,7 +108,13 @@ def validate_repair_node(state, config):
     for c in failing:
         subsystem = c.get("subsystem", "")
         candidates = subsystem_map.get(subsystem, [])
-        candidates = [r for r in candidates if not _is_rejected(r, rejected_ids)]
+        candidates = _filter_repair_candidates(
+            subsystem,
+            state.get("prompt", ""),
+            candidates,
+            rejected_ids,
+            rejected_families,
+        )
         best = None
         if candidates:
             from agent.reranker import rank_candidates
@@ -102,6 +130,13 @@ def validate_repair_node(state, config):
             query = c.get("description", c.get("id_str", ""))
             try:
                 results = search_components(query, k=3)
+                results = _filter_repair_candidates(
+                    subsystem,
+                    state.get("prompt", ""),
+                    results,
+                    rejected_ids,
+                    rejected_families,
+                )
                 best = results[0] if results else None
             except Exception:
                 best = None
@@ -119,6 +154,7 @@ def validate_repair_node(state, config):
                 "message": f"  Repair: {c.get('id_str', '?')} [{c.get('ref_des', '?')}] → {best['id_str']} for '{subsystem}'"
             })
         else:
+            repair_failures.append(f"{subsystem}:{c.get('id_str', '')}")
             _emit(config, "agent:log", {
                 "message": f"  Repair: no replacement for {c.get('id_str', '?')} [{c.get('ref_des', '?')}] — removing"
             })
@@ -145,4 +181,5 @@ def validate_repair_node(state, config):
     return _stage_result(state, "validate_repair", {
         "selected_components": new_comps,
         "retry_count": retry_count + 1,
+        "repair_failures": repair_failures,
     })

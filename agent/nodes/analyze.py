@@ -2,6 +2,7 @@ import json
 import re
 
 from agent.prompts import ANALYZE_SYSTEM, ANALYZE_USER
+from agent.utils import _extract_part_numbers
 from agent.utils import _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result, _call_llm, _clean_json
 
 
@@ -74,6 +75,32 @@ def _detect_bus(subsystem: str, function: str) -> str:
     return "any"
 
 
+def _apply_user_part_intent(analysis: list[dict], prompt: str) -> list[dict]:
+    user_parts = _extract_part_numbers(prompt)
+    if not user_parts:
+        return analysis
+    prompt_upper = prompt.upper()
+    for item in analysis:
+        subsystem = (item.get("subsystem", "") or "").lower()
+        examples = item.get("example_components", [])
+        if not isinstance(examples, list):
+            examples = [examples] if examples else []
+        matched_parts = []
+        for part in user_parts:
+            part_upper = part.upper()
+            if "sensor" in subsystem and any(token in prompt_upper for token in (part_upper, "SENSOR", "TEMPERATURE", "HUMIDITY", "PRESSURE")):
+                matched_parts.append(part)
+            elif "microcontroller" in subsystem and any(token in prompt_upper for token in (part_upper, "MCU", "MICROCONTROLLER")):
+                matched_parts.append(part)
+            elif "power" in subsystem and any(token in prompt_upper for token in (part_upper, "BUCK", "BOOST", "LDO", "REGULATOR", "POWER")):
+                matched_parts.append(part)
+            elif "wireless" in subsystem and any(token in prompt_upper for token in (part_upper, "WIRELESS", "WIFI", "BLUETOOTH", "RF")):
+                matched_parts.append(part)
+        if matched_parts:
+            item["example_components"] = list(dict.fromkeys(matched_parts + examples))
+    return analysis
+
+
 def analyze_node(state, config):
     _emit(config, "agent:thinking", {"message": "Analyzing your design request..."})
     emit_assistant_message(config, "Parsing the design prompt to identify subsystems and requirements...")
@@ -116,6 +143,7 @@ def analyze_node(state, config):
         analysis = _fallback_analysis(state["prompt"])
     else:
         analysis = _normalize(analysis) or _fallback_analysis(state["prompt"])
+    analysis = _apply_user_part_intent(analysis, state["prompt"])
     # Auto-inject Microcontroller subsystem when the design clearly needs
     # programmatic control but the user didn't explicitly ask for an MCU.
     _IMPLIES_MCU = {"Sensor", "Display", "Status Indicator", "User Input", "Wireless Module"}

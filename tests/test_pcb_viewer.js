@@ -30,6 +30,7 @@ globalThis.__PCB_TEST__ = {
     routePoint,
     appendRoutePoint,
     getComponentPadPosition,
+    getPadPositionByPinKey,
     getComponentBounds,
     normalizeBoardModel,
     compactFootprintName,
@@ -79,6 +80,19 @@ const centerWithPadRotation = JSON.parse(JSON.stringify(
     )
 ));
 assert.deepStrictEqual(centerWithPadRotation, { x: 10, y: 21 });
+
+const padFromPinKey = JSON.parse(JSON.stringify(
+    helpers.getPadPositionByPinKey({
+        components: [{
+            ref: 'U1',
+            x: 10,
+            y: 20,
+            rotation: 90,
+            pads: [{ number: '1', x: 1, y: 0, width: 1, height: 1 }],
+        }],
+    }, 'U1:1')
+));
+assert.deepStrictEqual(padFromPinKey, { x: 10, y: 21 });
 
 const bounds = JSON.parse(JSON.stringify(
     helpers.getComponentBounds({

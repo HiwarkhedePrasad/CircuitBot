@@ -128,8 +128,13 @@ def _parse_pad(node: list) -> Optional[PadDef]:
         elif key == "layers":
             pad.layers = [_normalize_layer_name(s) for s in child[1:]]
         elif key == "drill":
-            if isinstance(child[1], (int, float)):
-                pad.drill = float(child[1])
+            if len(child) > 1:
+                if isinstance(child[1], (int, float)):
+                    pad.drill = float(child[1])
+                elif child[1] == "oval" and len(child) > 2 and isinstance(child[2], (int, float)):
+                    pad.drill = float(child[2])
+        elif key == "roundrect_rratio":
+            pad.roundrect_rratio = float(child[1])
     return pad
 
 
@@ -160,10 +165,20 @@ def _parse_fp_graphic(node: list) -> Optional[dict]:
         elif key == "width":
             item["width"] = _get_float(child, 1, 0.15)
         elif key == "fill":
-            item["fill"] = _get_str(child, 1, "none")
+            # Handle both (fill yes/no/solid/none) and (fill (type solid/none))
+            raw_fill = _get_str(child, 1, "none")
+            type_node = _find_one(child, "type")
+            if type_node:
+                raw_fill = _get_str(type_node, 1, raw_fill)
+            # Normalize: 'yes' and 'solid' both mean filled
+            if raw_fill in ("yes", "solid"):
+                item["fill"] = "solid"
+            else:
+                item["fill"] = "none"
     if points:
         item["points"] = points
     return item
+
 
 
 def _parse_property_text(node: list) -> Optional[dict]:

@@ -9,13 +9,14 @@ class PcbEditor {
         this._airwireLayer = null;
         this._traceLayer = null;
         this._footprintLayer = null;
+        this._drillLayer = null;
         this._overlayLayer = null;
         this._textLayer = null;
         this._resizeHandler = () => this._resize();
         this._refreshFrame = null;
         this._overlayFrame = null;
         this._settleRefreshTimer = null;
-        this._layerKeys = ['grid', 'outline', 'airwire', 'trace', 'footprint', 'text', 'overlay'];
+        this._layerKeys = ['grid', 'outline', 'airwire', 'trace', 'footprint', 'drill', 'text', 'overlay'];
         this._dirtyLayers = new Set(this._layerKeys);
     }
 
@@ -41,6 +42,7 @@ class PcbEditor {
         this._airwireLayer = new PIXI.Container();
         this._traceLayer = new PIXI.Container();
         this._footprintLayer = new PIXI.Container();
+        this._drillLayer = new PIXI.Container();
         this._textLayer = new PIXI.Container();
         this._overlayLayer = new PIXI.Container();
         this._world.addChild(
@@ -49,6 +51,7 @@ class PcbEditor {
             this._airwireLayer,
             this._traceLayer,
             this._footprintLayer,
+            this._drillLayer,
             this._textLayer,
             this._overlayLayer
         );
@@ -99,6 +102,7 @@ class PcbEditor {
             airwire: this._airwireLayer,
             trace: this._traceLayer,
             footprint: this._footprintLayer,
+            drill: this._drillLayer,
             text: this._textLayer,
             overlay: this._overlayLayer,
         }[key] || null;
@@ -121,6 +125,7 @@ class PcbEditor {
             ['airwire', () => this._drawAirwires()],
             ['trace', () => this._drawTraces()],
             ['footprint', () => this._drawFootprints()],
+            ['drill', () => {}],
             ['text', () => this._drawTextLayer()],
             ['overlay', () => this._drawOverlay()],
         ];
@@ -529,6 +534,8 @@ class PcbEditor {
 
     _drawFootprints() {
         const model = pcbState.boardModel || {};
+        // Clear drillLayer alongside footprintLayer since they are always redrawn together
+        this._clearLayer(this._drillLayer);
         for (const component of model.components || []) {
             try {
                 this._drawComponentPads(component);
@@ -765,7 +772,10 @@ class PcbEditor {
             g.endFill();
         }
 
-        /* Pass 3: all drill holes (top) */
+        this._footprintLayer.addChild(g);
+
+        /* Pass 3: drill holes drawn into dedicated drillLayer (always on top of all copper) */
+        const drillG = new PIXI.Graphics();
         for (const pad of pads) {
             const center = getComponentPadPosition(component, pad);
             const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht' || pad.drill;
@@ -773,14 +783,13 @@ class PcbEditor {
                 const padWidth = pad.width || 1.0;
                 const padHeight = pad.height || 1.0;
                 const drillDia = pad.drill || Math.min(padWidth, padHeight) * 0.5;
-                g.lineStyle(0);
-                g.beginFill(PCB_COLORS.hole, 1);
-                g.drawCircle(center.x, center.y, Math.max(drillDia, 0.2) / 2);
-                g.endFill();
+                drillG.lineStyle(0);
+                drillG.beginFill(PCB_COLORS.hole, 1);
+                drillG.drawCircle(center.x, center.y, Math.max(drillDia, 0.2) / 2);
+                drillG.endFill();
             }
         }
-        
-        this._footprintLayer.addChild(g);
+        this._drillLayer.addChild(drillG);
 
         /* Pass 4: exposed pad thermal relief pattern */
         for (const pad of pads) {

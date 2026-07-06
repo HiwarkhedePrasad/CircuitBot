@@ -196,6 +196,7 @@ async function commitRouteToBoard(targetPad) {
         }
     }
     const after = deepClone(pcbState.boardModel);
+    pcbEditor.refreshAirwires();
     pcbEditor.markDirty('trace', 'footprint', 'overlay');
     pcbEditor.refresh();
     pcbCancelDraw();
@@ -357,6 +358,7 @@ function pcbHandleMouseMove(event) {
         if (component) {
             component.x = pcbState.dragOrigin.x + (world.x - pcbState.dragPointerStart.x);
             component.y = pcbState.dragOrigin.y + (world.y - pcbState.dragPointerStart.y);
+            pcbEditor.refreshAirwires();
             pcbEditor.markDirty('footprint', 'text', 'airwire');
             pcbEditor.requestRefresh();
         }

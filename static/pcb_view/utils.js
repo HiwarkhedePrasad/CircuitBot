@@ -34,6 +34,30 @@ function normalizeCopperLayerName(layer, fallback = 'F.Cu') {
     return aliases[raw.toLowerCase()] || raw;
 }
 
+/**
+ * Expand KiCad wildcard layer names used in pad definitions.
+ * KiCad uses '*.Cu' to mean all copper layers, '*.Mask' for both solder masks, etc.
+ * Since our renderer only checks F.Cu and B.Cu visibility, we expand wildcards
+ * so that through-hole pads (which use '*.Cu') are correctly treated as visible.
+ */
+function expandPadLayers(layers) {
+    const result = [];
+    for (const layer of layers) {
+        if (layer === '*.Cu') {
+            result.push('F.Cu', 'B.Cu');
+        } else if (layer === '*.Mask') {
+            result.push('F.Mask', 'B.Mask');
+        } else if (layer === '*.Paste') {
+            result.push('F.Paste', 'B.Paste');
+        } else if (layer === 'F&B.Cu') {
+            result.push('F.Cu', 'B.Cu');
+        } else {
+            result.push(normalizeCopperLayerName(layer));
+        }
+    }
+    return result;
+}
+
 function normalizeBoardModel(boardModel) {
     const model = deepClone(boardModel || {});
     model.components = Array.isArray(model.components) ? model.components : [];
@@ -55,8 +79,7 @@ function normalizeBoardModel(boardModel) {
             pad.rotation = toFiniteNumber(pad.rotation);
             if (pad.drill != null) pad.drill = toFiniteNumber(pad.drill, 0);
             if (pad.roundrect_rratio != null) pad.roundrect_rratio = toFiniteNumber(pad.roundrect_rratio);
-            pad.layers = (Array.isArray(pad.layers) ? pad.layers : ['F.Cu'])
-                .map((layer) => normalizeCopperLayerName(layer));
+            pad.layers = expandPadLayers(Array.isArray(pad.layers) ? pad.layers : ['F.Cu']);
         }
     }
     for (const trace of model.traces) {
@@ -150,6 +173,17 @@ function getNetNameForPad(model, ref, padNumber) {
         }
     }
     return '_manual';
+}
+
+function getPadPositionByPinKey(model, pinKey) {
+    if (!model || !pinKey) return null;
+    const [ref, padNumber] = String(pinKey).split(':');
+    if (!ref || padNumber == null) return null;
+    const component = (model.components || []).find((item) => item.ref === ref);
+    if (!component) return null;
+    const pad = (component.pads || []).find((item) => String(item.number) === String(padNumber));
+    if (!pad) return null;
+    return getComponentPadPosition(component, pad);
 }
 
 function isBottomCopperLayer(layer) {

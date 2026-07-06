@@ -32,7 +32,7 @@ def _fmt(v: float) -> str:
 
 
 def _snap(v: float) -> float:
-    return round(v / GRID) * GRID
+    return round(v, 4)
 
 
 def _syspath() -> None:
@@ -138,7 +138,11 @@ def _fp_path_for(fp_str: str) -> Path:
 
 def _embed_footprint(fp_str: str, ref_des: str, value: str,
                      x: float, y: float,
-                     rotation: float = 0) -> str:
+                     rotation: float = 0,
+                     pin_to_net: dict = None,
+                     net_index: dict = None) -> str:
+    if pin_to_net is None: pin_to_net = {}
+    if net_index is None: net_index = {}
     _syspath()
     from sexpr import parse_sexp  # noqa: E402
 
@@ -151,8 +155,9 @@ def _embed_footprint(fp_str: str, ref_des: str, value: str,
         ast = parse_sexp(raw)
 
         # Ensure root keyword is "footprint" (KiCad 10 native; KiCad 7/8 also accept it)
-        if ast and isinstance(ast, list) and ast[0] not in ("footprint",):
+        if ast and isinstance(ast, list) and len(ast) > 1:
             ast[0] = "footprint"
+            ast[1] = fp_str
 
         # Remove any top-level tokens that would conflict with our placement:
         # at (replaced below), tedit, tstamp — keep version/generator/generator_version
@@ -163,12 +168,21 @@ def _embed_footprint(fp_str: str, ref_des: str, value: str,
         ast = filtered
 
         for child in ast:
-            if (isinstance(child, list) and len(child) >= 3
-                    and child[0] == "property"):
-                if child[1] == "Reference":
-                    child[2] = ref_des
-                elif child[1] == "Value":
-                    child[2] = value
+            if isinstance(child, list) and len(child) >= 3:
+                if child[0] == "property":
+                    if child[1] == "Reference":
+                        child[2] = ref_des
+                    elif child[1] == "Value":
+                        child[2] = value
+                elif child[0] == "pad":
+                    pad_num = str(child[1])
+                    pin_key = f"{ref_des}:{pad_num}"
+                    net_name = pin_to_net.get(pin_key)
+                    if net_name:
+                        nid = net_index.get(net_name, 0)
+                        if nid > 0:
+                            child[:] = [c for c in child if not (isinstance(c, list) and c and c[0] == "net")]
+                            child.append(["net", nid, net_name])
 
         return _serialize(ast)
     except Exception as exc:
@@ -292,32 +306,15 @@ def generate_kicad_pcb(design: dict) -> str:
             continue
         x = _snap(place.get("x", 0))
         y = _snap(place.get("y", 0))
+        rot = place.get("rotation", 0)
         value = comp.get("id_str", "").rpartition(":")[2] or ref
-        fp_sexpr = _embed_footprint(fp_str, ref, value, x, y)
+        fp_sexpr = _embed_footprint(fp_str, ref, value, x, y, rot, pin_to_net, net_index)
         for line in fp_sexpr.strip().split("\n"):
             out.append(f"  {line}")
 
-    # Track segments
-    for w in wires:
-        pts = _simplify_path(w.get("path", []))
-        if len(pts) < 2:
-            continue
-        src = w.get("source", "")
-        net_name = pin_to_net.get(src, "")
-        nid = net_index.get(net_name, 0)
-        for i in range(len(pts) - 1):
-            x1 = _snap(pts[i]["x"])
-            y1 = _snap(pts[i]["y"])
-            x2 = _snap(pts[i + 1]["x"])
-            y2 = _snap(pts[i + 1]["y"])
-            if x1 == x2 and y1 == y2:
-                continue
-            out.append(
-                f"  (segment (start {_fmt(x1)} {_fmt(y1)})"
-                f" (end {_fmt(x2)} {_fmt(y2)})"
-                f" (width 0.254) (layer \"F.Cu\")"
-                f" (net {nid}))"
-            )
+    # Traces (segments) are intentionally omitted here.
+    # The agent should not autoroute the PCB using schematic wire_paths.
+    # Traces must be routed entirely manually by the user in the PCB editor.
 
     out.append(")")
     return "\n".join(out) + "\n"
@@ -339,12 +336,17 @@ def _generate_from_board_model(board_model: dict) -> str:
         (37, "Edge.Cuts", "user"),
     ]
 
-    # Build net index
+    # Build net index and pin_to_net
     net_index = {"": 0}
+    pin_to_net = {}
     for net in model.nets:
         name = net.get("name", "") or net.get("net", "")
-        if name and name not in net_index:
+        if not name:
+            continue
+        if name not in net_index:
             net_index[name] = len(net_index)
+        for pin in net.get("pins", []):
+            pin_to_net[pin] = name
 
     out = []
     out.append("(kicad_pcb (version 20260206) (generator \"circuitbot\") (generator_version \"1.0\")")
@@ -372,7 +374,7 @@ def _generate_from_board_model(board_model: dict) -> str:
         y = _snap(comp.y)
         ref = comp.ref
         value = comp.value or ref
-        fp_sexpr = _embed_footprint(fp_str, ref, value, x, y, comp.rotation)
+        fp_sexpr = _embed_footprint(fp_str, ref, value, x, y, comp.rotation, pin_to_net, net_index)
         for line in fp_sexpr.strip().split("\n"):
             out.append(f"  {line}")
 

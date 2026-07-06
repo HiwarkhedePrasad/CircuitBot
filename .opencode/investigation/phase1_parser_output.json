@@ -1,0 +1,1858 @@
+{
+  "summary": {
+    "total_pad_nodes": 75,
+    "parsed_successfully": 75,
+    "fields_match_truth": 75,
+    "fields_mismatch": 0,
+    "null_parse": 0,
+    "field_value_mismatches": 0,
+    "fields_present_in_truth_but_not_in_PadDef": [
+      "property",
+      "remove_unused_layers",
+      "roundrect_rratio",
+      "zone_connect"
+    ]
+  },
+  "pads": [
+    {
+      "index": 0,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": -1.23,
+        "y": -1.23,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 1,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": -1.23,
+        "y": 0.0,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 2,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": -1.23,
+        "y": 1.23,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 3,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": 0.0,
+        "y": -1.23,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 4,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": 0.0,
+        "y": 0.0,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 5,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": 0.0,
+        "y": 1.23,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 6,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": 1.23,
+        "y": -1.23,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 7,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": 1.23,
+        "y": 0.0,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 8,
+      "truth_number": "",
+      "parsed": {
+        "number": "",
+        "x": 1.23,
+        "y": 1.23,
+        "width": 0.96,
+        "height": 0.96,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 9,
+      "truth_number": "1",
+      "parsed": {
+        "number": "1",
+        "x": -2.45,
+        "y": -2.275,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 10,
+      "truth_number": "2",
+      "parsed": {
+        "number": "2",
+        "x": -2.45,
+        "y": -1.925,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 11,
+      "truth_number": "3",
+      "parsed": {
+        "number": "3",
+        "x": -2.45,
+        "y": -1.575,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 12,
+      "truth_number": "4",
+      "parsed": {
+        "number": "4",
+        "x": -2.45,
+        "y": -1.225,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 13,
+      "truth_number": "5",
+      "parsed": {
+        "number": "5",
+        "x": -2.45,
+        "y": -0.875,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 14,
+      "truth_number": "6",
+      "parsed": {
+        "number": "6",
+        "x": -2.45,
+        "y": -0.525,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 15,
+      "truth_number": "7",
+      "parsed": {
+        "number": "7",
+        "x": -2.45,
+        "y": -0.175,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 16,
+      "truth_number": "8",
+      "parsed": {
+        "number": "8",
+        "x": -2.45,
+        "y": 0.175,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 17,
+      "truth_number": "9",
+      "parsed": {
+        "number": "9",
+        "x": -2.45,
+        "y": 0.525,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 18,
+      "truth_number": "10",
+      "parsed": {
+        "number": "10",
+        "x": -2.45,
+        "y": 0.875,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 19,
+      "truth_number": "11",
+      "parsed": {
+        "number": "11",
+        "x": -2.45,
+        "y": 1.225,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 20,
+      "truth_number": "12",
+      "parsed": {
+        "number": "12",
+        "x": -2.45,
+        "y": 1.575,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 21,
+      "truth_number": "13",
+      "parsed": {
+        "number": "13",
+        "x": -2.45,
+        "y": 1.925,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 22,
+      "truth_number": "14",
+      "parsed": {
+        "number": "14",
+        "x": -2.45,
+        "y": 2.275,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 23,
+      "truth_number": "15",
+      "parsed": {
+        "number": "15",
+        "x": -1.575,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 24,
+      "truth_number": "16",
+      "parsed": {
+        "number": "16",
+        "x": -1.225,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 25,
+      "truth_number": "17",
+      "parsed": {
+        "number": "17",
+        "x": -0.875,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 26,
+      "truth_number": "18",
+      "parsed": {
+        "number": "18",
+        "x": -0.525,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 27,
+      "truth_number": "19",
+      "parsed": {
+        "number": "19",
+        "x": -0.175,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 28,
+      "truth_number": "20",
+      "parsed": {
+        "number": "20",
+        "x": 0.175,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 29,
+      "truth_number": "21",
+      "parsed": {
+        "number": "21",
+        "x": 0.525,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 30,
+      "truth_number": "22",
+      "parsed": {
+        "number": "22",
+        "x": 0.875,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 31,
+      "truth_number": "23",
+      "parsed": {
+        "number": "23",
+        "x": 1.225,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 32,
+      "truth_number": "24",
+      "parsed": {
+        "number": "24",
+        "x": 1.575,
+        "y": 2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 33,
+      "truth_number": "25",
+      "parsed": {
+        "number": "25",
+        "x": 2.45,
+        "y": 2.275,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 34,
+      "truth_number": "26",
+      "parsed": {
+        "number": "26",
+        "x": 2.45,
+        "y": 1.925,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 35,
+      "truth_number": "27",
+      "parsed": {
+        "number": "27",
+        "x": 2.45,
+        "y": 1.575,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 36,
+      "truth_number": "28",
+      "parsed": {
+        "number": "28",
+        "x": 2.45,
+        "y": 1.225,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 37,
+      "truth_number": "29",
+      "parsed": {
+        "number": "29",
+        "x": 2.45,
+        "y": 0.875,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 38,
+      "truth_number": "30",
+      "parsed": {
+        "number": "30",
+        "x": 2.45,
+        "y": 0.525,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 39,
+      "truth_number": "31",
+      "parsed": {
+        "number": "31",
+        "x": 2.45,
+        "y": 0.175,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 40,
+      "truth_number": "32",
+      "parsed": {
+        "number": "32",
+        "x": 2.45,
+        "y": -0.175,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 41,
+      "truth_number": "33",
+      "parsed": {
+        "number": "33",
+        "x": 2.45,
+        "y": -0.525,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 42,
+      "truth_number": "34",
+      "parsed": {
+        "number": "34",
+        "x": 2.45,
+        "y": -0.875,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 43,
+      "truth_number": "35",
+      "parsed": {
+        "number": "35",
+        "x": 2.45,
+        "y": -1.225,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 44,
+      "truth_number": "36",
+      "parsed": {
+        "number": "36",
+        "x": 2.45,
+        "y": -1.575,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 45,
+      "truth_number": "37",
+      "parsed": {
+        "number": "37",
+        "x": 2.45,
+        "y": -1.925,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 46,
+      "truth_number": "38",
+      "parsed": {
+        "number": "38",
+        "x": 2.45,
+        "y": -2.275,
+        "width": 0.8,
+        "height": 0.2,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 47,
+      "truth_number": "39",
+      "parsed": {
+        "number": "39",
+        "x": 1.575,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 48,
+      "truth_number": "40",
+      "parsed": {
+        "number": "40",
+        "x": 1.225,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 49,
+      "truth_number": "41",
+      "parsed": {
+        "number": "41",
+        "x": 0.875,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 50,
+      "truth_number": "42",
+      "parsed": {
+        "number": "42",
+        "x": 0.525,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 51,
+      "truth_number": "43",
+      "parsed": {
+        "number": "43",
+        "x": 0.175,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 52,
+      "truth_number": "44",
+      "parsed": {
+        "number": "44",
+        "x": -0.175,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 53,
+      "truth_number": "45",
+      "parsed": {
+        "number": "45",
+        "x": -0.525,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 54,
+      "truth_number": "46",
+      "parsed": {
+        "number": "46",
+        "x": -0.875,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 55,
+      "truth_number": "47",
+      "parsed": {
+        "number": "47",
+        "x": -1.225,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 56,
+      "truth_number": "48",
+      "parsed": {
+        "number": "48",
+        "x": -1.575,
+        "y": -2.45,
+        "width": 0.2,
+        "height": 0.8,
+        "type": "smd",
+        "shape": "roundrect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask",
+          "F.Paste"
+        ]
+      },
+      "missing_fields": [
+        "roundrect_rratio"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 57,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -1.6,
+        "y": -1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 58,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -1.6,
+        "y": -0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 59,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -1.6,
+        "y": 0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 60,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -1.6,
+        "y": 1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 61,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -0.533333,
+        "y": -1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 62,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -0.533333,
+        "y": -0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 63,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -0.533333,
+        "y": 0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 64,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": -0.533333,
+        "y": 1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 65,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 0.0,
+        "y": 0.0,
+        "width": 3.7,
+        "height": 3.7,
+        "type": "smd",
+        "shape": "rect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "F.Cu",
+          "F.Mask"
+        ]
+      },
+      "missing_fields": [
+        "zone_connect",
+        "property"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 66,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 0.0,
+        "y": 0.0,
+        "width": 3.7,
+        "height": 3.7,
+        "type": "smd",
+        "shape": "rect",
+        "rotation": 0.0,
+        "drill": null,
+        "layers": [
+          "B.Cu"
+        ]
+      },
+      "missing_fields": [
+        "zone_connect",
+        "property"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 67,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 0.533333,
+        "y": -1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 68,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 0.533333,
+        "y": -0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 69,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 0.533333,
+        "y": 0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 70,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 0.533333,
+        "y": 1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 71,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 1.6,
+        "y": -1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 72,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 1.6,
+        "y": -0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 73,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 1.6,
+        "y": 0.533333,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    },
+    {
+      "index": 74,
+      "truth_number": "49",
+      "parsed": {
+        "number": "49",
+        "x": 1.6,
+        "y": 1.6,
+        "width": 0.5,
+        "height": 0.5,
+        "type": "thru_hole",
+        "shape": "circle",
+        "rotation": 0.0,
+        "drill": 0.2,
+        "layers": [
+          "*.Cu"
+        ]
+      },
+      "missing_fields": [
+        "property",
+        "remove_unused_layers"
+      ],
+      "fields_match": true,
+      "diffs": {}
+    }
+  ]
+}

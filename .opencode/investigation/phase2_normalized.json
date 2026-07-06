@@ -1,0 +1,2328 @@
+{
+  "summary": {
+    "input_pad_count": 75,
+    "output_pad_count": 75,
+    "count_match": true,
+    "input_pad_counts_by_number": {
+      "1": 1,
+      "2": 1,
+      "3": 1,
+      "4": 1,
+      "5": 1,
+      "6": 1,
+      "7": 1,
+      "8": 1,
+      "9": 1,
+      "10": 1,
+      "11": 1,
+      "12": 1,
+      "13": 1,
+      "14": 1,
+      "15": 1,
+      "16": 1,
+      "17": 1,
+      "18": 1,
+      "19": 1,
+      "20": 1,
+      "21": 1,
+      "22": 1,
+      "23": 1,
+      "24": 1,
+      "25": 1,
+      "26": 1,
+      "27": 1,
+      "28": 1,
+      "29": 1,
+      "30": 1,
+      "31": 1,
+      "32": 1,
+      "33": 1,
+      "34": 1,
+      "35": 1,
+      "36": 1,
+      "37": 1,
+      "38": 1,
+      "39": 1,
+      "40": 1,
+      "41": 1,
+      "42": 1,
+      "43": 1,
+      "44": 1,
+      "45": 1,
+      "46": 1,
+      "47": 1,
+      "48": 1,
+      "49": 18,
+      "": 9
+    },
+    "output_pad_counts_by_number": {
+      "1": 1,
+      "2": 1,
+      "3": 1,
+      "4": 1,
+      "5": 1,
+      "6": 1,
+      "7": 1,
+      "8": 1,
+      "9": 1,
+      "10": 1,
+      "11": 1,
+      "12": 1,
+      "13": 1,
+      "14": 1,
+      "15": 1,
+      "16": 1,
+      "17": 1,
+      "18": 1,
+      "19": 1,
+      "20": 1,
+      "21": 1,
+      "22": 1,
+      "23": 1,
+      "24": 1,
+      "25": 1,
+      "26": 1,
+      "27": 1,
+      "28": 1,
+      "29": 1,
+      "30": 1,
+      "31": 1,
+      "32": 1,
+      "33": 1,
+      "34": 1,
+      "35": 1,
+      "36": 1,
+      "37": 1,
+      "38": 1,
+      "39": 1,
+      "40": 1,
+      "41": 1,
+      "42": 1,
+      "43": 1,
+      "44": 1,
+      "45": 1,
+      "46": 1,
+      "47": 1,
+      "48": 1,
+      "49": 18,
+      "": 9
+    },
+    "per_number_match": true,
+    "value_deltas": 0,
+    "layer_deltas": 0,
+    "shape_type_deltas": 0
+  },
+  "input_model": {
+    "components": [
+      {
+        "ref": "U101",
+        "footprint": "QFN-48-1EP_5x5mm_P0.35mm_EP3.7x3.7mm_ThermalVias",
+        "x": 0,
+        "y": 0,
+        "rotation": 0,
+        "layer": "F.Cu",
+        "value": "ESP32",
+        "pads": [
+          {
+            "number": "",
+            "x": -1.23,
+            "y": -1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": -1.23,
+            "y": 0,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": -1.23,
+            "y": 1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 0,
+            "y": -1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 0,
+            "y": 0,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 0,
+            "y": 1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 1.23,
+            "y": -1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 1.23,
+            "y": 0,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 1.23,
+            "y": 1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "1",
+            "x": -2.45,
+            "y": -2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "2",
+            "x": -2.45,
+            "y": -1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "3",
+            "x": -2.45,
+            "y": -1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "4",
+            "x": -2.45,
+            "y": -1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "5",
+            "x": -2.45,
+            "y": -0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "6",
+            "x": -2.45,
+            "y": -0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "7",
+            "x": -2.45,
+            "y": -0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "8",
+            "x": -2.45,
+            "y": 0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "9",
+            "x": -2.45,
+            "y": 0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "10",
+            "x": -2.45,
+            "y": 0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "11",
+            "x": -2.45,
+            "y": 1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "12",
+            "x": -2.45,
+            "y": 1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "13",
+            "x": -2.45,
+            "y": 1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "14",
+            "x": -2.45,
+            "y": 2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "15",
+            "x": -1.575,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "16",
+            "x": -1.225,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "17",
+            "x": -0.875,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "18",
+            "x": -0.525,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "19",
+            "x": -0.175,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "20",
+            "x": 0.175,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "21",
+            "x": 0.525,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "22",
+            "x": 0.875,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "23",
+            "x": 1.225,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "24",
+            "x": 1.575,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "25",
+            "x": 2.45,
+            "y": 2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "26",
+            "x": 2.45,
+            "y": 1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "27",
+            "x": 2.45,
+            "y": 1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "28",
+            "x": 2.45,
+            "y": 1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "29",
+            "x": 2.45,
+            "y": 0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "30",
+            "x": 2.45,
+            "y": 0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "31",
+            "x": 2.45,
+            "y": 0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "32",
+            "x": 2.45,
+            "y": -0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "33",
+            "x": 2.45,
+            "y": -0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "34",
+            "x": 2.45,
+            "y": -0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "35",
+            "x": 2.45,
+            "y": -1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "36",
+            "x": 2.45,
+            "y": -1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "37",
+            "x": 2.45,
+            "y": -1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "38",
+            "x": 2.45,
+            "y": -2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "39",
+            "x": 1.575,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "40",
+            "x": 1.225,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "41",
+            "x": 0.875,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "42",
+            "x": 0.525,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "43",
+            "x": 0.175,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "44",
+            "x": -0.175,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "45",
+            "x": -0.525,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "46",
+            "x": -0.875,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "47",
+            "x": -1.225,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "48",
+            "x": -1.575,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0,
+            "y": 0,
+            "width": 3.7,
+            "height": 3.7,
+            "shape": "rect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0,
+            "y": 0,
+            "width": 3.7,
+            "height": 3.7,
+            "shape": "rect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "B.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          }
+        ],
+        "graphics": []
+      }
+    ]
+  },
+  "output_model": {
+    "components": [
+      {
+        "ref": "U101",
+        "footprint": "QFN-48-1EP_5x5mm_P0.35mm_EP3.7x3.7mm_ThermalVias",
+        "x": 0,
+        "y": 0,
+        "rotation": 0,
+        "layer": "F.Cu",
+        "value": "ESP32",
+        "pads": [
+          {
+            "number": "",
+            "x": -1.23,
+            "y": -1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": -1.23,
+            "y": 0,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": -1.23,
+            "y": 1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 0,
+            "y": -1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 0,
+            "y": 0,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 0,
+            "y": 1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 1.23,
+            "y": -1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 1.23,
+            "y": 0,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "",
+            "x": 1.23,
+            "y": 1.23,
+            "width": 0.96,
+            "height": 0.96,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "1",
+            "x": -2.45,
+            "y": -2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "2",
+            "x": -2.45,
+            "y": -1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "3",
+            "x": -2.45,
+            "y": -1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "4",
+            "x": -2.45,
+            "y": -1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "5",
+            "x": -2.45,
+            "y": -0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "6",
+            "x": -2.45,
+            "y": -0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "7",
+            "x": -2.45,
+            "y": -0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "8",
+            "x": -2.45,
+            "y": 0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "9",
+            "x": -2.45,
+            "y": 0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "10",
+            "x": -2.45,
+            "y": 0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "11",
+            "x": -2.45,
+            "y": 1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "12",
+            "x": -2.45,
+            "y": 1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "13",
+            "x": -2.45,
+            "y": 1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "14",
+            "x": -2.45,
+            "y": 2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "15",
+            "x": -1.575,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "16",
+            "x": -1.225,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "17",
+            "x": -0.875,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "18",
+            "x": -0.525,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "19",
+            "x": -0.175,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "20",
+            "x": 0.175,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "21",
+            "x": 0.525,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "22",
+            "x": 0.875,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "23",
+            "x": 1.225,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "24",
+            "x": 1.575,
+            "y": 2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "25",
+            "x": 2.45,
+            "y": 2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "26",
+            "x": 2.45,
+            "y": 1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "27",
+            "x": 2.45,
+            "y": 1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "28",
+            "x": 2.45,
+            "y": 1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "29",
+            "x": 2.45,
+            "y": 0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "30",
+            "x": 2.45,
+            "y": 0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "31",
+            "x": 2.45,
+            "y": 0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "32",
+            "x": 2.45,
+            "y": -0.175,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "33",
+            "x": 2.45,
+            "y": -0.525,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "34",
+            "x": 2.45,
+            "y": -0.875,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "35",
+            "x": 2.45,
+            "y": -1.225,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "36",
+            "x": 2.45,
+            "y": -1.575,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "37",
+            "x": 2.45,
+            "y": -1.925,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "38",
+            "x": 2.45,
+            "y": -2.275,
+            "width": 0.8,
+            "height": 0.2,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "39",
+            "x": 1.575,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "40",
+            "x": 1.225,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "41",
+            "x": 0.875,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "42",
+            "x": 0.525,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "43",
+            "x": 0.175,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "44",
+            "x": -0.175,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "45",
+            "x": -0.525,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "46",
+            "x": -0.875,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "47",
+            "x": -1.225,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "48",
+            "x": -1.575,
+            "y": -2.45,
+            "width": 0.2,
+            "height": 0.8,
+            "shape": "roundrect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask",
+              "F.Paste"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -1.6,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": -0.533333,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0,
+            "y": 0,
+            "width": 3.7,
+            "height": 3.7,
+            "shape": "rect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "F.Cu",
+              "F.Mask"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0,
+            "y": 0,
+            "width": 3.7,
+            "height": 3.7,
+            "shape": "rect",
+            "type": "smd",
+            "rotation": 0,
+            "layers": [
+              "B.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 0.533333,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": -1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": -0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": 0.533333,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          },
+          {
+            "number": "49",
+            "x": 1.6,
+            "y": 1.6,
+            "width": 0.5,
+            "height": 0.5,
+            "shape": "circle",
+            "type": "thru_hole",
+            "rotation": 0,
+            "drill": 0.2,
+            "layers": [
+              "*.Cu"
+            ]
+          }
+        ],
+        "graphics": []
+      }
+    ],
+    "traces": [],
+    "vias": [],
+    "nets": [],
+    "outline_segments": []
+  },
+  "deltas": []
+}

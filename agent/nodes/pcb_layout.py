@@ -68,6 +68,27 @@ def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], st
         except Exception:
             pass
 
+    if not hydrated.get("footprint"):
+        cat, _, name = hydrated.get("id_str", "").partition(":")
+        if cat == "Device":
+            if name == "R":
+                hydrated["footprint"] = "Resistor_SMD:R_0805_2012Metric"
+            elif name == "C":
+                hydrated["footprint"] = "Capacitor_SMD:C_0805_2012Metric"
+            elif name == "C_Polarized":
+                hydrated["footprint"] = "Capacitor_SMD:CP_Elec_4x5.3"
+            elif name == "L":
+                hydrated["footprint"] = "Inductor_SMD:L_0805_2012Metric"
+            elif name.startswith("D_") or name == "D":
+                hydrated["footprint"] = "Diode_SMD:D_SOD-123"
+            elif name == "LED":
+                hydrated["footprint"] = "LED_SMD:LED_0805_2012Metric"
+        elif cat == "Switch":
+            if "SW_Push" in name:
+                hydrated["footprint"] = "Button_Switch_SMD:SW_SPST_B3U-1000P"
+        elif cat in ("Transistor_BJT", "Transistor_FET"):
+            hydrated["footprint"] = "Package_TO_SOT_SMD:SOT-23"
+
     parsed_fp = _load_footprint_component(hydrated)
     if parsed_fp and parsed_fp.pads:
         return parsed_fp.pads, parsed_fp.graphics, hydrated.get("footprint", parsed_fp.footprint)
@@ -173,6 +194,7 @@ def pcb_layout_node(state, config):
 
     # ── 4. Compute ratsnest (airwire guide lines) ──────────────────
     board_dict = model.to_dict()
+    board_dict["_render_from_model"] = True  # tells server to skip KiCad export round-trip
     try:
         from pcb_design.ratsnest import compute_ratsnest
         board_dict["ratsnest"] = compute_ratsnest(model)

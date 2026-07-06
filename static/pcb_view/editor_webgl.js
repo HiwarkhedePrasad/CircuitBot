@@ -59,6 +59,8 @@ class PcbEditorWebGL {
 
         // Create overlay canvas for text and interactive UI (cursor, selection)
         this._overlayCanvas = document.createElement('canvas');
+        this._overlayCanvas.id = 'pcbOverlayCanvas';
+        this._overlayCanvas.className = 'pcb-overlay-canvas';
         this._overlayCanvas.style.position = 'absolute';
         this._overlayCanvas.style.top = '0';
         this._overlayCanvas.style.left = '0';
@@ -69,6 +71,7 @@ class PcbEditorWebGL {
         this._canvas.parentElement.style.position = 'relative';
         this._canvas.parentElement.appendChild(this._overlayCanvas);
         this._overlayCtx = this._overlayCanvas.getContext('2d');
+        this._syncOverlayVisibility();
 
         window.addEventListener('resize', this._resizeHandler);
         
@@ -247,6 +250,10 @@ class PcbEditorWebGL {
     load(boardModel) {
         this.ensure();
         pcbState.boardModel = normalizeBoardModel(boardModel || { components: [], traces: [], vias: [], nets: [] });
+        const liveRatsnest = this._computeClientRatsnest(pcbState.boardModel);
+        pcbState.ratsnest = Object.keys(liveRatsnest).length
+            ? liveRatsnest
+            : (pcbState.boardModel.ratsnest || {});
         ensurePcbLayerVisibility(pcbState.boardModel);
         pcbState.activeTool = PCB_TOOL.PAN;
         pcbState.selectedComponentRef = null;
@@ -340,6 +347,7 @@ class PcbEditorWebGL {
         
         this._overlayCanvas.width = w;
         this._overlayCanvas.height = h;
+        this._syncOverlayVisibility();
 
         pcbState.cx = w / 2;
         pcbState.cy = h / 2;
@@ -474,6 +482,7 @@ class PcbEditorWebGL {
         const model = pcbState.boardModel;
         if (!model) return;
         this._drawBoardCanvas(ctx, model);
+        this._drawAirwiresCanvas(ctx, model);
         this._drawBoardTexts(ctx, model);
 
         // Draw Active Route Cursor / Airwires
@@ -499,12 +508,68 @@ class PcbEditorWebGL {
         }
     }
 
+    _syncOverlayVisibility() {
+        if (!this._overlayCanvas || !this._canvas) return;
+        const visible = this._canvas.style.display !== 'none' && this._canvas.style.visibility !== 'hidden';
+        this._overlayCanvas.style.display = visible ? 'block' : 'none';
+        this._overlayCanvas.style.visibility = visible ? 'visible' : 'hidden';
+    }
+
+    _drawAirwiresCanvas(ctx, model) {
+        const ratsnest = pcbState.ratsnest || {};
+        const netNames = Object.keys(ratsnest);
+        if (!netNames.length) return;
+        ctx.save();
+        ctx.setLineDash([7, 6]);
+        for (const netName of netNames) {
+            const edges = ratsnest[netName] || [];
+            for (const edge of edges) {
+                const start = this._resolveAirwireEndpoint(model, edge, 'from', 'x1', 'y1');
+                const end = this._resolveAirwireEndpoint(model, edge, 'to', 'x2', 'y2');
+                if (!start || !end) continue;
+                this._strokeWorldPath(ctx, [start, end], 0.24, '#ffffff', 0.52);
+            }
+        }
+        ctx.restore();
+    }
+
+    _resolveAirwireEndpoint(model, edge, pinField, xField, yField) {
+        if (!edge) return null;
+        if (edge[pinField]) {
+            const pos = getPadPositionByPinKey(model, edge[pinField]);
+            if (pos) return pos;
+        }
+        const x = Number(edge[xField]);
+        const y = Number(edge[yField]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return { x, y };
+    }
+
     _drawBoardCanvas(ctx, model) {
         this._drawBoardOutline(ctx, model);
         this._drawTracesCanvas(ctx, model.traces || []);
         this._drawViasCanvas(ctx, model.vias || []);
-        for (const component of model.components || []) {
-            this._drawComponentCanvas(ctx, component);
+
+        const components = model.components || [];
+
+        // Pass 1: all solder mask expansions for every component (bottom layer)
+        for (const component of components) {
+            this._drawComponentMasksCanvas(ctx, component);
+        }
+
+        // Pass 2: all copper pads for every component (middle layer)
+        for (const component of components) {
+            this._drawComponentCopperCanvas(ctx, component);
+        }
+
+        // Pass 3: all drill holes for every component (top — punches through copper)
+        for (const component of components) {
+            this._drawComponentDrillsCanvas(ctx, component);
+        }
+
+        // Graphics (silkscreen, fab, courtyard) drawn last
+        for (const component of components) {
+            this._drawComponentGraphicsCanvas(ctx, component);
         }
     }
 
@@ -577,28 +642,57 @@ class PcbEditorWebGL {
     }
 
     _drawComponentCanvas(ctx, component) {
-        this._drawComponentPadsCanvas(ctx, component);
+        this._drawComponentMasksCanvas(ctx, component);
+        this._drawComponentCopperCanvas(ctx, component);
+        this._drawComponentDrillsCanvas(ctx, component);
         this._drawComponentGraphicsCanvas(ctx, component);
     }
 
-    _drawComponentPadsCanvas(ctx, component) {
+    _drawComponentMasksCanvas(ctx, component) {
         const pads = (component.pads || []).slice().sort((a, b) => ((b.width || 0) * (b.height || 0)) - ((a.width || 0) * (a.height || 0)));
         for (const pad of pads) {
+            if (!(pad.layers || ['F.Cu']).some((layer) => isPcbLayerVisible(layer))) continue;
             const center = getComponentPadPosition(component, pad);
             const rotation = (component.rotation || 0) + (pad.rotation || 0);
             const width = pad.width || 1;
             const height = pad.height || 1;
+            this._fillPadShape(ctx, center, width + 0.34, height + 0.34, pad.shape || 'rect', rotation, '#12392f', 0.92, pad.roundrect_rratio);
+        }
+    }
+
+    _drawComponentCopperCanvas(ctx, component) {
+        const pads = (component.pads || []).slice().sort((a, b) => ((b.width || 0) * (b.height || 0)) - ((a.width || 0) * (a.height || 0)));
+        for (const pad of pads) {
             if (!(pad.layers || ['F.Cu']).some((layer) => isPcbLayerVisible(layer))) continue;
+            const center = getComponentPadPosition(component, pad);
+            const rotation = (component.rotation || 0) + (pad.rotation || 0);
+            const width = pad.width || 1;
+            const height = pad.height || 1;
             const isBottom = (pad.layers || []).some((layer) => isBottomCopperLayer(layer));
             const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht' || pad.drill;
             const copperColor = isThrough ? '#f2c8b8' : (isBottom ? '#5b93ff' : '#f27a6a');
-            this._fillPadShape(ctx, center, width + 0.34, height + 0.34, pad.shape || 'rect', rotation, '#12392f', 0.95, pad.roundrect_rratio);
             this._fillPadShape(ctx, center, width, height, pad.shape || 'rect', rotation, copperColor, 1, pad.roundrect_rratio, '#ffb199');
-            if (isThrough) {
-                const drill = Math.max(pad.drill || Math.min(width, height) * 0.5, 0.2);
-                this._fillPadDrill(ctx, center, drill);
-            }
         }
+    }
+
+    _drawComponentDrillsCanvas(ctx, component) {
+        for (const pad of component.pads || []) {
+            const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht' || pad.drill;
+            if (!isThrough) continue;
+            if (!(pad.layers || ['F.Cu']).some((layer) => isPcbLayerVisible(layer))) continue;
+            const center = getComponentPadPosition(component, pad);
+            const width = pad.width || 1;
+            const height = pad.height || 1;
+            const drill = Math.max(pad.drill || Math.min(width, height) * 0.5, 0.2);
+            this._fillPadDrill(ctx, center, drill);
+        }
+    }
+
+    _drawComponentPadsCanvas(ctx, component) {
+        // Legacy single-pass method (kept for compatibility)
+        this._drawComponentMasksCanvas(ctx, component);
+        this._drawComponentCopperCanvas(ctx, component);
+        this._drawComponentDrillsCanvas(ctx, component);
     }
 
     _drawComponentGraphicsCanvas(ctx, component) {
@@ -894,9 +988,14 @@ class PcbEditorWebGL {
 
     _fillPadDrill(ctx, center, drillDiameter) {
         const pt = this.worldToScreen(center.x, center.y);
+        const r = Math.max(this._worldRadiusToPixels(drillDiameter / 2), 1.5);
+        // KiCanvas approach: draw hole using background color as solid opaque fill.
+        // The ':Pad:Holes' layer in KiCanvas uses theme['background'] color (#0b1116).
+        // This works because holes are drawn in a single global pass AFTER all copper
+        // from all components, so background-color circles always sit on top.
         ctx.beginPath();
         ctx.fillStyle = '#0b1116';
-        ctx.arc(pt.x, pt.y, this._worldRadiusToPixels(drillDiameter / 2), 0, Math.PI * 2);
+        ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -1056,11 +1155,164 @@ class PcbEditorWebGL {
         if (this._history.length > 0) {
             const entry = this._history.pop();
             pcbState.boardModel = entry.before;
+            pcbState.ratsnest = this._computeClientRatsnest(pcbState.boardModel);
             this._buildBuffers();
             this.refresh();
             await this.saveBoardModel();
         }
     }
     async redo() {}
-    async fetchRatsnest() { return true; }
+
+    refreshAirwires() {
+        if (!pcbState.boardModel) {
+            pcbState.ratsnest = {};
+            this.requestOverlayRefresh();
+            return {};
+        }
+        pcbState.ratsnest = this._computeClientRatsnest(pcbState.boardModel);
+        this.requestOverlayRefresh();
+        return pcbState.ratsnest;
+    }
+
+    _computeClientRatsnest(boardModel) {
+        const model = normalizeBoardModel(boardModel || { components: [], traces: [], vias: [], nets: [] });
+        const result = {};
+        const nets = Array.isArray(model.nets) ? model.nets : [];
+        for (const netEntry of nets) {
+            const netName = netEntry.name || netEntry.net || '';
+            const pinKeys = Array.isArray(netEntry.pins) ? netEntry.pins : [];
+            if (!netName || pinKeys.length < 2) continue;
+            const positions = [];
+            for (const pinKey of pinKeys) {
+                const pos = getPadPositionByPinKey(model, pinKey);
+                if (pos) positions.push({ pinKey, pos });
+            }
+            if (positions.length < 2) continue;
+            const adjacency = new Map();
+            for (const trace of model.traces || []) {
+                if (String(trace.net || '').toUpperCase() !== String(netName).toUpperCase()) continue;
+                const path = Array.isArray(trace.path) ? trace.path : [];
+                if (path.length < 2) continue;
+                const start = path[0];
+                const end = path[path.length - 1];
+                const startKey = `${Number(start.x).toFixed(2)},${Number(start.y).toFixed(2)}`;
+                const endKey = `${Number(end.x).toFixed(2)},${Number(end.y).toFixed(2)}`;
+                if (!adjacency.has(startKey)) adjacency.set(startKey, []);
+                if (!adjacency.has(endKey)) adjacency.set(endKey, []);
+                adjacency.get(startKey).push(endKey);
+                adjacency.get(endKey).push(startKey);
+            }
+            const pointToIndices = new Map();
+            positions.forEach((entry, index) => {
+                const key = `${Number(entry.pos.x).toFixed(2)},${Number(entry.pos.y).toFixed(2)}`;
+                if (!pointToIndices.has(key)) pointToIndices.set(key, []);
+                pointToIndices.get(key).push(index);
+            });
+            const groups = new Array(positions.length).fill(-1);
+            let groupId = 0;
+            for (let index = 0; index < positions.length; index += 1) {
+                if (groups[index] !== -1) continue;
+                const seed = positions[index];
+                const seedKey = `${Number(seed.pos.x).toFixed(2)},${Number(seed.pos.y).toFixed(2)}`;
+                const stack = [seedKey];
+                const visited = new Set();
+                while (stack.length) {
+                    const point = stack.pop();
+                    if (visited.has(point)) continue;
+                    visited.add(point);
+                    for (const padIndex of pointToIndices.get(point) || []) {
+                        groups[padIndex] = groupId;
+                    }
+                    for (const neighbor of adjacency.get(point) || []) {
+                        if (!visited.has(neighbor)) stack.push(neighbor);
+                    }
+                }
+                if (groups[index] === -1) groups[index] = groupId;
+                groupId += 1;
+            }
+            const uniqueGroups = Array.from(new Set(groups));
+            if (uniqueGroups.length < 2) continue;
+            const representatives = [];
+            for (const group of uniqueGroups) {
+                const repIndex = groups.findIndex((value) => value === group);
+                if (repIndex >= 0) representatives.push(repIndex);
+            }
+            const edges = [];
+            for (let a = 0; a < representatives.length; a += 1) {
+                const pa = positions[representatives[a]];
+                for (let b = a + 1; b < representatives.length; b += 1) {
+                    const pb = positions[representatives[b]];
+                    edges.push({
+                        a,
+                        b,
+                        dist: Math.hypot(pa.pos.x - pb.pos.x, pa.pos.y - pb.pos.y),
+                    });
+                }
+            }
+            edges.sort((left, right) => left.dist - right.dist);
+            const parent = representatives.map((_, index) => index);
+            const rank = representatives.map(() => 0);
+            const find = (value) => {
+                let current = value;
+                while (parent[current] !== current) {
+                    parent[current] = parent[parent[current]];
+                    current = parent[current];
+                }
+                return current;
+            };
+            const unite = (left, right) => {
+                const rootLeft = find(left);
+                const rootRight = find(right);
+                if (rootLeft === rootRight) return false;
+                if (rank[rootLeft] < rank[rootRight]) parent[rootLeft] = rootRight;
+                else if (rank[rootLeft] > rank[rootRight]) parent[rootRight] = rootLeft;
+                else {
+                    parent[rootRight] = rootLeft;
+                    rank[rootLeft] += 1;
+                }
+                return true;
+            };
+            const netEdges = [];
+            for (const edge of edges) {
+                if (!unite(edge.a, edge.b)) continue;
+                const from = positions[representatives[edge.a]];
+                const to = positions[representatives[edge.b]];
+                netEdges.push({
+                    from: from.pinKey,
+                    to: to.pinKey,
+                    x1: from.pos.x,
+                    y1: from.pos.y,
+                    x2: to.pos.x,
+                    y2: to.pos.y,
+                });
+            }
+            if (netEdges.length) result[netName] = netEdges;
+        }
+        return result;
+    }
+
+    async fetchRatsnest() {
+        if (!pcbState.boardModel) {
+            pcbState.ratsnest = {};
+            return {};
+        }
+        let serverRatsnest = null;
+        try {
+            const response = await fetch('/api/ratsnest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pcbState.boardModel),
+            });
+            if (!response.ok) {
+                throw new Error(`ratsnest failed (${response.status})`);
+            }
+            serverRatsnest = await response.json();
+        } catch (_) {
+            serverRatsnest = null;
+        }
+        const clientRatsnest = this._computeClientRatsnest(pcbState.boardModel);
+        pcbState.ratsnest = Object.keys(clientRatsnest).length ? clientRatsnest : (serverRatsnest || {});
+        this.requestOverlayRefresh();
+        return pcbState.ratsnest;
+    }
 }

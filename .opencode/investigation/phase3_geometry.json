@@ -1,0 +1,5538 @@
+{
+  "summary": {
+    "totalPads": 75,
+    "totalDrawCommands": 91,
+    "padDrawCallTypes": {
+      "drawRoundedRect": 57,
+      "drawCircle": 16,
+      "drawRect": 2
+    },
+    "padsWithDrill": 16,
+    "padsWithoutDrill": 59,
+    "roundrectPadCount": 57,
+    "roundrectRadiusIssues": 57,
+    "perNumber": {
+      "1": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "2": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "3": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "4": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "5": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "6": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "7": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "8": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "9": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "10": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "11": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "12": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "13": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "14": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "15": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "16": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "17": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "18": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "19": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "20": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "21": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "22": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "23": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "24": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "25": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "26": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "27": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "28": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "29": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "30": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "31": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "32": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "33": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "34": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "35": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "36": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "37": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "38": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "39": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "40": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "41": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "42": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "43": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "44": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "45": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "46": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "47": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "48": {
+        "count": 1,
+        "drawCalls": 1,
+        "hasDrills": 0
+      },
+      "49": {
+        "count": 18,
+        "drawCalls": 34,
+        "hasDrills": 16
+      },
+      "": {
+        "count": 9,
+        "drawCalls": 9,
+        "hasDrills": 0
+      }
+    }
+  },
+  "roundrectAnalysis": [
+    {
+      "index": 0,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 1,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 2,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 3,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 4,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 5,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 6,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 7,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 8,
+      "number": "",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.24,
+      "hardcodedRadius": 0.3072,
+      "actualRadius": 0.3072,
+      "radiusMismatch": true
+    },
+    {
+      "index": 9,
+      "number": "1",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 10,
+      "number": "2",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 11,
+      "number": "3",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 12,
+      "number": "4",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 13,
+      "number": "5",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 14,
+      "number": "6",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 15,
+      "number": "7",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 16,
+      "number": "8",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 17,
+      "number": "9",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 18,
+      "number": "10",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 19,
+      "number": "11",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 20,
+      "number": "12",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 21,
+      "number": "13",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 22,
+      "number": "14",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 23,
+      "number": "15",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 24,
+      "number": "16",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 25,
+      "number": "17",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 26,
+      "number": "18",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 27,
+      "number": "19",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 28,
+      "number": "20",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 29,
+      "number": "21",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 30,
+      "number": "22",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 31,
+      "number": "23",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 32,
+      "number": "24",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 33,
+      "number": "25",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 34,
+      "number": "26",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 35,
+      "number": "27",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 36,
+      "number": "28",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 37,
+      "number": "29",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 38,
+      "number": "30",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 39,
+      "number": "31",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 40,
+      "number": "32",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 41,
+      "number": "33",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 42,
+      "number": "34",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 43,
+      "number": "35",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 44,
+      "number": "36",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 45,
+      "number": "37",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 46,
+      "number": "38",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 47,
+      "number": "39",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 48,
+      "number": "40",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 49,
+      "number": "41",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 50,
+      "number": "42",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 51,
+      "number": "43",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 52,
+      "number": "44",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 53,
+      "number": "45",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 54,
+      "number": "46",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 55,
+      "number": "47",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    },
+    {
+      "index": 56,
+      "number": "48",
+      "expectedRratio": 0.25,
+      "expectedRadius": 0.05,
+      "hardcodedRadius": 0.064,
+      "actualRadius": 0.064,
+      "radiusMismatch": true
+    }
+  ],
+  "pads": [
+    {
+      "index": 0,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.23,
+        "y": -1.23
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 1,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.23,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 2,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.23,
+        "y": 1.23
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 3,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": -1.23
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 4,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 5,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 1.23
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 6,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.23,
+        "y": -1.23
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 7,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.23,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 8,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.23,
+        "y": 1.23
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.48,
+            -0.48,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 9,
+      "number": "1",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -2.275
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 10,
+      "number": "2",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -1.925
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 11,
+      "number": "3",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -1.575
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 12,
+      "number": "4",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -1.225
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 13,
+      "number": "5",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -0.875
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 14,
+      "number": "6",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -0.525
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 15,
+      "number": "7",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -0.175
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 16,
+      "number": "8",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 0.175
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 17,
+      "number": "9",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 0.525
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 18,
+      "number": "10",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 0.875
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 19,
+      "number": "11",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 1.225
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 20,
+      "number": "12",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 1.575
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 21,
+      "number": "13",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 1.925
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 22,
+      "number": "14",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 2.275
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 23,
+      "number": "15",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.575,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 24,
+      "number": "16",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.225,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 25,
+      "number": "17",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.875,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 26,
+      "number": "18",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.525,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 27,
+      "number": "19",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.175,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 28,
+      "number": "20",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.175,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 29,
+      "number": "21",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.525,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 30,
+      "number": "22",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.875,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 31,
+      "number": "23",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.225,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 32,
+      "number": "24",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.575,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 33,
+      "number": "25",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 2.275
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 34,
+      "number": "26",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 1.925
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 35,
+      "number": "27",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 1.575
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 36,
+      "number": "28",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 1.225
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 37,
+      "number": "29",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 0.875
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 38,
+      "number": "30",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 0.525
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 39,
+      "number": "31",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 0.175
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 40,
+      "number": "32",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -0.175
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 41,
+      "number": "33",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -0.525
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 42,
+      "number": "34",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -0.875
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 43,
+      "number": "35",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -1.225
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 44,
+      "number": "36",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -1.575
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 45,
+      "number": "37",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -1.925
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 46,
+      "number": "38",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -2.275
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.4,
+            -0.1,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 47,
+      "number": "39",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.575,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 48,
+      "number": "40",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.225,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 49,
+      "number": "41",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.875,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 50,
+      "number": "42",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.525,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 51,
+      "number": "43",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.175,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 52,
+      "number": "44",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.175,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 53,
+      "number": "45",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.525,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 54,
+      "number": "46",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.875,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 55,
+      "number": "47",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.225,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 56,
+      "number": "48",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.575,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            -0.1,
+            -0.4,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 57,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 58,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 59,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 60,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 61,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 62,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 63,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 64,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 65,
+      "number": "49",
+      "shape": "rect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRect",
+          "args": [
+            -1.85,
+            -1.85,
+            3.7,
+            3.7
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 66,
+      "number": "49",
+      "shape": "rect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRect",
+          "args": [
+            -1.85,
+            -1.85,
+            3.7,
+            3.7
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 67,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 68,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 69,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 70,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 71,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 72,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 73,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 74,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            0,
+            0,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 0,
+          "cy": 0,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    }
+  ],
+  "padsRotated": [
+    {
+      "index": 0,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.23,
+        "y": -1.23
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 1,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.23,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 2,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.23,
+        "y": 1.23
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 3,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": -1.23
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 4,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 5,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 1.23
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 6,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.23,
+        "y": -1.23
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 7,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.23,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 8,
+      "number": "",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.23,
+        "y": 1.23
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.52,
+            4.52,
+            0.96,
+            0.96,
+            0.3072
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 9,
+      "number": "1",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -2.275
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 10,
+      "number": "2",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -1.925
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 11,
+      "number": "3",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -1.575
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 12,
+      "number": "4",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -1.225
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 13,
+      "number": "5",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -0.875
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 14,
+      "number": "6",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -0.525
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 15,
+      "number": "7",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": -0.175
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 16,
+      "number": "8",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 0.175
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 17,
+      "number": "9",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 0.525
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 18,
+      "number": "10",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 0.875
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 19,
+      "number": "11",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 1.225
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 20,
+      "number": "12",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 1.575
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 21,
+      "number": "13",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 1.925
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 22,
+      "number": "14",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -2.45,
+        "y": 2.275
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 23,
+      "number": "15",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.575,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 24,
+      "number": "16",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.225,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 25,
+      "number": "17",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.875,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 26,
+      "number": "18",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.525,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 27,
+      "number": "19",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.175,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 28,
+      "number": "20",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.175,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 29,
+      "number": "21",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.525,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 30,
+      "number": "22",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.875,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 31,
+      "number": "23",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.225,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 32,
+      "number": "24",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.575,
+        "y": 2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 33,
+      "number": "25",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 2.275
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 34,
+      "number": "26",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 1.925
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 35,
+      "number": "27",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 1.575
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 36,
+      "number": "28",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 1.225
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 37,
+      "number": "29",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 0.875
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 38,
+      "number": "30",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 0.525
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 39,
+      "number": "31",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": 0.175
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 40,
+      "number": "32",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -0.175
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 41,
+      "number": "33",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -0.525
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 42,
+      "number": "34",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -0.875
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 43,
+      "number": "35",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -1.225
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 44,
+      "number": "36",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -1.575
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 45,
+      "number": "37",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -1.925
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 46,
+      "number": "38",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 2.45,
+        "y": -2.275
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.6,
+            4.9,
+            0.8,
+            0.2,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 47,
+      "number": "39",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.575,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 48,
+      "number": "40",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 1.225,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 49,
+      "number": "41",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.875,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 50,
+      "number": "42",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.525,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 51,
+      "number": "43",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0.175,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 52,
+      "number": "44",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.175,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 53,
+      "number": "45",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.525,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 54,
+      "number": "46",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -0.875,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 55,
+      "number": "47",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.225,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 56,
+      "number": "48",
+      "shape": "roundrect",
+      "type": "smd",
+      "localPosition": {
+        "x": -1.575,
+        "y": -2.45
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRoundedRect",
+          "args": [
+            9.9,
+            4.6,
+            0.2,
+            0.8,
+            0.064
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 57,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 58,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 59,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 60,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -1.6,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 61,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 62,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 63,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 64,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": -0.533333,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 65,
+      "number": "49",
+      "shape": "rect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRect",
+          "args": [
+            8.15,
+            3.15,
+            3.7,
+            3.7
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 66,
+      "number": "49",
+      "shape": "rect",
+      "type": "smd",
+      "localPosition": {
+        "x": 0,
+        "y": 0
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawRect",
+          "args": [
+            8.15,
+            3.15,
+            3.7,
+            3.7
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [],
+      "totalDrawCommands": 1,
+      "hasDrill": false
+    },
+    {
+      "index": 67,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 68,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 69,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 70,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 0.533333,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 71,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": -1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 72,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": -0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 73,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": 0.533333
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    },
+    {
+      "index": 74,
+      "number": "49",
+      "shape": "circle",
+      "type": "thru_hole",
+      "localPosition": {
+        "x": 1.6,
+        "y": 1.6
+      },
+      "worldPosition": {
+        "x": 10,
+        "y": 5
+      },
+      "padDrawCalls": [
+        {
+          "method": "drawCircle",
+          "args": [
+            10,
+            5,
+            0.25
+          ],
+          "fill": null
+        }
+      ],
+      "drillGeometry": [
+        {
+          "type": "circle",
+          "method": "drawCircle",
+          "cx": 10,
+          "cy": 5,
+          "radius": 0.1,
+          "fill": null,
+          "isDrill": true
+        }
+      ],
+      "totalDrawCommands": 2,
+      "hasDrill": true
+    }
+  ]
+}

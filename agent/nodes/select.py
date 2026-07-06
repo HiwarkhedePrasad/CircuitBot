@@ -30,6 +30,124 @@ _PREFIX_RULES: list[tuple[str, str]] = [
     ('CRYSTAL',    'Y'), ('OSCILLATOR', 'Y'), ('RESONATOR', 'Y'),
 ]
 
+_TYPE_BUCKET_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    ("resistor", ("RESISTOR", "R_SMALL", ":R_", " OHM")),
+    ("capacitor", ("CAPACITOR", "C_SMALL", ":C_", "UF", "NF", "PF")),
+    ("inductor", ("INDUCTOR", "L_SMALL", ":L_")),
+    ("diode", ("DIODE", ":D_", "SCHOTTKY", "ZENER")),
+    ("led", ("DEVICE:LED", " LED ", "INDICATOR")),
+    ("connector", ("CONNECTOR", "HEADER", "TERMINAL", "RECEPTACLE")),
+    ("mcu", ("MCU_", "MICROCONTROLLER", "PROCESSOR", "ESP32", "STM32", "RP2040", "RP2350", "ATMEGA", "ATTINY")),
+    ("sensor", ("SENSOR", "TMP", "BME", "DS18", "DHT")),
+    ("regulator_switching", ("REGULATOR_SWITCHING", "BUCK", "BOOST", "STEP-DOWN", "STEP DOWN", "STEP-UP", "STEP UP", "SWITCHING REGULATOR")),
+    ("regulator_linear", ("REGULATOR_LINEAR", "LDO", "LINEAR REGULATOR", "AMS1117")),
+    ("usb_uart", ("CP210", "CH340", "FT232", "FT230", "USB-UART", "USB TO UART", "UART BRIDGE")),
+    ("driver", ("DRIVER", "H-BRIDGE", "MOTOR DRIVER", "LED DRIVER")),
+    ("crystal", ("CRYSTAL", "OSCILLATOR", "RESONATOR")),
+]
+
+_SUBSYSTEM_EXPECTATION_HINTS: list[tuple[str, set[str]]] = [
+    ("power", {"regulator_switching", "regulator_linear"}),
+    ("sensor", {"sensor"}),
+    ("temperature", {"sensor"}),
+    ("microcontroller", {"mcu"}),
+    ("mcu", {"mcu"}),
+    ("wireless", {"mcu", "driver"}),
+    ("status indicator", {"led"}),
+    ("passive", {"resistor", "capacitor", "inductor", "diode"}),
+    ("connector", {"connector"}),
+]
+
+
+def _candidate_text(candidate: dict) -> str:
+    return " ".join(str(candidate.get(key, "") or "") for key in ("id_str", "category", "text", "description")).upper()
+
+
+def _normalize_part_family(id_str: str) -> str:
+    text = (id_str or "").upper()
+    if not text:
+        return ""
+    lib, _, part = text.partition(":")
+    part = part or lib
+    if lib.startswith("DEVICE"):
+        if part.startswith("R_") or part == "R_SMALL":
+            return "DEVICE:RESISTOR"
+        if part.startswith("C_") or part == "C_SMALL":
+            return "DEVICE:CAPACITOR"
+        if part.startswith("L_") or part == "L_SMALL":
+            return "DEVICE:INDUCTOR"
+        if part.startswith("D_") or part == "D_SMALL":
+            return "DEVICE:DIODE"
+        if part == "LED":
+            return "DEVICE:LED"
+    if any(token in text for token in ("CP2102", "CP2104")):
+        return "INTERFACE_USB:CP2102"
+    if "CH340" in text:
+        return "INTERFACE_USB:CH340"
+    if "FT232" in text or "FT230" in text:
+        return "INTERFACE_USB:FTDI_UART"
+    if "STM32" in text:
+        return "MCU:STM32"
+    if "ESP32" in text or "ESP8266" in text:
+        return "MCU:ESP32"
+    if "RP2040" in text:
+        return "MCU:RP2040"
+    if "RP2350" in text:
+        return "MCU:RP2350"
+    if "DS18B20" in text:
+        return "SENSOR:DS18B20"
+    if "TMP117" in text:
+        return "SENSOR:TMP117"
+    if any(token in text for token in ("BUCK", "STEP-DOWN", "STEP DOWN", "SWITCHING")) or lib == "REGULATOR_SWITCHING":
+        return f"{lib or 'REGULATOR'}:SWITCHING"
+    if "LDO" in text or "AMS1117" in text or lib == "REGULATOR_LINEAR":
+        return f"{lib or 'REGULATOR'}:LINEAR"
+    base = re.split(r"[-_/]", part)[0]
+    return f"{lib}:{base}" if lib else base
+
+
+def _candidate_buckets(candidate: dict) -> set[str]:
+    text = _candidate_text(candidate)
+    buckets: set[str] = set()
+    for bucket, patterns in _TYPE_BUCKET_PATTERNS:
+        if any(pattern in text for pattern in patterns):
+            buckets.add(bucket)
+    return buckets
+
+
+def _expected_buckets(sub: dict, prompt: str) -> set[str]:
+    subsystem = (sub.get("subsystem", "") or "").lower()
+    function = (sub.get("function", "") or "").lower()
+    examples = " ".join(str(x) for x in (sub.get("example_components", []) or []))
+    text = f"{subsystem} {function} {examples} {prompt}".upper()
+    expected: set[str] = set()
+    for keyword, buckets in _SUBSYSTEM_EXPECTATION_HINTS:
+        if keyword.upper() in text:
+            expected.update(buckets)
+    if "BUCK" in text or "STEP-DOWN" in text or "STEP DOWN" in text:
+        expected.discard("regulator_linear")
+        expected.add("regulator_switching")
+    if "LDO" in text or "LINEAR REGULATOR" in text:
+        expected.discard("regulator_switching")
+        expected.add("regulator_linear")
+    if "RESISTOR" in text or "OHM" in text:
+        return {"resistor"}
+    if "CAPACITOR" in text or "UF" in text or "NF" in text or "PF" in text:
+        return {"capacitor"}
+    if "INDUCTOR" in text:
+        return {"inductor"}
+    if "LED" in text and "DRIVER" not in text:
+        return {"led"}
+    return expected
+
+
+def _filter_candidates_by_expected_type(sub: dict, candidates: list[dict], prompt: str) -> list[dict]:
+    expected = _expected_buckets(sub, prompt)
+    if not expected:
+        return candidates
+    filtered = [candidate for candidate in candidates if _candidate_buckets(candidate) & expected]
+    return filtered or candidates
+
 
 def _ref_prefix(category: str, id_str: str = '') -> str:
     text = f"{category} {id_str}".upper()
@@ -122,10 +240,15 @@ def select_node(state, config):
         return _stage_result(state, "select", {"selected_components": []})
 
     rejected_ids = set(state.get("rejected_ids", []))
+    rejected_families = set(state.get("rejected_families", []))
     for sub in research:
-        if rejected_ids:
+        if rejected_ids or rejected_families:
             before = len(sub.get("results", []))
-            sub["results"] = [r for r in sub["results"] if r["id_str"] not in rejected_ids]
+            sub["results"] = [
+                r for r in sub["results"]
+                if r["id_str"] not in rejected_ids
+                and _normalize_part_family(r.get("id_str", "")) not in rejected_families
+            ]
             dropped = before - len(sub["results"])
             if dropped:
                 _emit(config, "agent:log", {
@@ -161,7 +284,7 @@ def select_node(state, config):
 
     _emit(config, "agent:thinking", {"message": f"Scoring candidates across {len(research)} subsystem(s)..."})
     for sub in research:
-        candidates = sub.get("results", [])
+        candidates = _filter_candidates_by_expected_type(sub, sub.get("results", []), state.get("prompt", ""))
         if not candidates:
             rj = state.get("rejected_ids", [])
             reason = "all candidates rejected by validator — no substitute available" if rj else "no candidates found"
@@ -557,6 +680,25 @@ def select_node(state, config):
                     s["pads"] = info.get("pads", [])
             except Exception:
                 pass
+        if not s.get("footprint"):
+            _cat, _, _name = s.get("id_str", "").partition(":")
+            if _cat == "Device":
+                if _name == "R":
+                    s["footprint"] = "Resistor_SMD:R_0805_2012Metric"
+                elif _name == "C":
+                    s["footprint"] = "Capacitor_SMD:C_0805_2012Metric"
+                elif _name == "C_Polarized":
+                    s["footprint"] = "Capacitor_SMD:CP_Elec_4x5.3"
+                elif _name == "L":
+                    s["footprint"] = "Inductor_SMD:L_0805_2012Metric"
+                elif _name.startswith("D_") or _name == "D":
+                    s["footprint"] = "Diode_SMD:D_SOD-123"
+                elif _name == "LED":
+                    s["footprint"] = "LED_SMD:LED_0805_2012Metric"
+            elif _cat == "Switch" and "SW_Push" in _name:
+                s["footprint"] = "Button_Switch_SMD:SW_SPST_B3U-1000P"
+            elif _cat in ("Transistor_BJT", "Transistor_FET"):
+                s["footprint"] = "Package_TO_SOT_SMD:SOT-23"
 
     _emit(config, "agent:log", {
         "message": f"Selected {len(selected)} components: " +

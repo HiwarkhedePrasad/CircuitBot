@@ -261,9 +261,14 @@ def api_pcb_enriched_board_model():
         from pcb_design.ratsnest import compute_ratsnest
 
         board_model = design_copy.get("board_model") or {}
-        if board_model.get("_pcbnew_content") and not board_model.get("_render_from_model"):
+        if board_model.get("_render_from_model"):
+            from pcb_design.board_model import BoardModel as BM
+            board_model["ratsnest"] = compute_ratsnest(BM.from_dict(board_model))
+            return jsonify({"board_model": board_model})
+
+        if board_model.get("_pcbnew_content"):
             pcb_text = board_model["_pcbnew_content"]
-        elif design_copy.get("selected_components") and not board_model.get("_render_from_model"):
+        elif design_copy.get("selected_components"):
             rich_design = dict(design_copy)
             rich_design.pop("board_model", None)
             pcb_text = generate_kicad_pcb(rich_design)
@@ -689,7 +694,14 @@ def api_import_pcb():
         file.save(tmp_path)
         from pcb_design.pcb_import import import_board
         model = import_board(tmp_path)
-        return jsonify({'board_model': model.to_dict()})
+        payload = model.to_dict()
+        payload["_render_from_model"] = True
+        
+        with design_lock:
+            LAST_DESIGN["board_model"] = payload
+            _WIREBENDER_LAYOUT["board_model"] = payload
+
+        return jsonify({'board_model': payload})
     except Exception as e:
         import traceback
         traceback.print_exc()

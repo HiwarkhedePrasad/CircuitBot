@@ -1,0 +1,2933 @@
+{
+  "summary": {
+    "totalComparisons": 75,
+    "worldPositionMatches": 75,
+    "worldPositionMismatches": 0,
+    "shapeRotationMatches": 25,
+    "shapeRotationMismatches": 50,
+    "rotationMismatchExamples": [
+      {
+        "fpState": "rotation 90°",
+        "padNumber": "",
+        "padIndex": 0,
+        "kicanvasRot": -90,
+        "ourRot": 90,
+        "diff": -180
+      },
+      {
+        "fpState": "rotation 90°",
+        "padNumber": "",
+        "padIndex": 1,
+        "kicanvasRot": -90,
+        "ourRot": 90,
+        "diff": -180
+      },
+      {
+        "fpState": "rotation 90°",
+        "padNumber": "",
+        "padIndex": 2,
+        "kicanvasRot": -90,
+        "ourRot": 90,
+        "diff": -180
+      },
+      {
+        "fpState": "rotation 90°",
+        "padNumber": "",
+        "padIndex": 3,
+        "kicanvasRot": -90,
+        "ourRot": 90,
+        "diff": -180
+      },
+      {
+        "fpState": "rotation 90°",
+        "padNumber": "",
+        "padIndex": 4,
+        "kicanvasRot": -90,
+        "ourRot": 90,
+        "diff": -180
+      }
+    ]
+  },
+  "cameraState": {
+    "baseScale": 50,
+    "zoom": 1,
+    "midX": 0,
+    "midY": 0,
+    "cx": 600,
+    "cy": 400,
+    "panX": 0,
+    "panY": 0
+  },
+  "footprintStates": [
+    {
+      "name": "rotation 0°",
+      "x": 0,
+      "y": 0,
+      "rot": 0
+    },
+    {
+      "name": "rotation 90°",
+      "x": 10,
+      "y": 5,
+      "rot": 90
+    },
+    {
+      "name": "rotation -45°",
+      "x": -5,
+      "y": 8,
+      "rot": -45
+    }
+  ],
+  "results": [
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "",
+      "padIndex": 0,
+      "padLocal": {
+        "x": -1.23,
+        "y": -1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -1.23,
+          "y": -1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 538.5,
+          "y": 461.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -1.23,
+          "y": -1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 538.5,
+          "y": 461.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "",
+      "padIndex": 1,
+      "padLocal": {
+        "x": -1.23,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -1.23,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 538.5,
+          "y": 400
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -1.23,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 538.5,
+          "y": 400
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "",
+      "padIndex": 2,
+      "padLocal": {
+        "x": -1.23,
+        "y": 1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -1.23,
+          "y": 1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 538.5,
+          "y": 338.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -1.23,
+          "y": 1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 538.5,
+          "y": 338.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "",
+      "padIndex": 3,
+      "padLocal": {
+        "x": 0,
+        "y": -1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0,
+          "y": -1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 461.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0,
+          "y": -1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 461.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "",
+      "padIndex": 4,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 400
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 400
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "",
+      "padIndex": 5,
+      "padLocal": {
+        "x": 0,
+        "y": 1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0,
+          "y": 1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 338.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0,
+          "y": 1.23
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 338.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "39",
+      "padIndex": 47,
+      "padLocal": {
+        "x": 1.575,
+        "y": -2.45,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 1.575,
+          "y": -2.45
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 678.75,
+          "y": 522.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 1.575,
+          "y": -2.45
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 678.75,
+          "y": 522.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 57,
+      "padLocal": {
+        "x": -1.6,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -1.6,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 480
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -1.6,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 480
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 58,
+      "padLocal": {
+        "x": -1.6,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -1.6,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 426.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -1.6,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 426.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 59,
+      "padLocal": {
+        "x": -1.6,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -1.6,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 373.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -1.6,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 373.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 60,
+      "padLocal": {
+        "x": -1.6,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -1.6,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 320
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -1.6,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 520,
+          "y": 320
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 61,
+      "padLocal": {
+        "x": -0.533333,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 480
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 480
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 62,
+      "padLocal": {
+        "x": -0.533333,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 426.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 426.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 63,
+      "padLocal": {
+        "x": -0.533333,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 373.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 373.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 64,
+      "padLocal": {
+        "x": -0.533333,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 320
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -0.533333,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 573.33335,
+          "y": 320
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 65,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 400
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 400
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 66,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 400
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0,
+          "y": 0
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 600,
+          "y": 400
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 67,
+      "padLocal": {
+        "x": 0.533333,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 480
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 480
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 68,
+      "padLocal": {
+        "x": 0.533333,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 426.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 426.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 69,
+      "padLocal": {
+        "x": 0.533333,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 373.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 373.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 70,
+      "padLocal": {
+        "x": 0.533333,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 320
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 0.533333,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 626.66665,
+          "y": 320
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 71,
+      "padLocal": {
+        "x": 1.6,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 1.6,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 480
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 1.6,
+          "y": -1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 480
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 72,
+      "padLocal": {
+        "x": 1.6,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 1.6,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 426.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 1.6,
+          "y": -0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 426.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 73,
+      "padLocal": {
+        "x": 1.6,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 1.6,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 373.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 1.6,
+          "y": 0.533333
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 373.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 0°",
+      "fpX": 0,
+      "fpY": 0,
+      "fpRot": 0,
+      "padNumber": "49",
+      "padIndex": 74,
+      "padLocal": {
+        "x": 1.6,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 1.6,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 320
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 1.6,
+          "y": 1.6
+        },
+        "shapeRotation": 0,
+        "screenPos": {
+          "x": 680,
+          "y": 320
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 0,
+      "rotationMatch": true
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "",
+      "padIndex": 0,
+      "padLocal": {
+        "x": -1.23,
+        "y": -1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 11.23,
+          "y": 3.77
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1161.5,
+          "y": 211.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 11.23,
+          "y": 3.77
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1161.5,
+          "y": 211.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "",
+      "padIndex": 1,
+      "padLocal": {
+        "x": -1.23,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10,
+          "y": 3.77
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1100,
+          "y": 211.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10,
+          "y": 3.77
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1100,
+          "y": 211.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "",
+      "padIndex": 2,
+      "padLocal": {
+        "x": -1.23,
+        "y": 1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 8.77,
+          "y": 3.77
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1038.5,
+          "y": 211.5
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 8.77,
+          "y": 3.77
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1038.5,
+          "y": 211.5
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "",
+      "padIndex": 3,
+      "padLocal": {
+        "x": 0,
+        "y": -1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 11.23,
+          "y": 5
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1161.5,
+          "y": 150
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 11.23,
+          "y": 5
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1161.5,
+          "y": 150
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "",
+      "padIndex": 4,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10,
+          "y": 5
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1100,
+          "y": 150
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10,
+          "y": 5
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1100,
+          "y": 150
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "",
+      "padIndex": 5,
+      "padLocal": {
+        "x": 0,
+        "y": 1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 8.77,
+          "y": 5
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1038.5,
+          "y": 150
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 8.77,
+          "y": 5
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1038.5,
+          "y": 150
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "39",
+      "padIndex": 47,
+      "padLocal": {
+        "x": 1.575,
+        "y": -2.45,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 12.45,
+          "y": 6.574999999999999
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1222.5,
+          "y": 71.25000000000006
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 12.45,
+          "y": 6.574999999999999
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1222.5,
+          "y": 71.25000000000006
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 57,
+      "padLocal": {
+        "x": -1.6,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 3.4
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1180,
+          "y": 230
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 3.4
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1180,
+          "y": 230
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 58,
+      "padLocal": {
+        "x": -1.6,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10.533332999999999,
+          "y": 3.4
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1126.66665,
+          "y": 230
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10.533332999999999,
+          "y": 3.4
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1126.66665,
+          "y": 230
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 59,
+      "padLocal": {
+        "x": -1.6,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 9.466667,
+          "y": 3.4
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1073.3333499999999,
+          "y": 230
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 9.466667,
+          "y": 3.4
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1073.3333499999999,
+          "y": 230
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 60,
+      "padLocal": {
+        "x": -1.6,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 3.4
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1020,
+          "y": 230
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 3.4
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1020,
+          "y": 230
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 61,
+      "padLocal": {
+        "x": -0.533333,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 4.466667
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1180,
+          "y": 176.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 4.466667
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1180,
+          "y": 176.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 62,
+      "padLocal": {
+        "x": -0.533333,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10.533333,
+          "y": 4.466667
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1126.6666500000001,
+          "y": 176.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10.533333,
+          "y": 4.466667
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1126.6666500000001,
+          "y": 176.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 63,
+      "padLocal": {
+        "x": -0.533333,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 9.466667,
+          "y": 4.466667
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1073.3333499999999,
+          "y": 176.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 9.466667,
+          "y": 4.466667
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1073.3333499999999,
+          "y": 176.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 64,
+      "padLocal": {
+        "x": -0.533333,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 4.466667
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1020,
+          "y": 176.66665
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 4.466667
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1020,
+          "y": 176.66665
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 65,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10,
+          "y": 5
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1100,
+          "y": 150
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10,
+          "y": 5
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1100,
+          "y": 150
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 66,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10,
+          "y": 5
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1100,
+          "y": 150
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10,
+          "y": 5
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1100,
+          "y": 150
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 67,
+      "padLocal": {
+        "x": 0.533333,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 5.533333
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1180,
+          "y": 123.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 5.533333
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1180,
+          "y": 123.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 68,
+      "padLocal": {
+        "x": 0.533333,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10.533333,
+          "y": 5.533333
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1126.6666500000001,
+          "y": 123.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10.533333,
+          "y": 5.533333
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1126.6666500000001,
+          "y": 123.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 69,
+      "padLocal": {
+        "x": 0.533333,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 9.466667,
+          "y": 5.533333
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1073.3333499999999,
+          "y": 123.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 9.466667,
+          "y": 5.533333
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1073.3333499999999,
+          "y": 123.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 70,
+      "padLocal": {
+        "x": 0.533333,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 5.533333
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1020,
+          "y": 123.33335
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 5.533333
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1020,
+          "y": 123.33335
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 71,
+      "padLocal": {
+        "x": 1.6,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 6.6
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1180,
+          "y": 70
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 11.6,
+          "y": 6.6
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1180,
+          "y": 70
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 72,
+      "padLocal": {
+        "x": 1.6,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 10.533333,
+          "y": 6.6
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1126.6666500000001,
+          "y": 70
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 10.533333,
+          "y": 6.6
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1126.6666500000001,
+          "y": 70
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 73,
+      "padLocal": {
+        "x": 1.6,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 9.466667000000001,
+          "y": 6.6
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1073.33335,
+          "y": 70
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 9.466667000000001,
+          "y": 6.6
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1073.33335,
+          "y": 70
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation 90°",
+      "fpX": 10,
+      "fpY": 5,
+      "fpRot": 90,
+      "padNumber": "49",
+      "padIndex": 74,
+      "padLocal": {
+        "x": 1.6,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 6.6
+        },
+        "shapeRotation": -90,
+        "screenPos": {
+          "x": 1020,
+          "y": 70
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": 8.4,
+          "y": 6.6
+        },
+        "shapeRotation": 90,
+        "screenPos": {
+          "x": 1020,
+          "y": 70
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": -180,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "",
+      "padIndex": 0,
+      "padLocal": {
+        "x": -1.23,
+        "y": -1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -6.739482681718907,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 263.02586591405463,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -6.739482681718907,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 263.02586591405463,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "",
+      "padIndex": 1,
+      "padLocal": {
+        "x": -1.23,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5.869741340859454,
+          "y": 8.869741340859454
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 306.5129329570273,
+          "y": -43.48706704297268
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5.869741340859454,
+          "y": 8.869741340859454
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 306.5129329570273,
+          "y": -43.48706704297268
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "",
+      "padIndex": 2,
+      "padLocal": {
+        "x": -1.23,
+        "y": 1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 9.739482681718908
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": -86.97413408594537
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 9.739482681718908
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": -86.97413408594537
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "",
+      "padIndex": 3,
+      "padLocal": {
+        "x": 0,
+        "y": -1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5.869741340859453,
+          "y": 7.130258659140546
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 306.5129329570274,
+          "y": 43.48706704297268
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5.869741340859453,
+          "y": 7.130258659140546
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 306.5129329570274,
+          "y": 43.48706704297268
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "",
+      "padIndex": 4,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "",
+      "padIndex": 5,
+      "padLocal": {
+        "x": 0,
+        "y": 1.23,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -4.130258659140547,
+          "y": 8.869741340859454
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 393.4870670429726,
+          "y": -43.48706704297268
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -4.130258659140547,
+          "y": 8.869741340859454
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 393.4870670429726,
+          "y": -43.48706704297268
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "39",
+      "padIndex": 47,
+      "padLocal": {
+        "x": 1.575,
+        "y": -2.45,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5.618718433538229,
+          "y": 5.1538952057241465
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 319.06407832308855,
+          "y": 142.30523971379267
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5.618718433538229,
+          "y": 5.1538952057241465
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 319.06407832308855,
+          "y": 142.30523971379267
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 57,
+      "padLocal": {
+        "x": -1.6,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -7.262741699796952,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 236.8629150101524,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -7.262741699796952,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 236.8629150101524,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 58,
+      "padLocal": {
+        "x": -1.6,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -6.508494230829041,
+          "y": 8.754247468967911
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 274.57528845854796,
+          "y": -37.71237344839557
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -6.508494230829041,
+          "y": 8.754247468967911
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 274.57528845854796,
+          "y": -37.71237344839557
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 59,
+      "padLocal": {
+        "x": -1.6,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5.754247468967911,
+          "y": 9.50849423082904
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 312.28762655160443,
+          "y": -75.42471154145198
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5.754247468967911,
+          "y": 9.50849423082904
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 312.28762655160443,
+          "y": -75.42471154145198
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 60,
+      "padLocal": {
+        "x": -1.6,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 10.262741699796951
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": -113.13708498984761
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 10.262741699796951
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": -113.13708498984761
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 61,
+      "padLocal": {
+        "x": -0.533333,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -6.508494230829041,
+          "y": 7.245752531032089
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 274.57528845854796,
+          "y": 37.71237344839557
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -6.508494230829041,
+          "y": 7.245752531032089
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 274.57528845854796,
+          "y": 37.71237344839557
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 62,
+      "padLocal": {
+        "x": -0.533333,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5.75424676186113,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 312.2876619069435,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5.75424676186113,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 312.2876619069435,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 63,
+      "padLocal": {
+        "x": -0.533333,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 8.754246761861129
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": -37.712338093056474
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 8.754246761861129
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": -37.712338093056474
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 64,
+      "padLocal": {
+        "x": -0.533333,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -4.245752531032089,
+          "y": 9.50849423082904
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 387.71237344839557,
+          "y": -75.42471154145198
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -4.245752531032089,
+          "y": 9.50849423082904
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 387.71237344839557,
+          "y": -75.42471154145198
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 65,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 66,
+      "padLocal": {
+        "x": 0,
+        "y": 0,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 67,
+      "padLocal": {
+        "x": 0.533333,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5.754247468967911,
+          "y": 6.491505769170959
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 312.28762655160443,
+          "y": 75.42471154145204
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5.754247468967911,
+          "y": 6.491505769170959
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 312.28762655160443,
+          "y": 75.42471154145204
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 68,
+      "padLocal": {
+        "x": 0.533333,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 7.24575323813887
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": 37.712338093056474
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 7.24575323813887
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": 37.712338093056474
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 69,
+      "padLocal": {
+        "x": 0.533333,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -4.24575323813887,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 387.7123380930565,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -4.24575323813887,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 387.7123380930565,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 70,
+      "padLocal": {
+        "x": 0.533333,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -3.491505769170959,
+          "y": 8.754247468967911
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 425.42471154145204,
+          "y": -37.71237344839557
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -3.491505769170959,
+          "y": 8.754247468967911
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 425.42471154145204,
+          "y": -37.71237344839557
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 71,
+      "padLocal": {
+        "x": 1.6,
+        "y": -1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -5,
+          "y": 5.737258300203048
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 350,
+          "y": 113.13708498984761
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -5,
+          "y": 5.737258300203048
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 350,
+          "y": 113.13708498984761
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 72,
+      "padLocal": {
+        "x": 1.6,
+        "y": -0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -4.245752531032089,
+          "y": 6.491505769170959
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 387.71237344839557,
+          "y": 75.42471154145204
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -4.245752531032089,
+          "y": 6.491505769170959
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 387.71237344839557,
+          "y": 75.42471154145204
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 73,
+      "padLocal": {
+        "x": 1.6,
+        "y": 0.533333,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -3.491505769170959,
+          "y": 7.245752531032089
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 425.42471154145204,
+          "y": 37.71237344839557
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -3.491505769170959,
+          "y": 7.245752531032089
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 425.42471154145204,
+          "y": 37.71237344839557
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    },
+    {
+      "fpState": "rotation -45°",
+      "fpX": -5,
+      "fpY": 8,
+      "fpRot": -45,
+      "padNumber": "49",
+      "padIndex": 74,
+      "padLocal": {
+        "x": 1.6,
+        "y": 1.6,
+        "rot": 0
+      },
+      "kicanvas": {
+        "worldPos": {
+          "x": -2.737258300203048,
+          "y": 8
+        },
+        "shapeRotation": 45,
+        "screenPos": {
+          "x": 463.1370849898476,
+          "y": 0
+        }
+      },
+      "our": {
+        "worldPos": {
+          "x": -2.737258300203048,
+          "y": 8
+        },
+        "shapeRotation": -45,
+        "screenPos": {
+          "x": 463.1370849898476,
+          "y": 0
+        }
+      },
+      "worldPositionMatch": true,
+      "rotationDifference": 90,
+      "rotationMatch": false
+    }
+  ]
+}

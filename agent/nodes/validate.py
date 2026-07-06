@@ -1,6 +1,7 @@
 import json
 import re
 
+from agent.nodes.select import _normalize_part_family
 from agent.component_insight import build_component_pin_summary
 from agent.prompts import VALIDATE_SYSTEM, VALIDATE_USER
 from agent.tools import search_components
@@ -109,6 +110,11 @@ def _check_prompt_integrity(prompt: str, comps: list[dict]) -> list[str]:
 
     errors: list[str] = []
     for c in comps:
+        category = (c.get("category", "") or "").upper()
+        if not any(token in category for token in ("MCU", "PROCESSOR", "CPU", "RF_MODULE", "MODULE")) and not any(
+            token in (c.get("id_str", "") or "").upper() for token in ("STM32", "ESP32", "RP2040", "RP2350", "ATMEGA", "ATTINY", "AT90", "SAMD")
+        ):
+            continue
         id_str = (c.get("id_str", "") or "").upper()
         desc = (c.get("description", "") or "").upper()
         id_and_desc = f"{id_str} {desc}"
@@ -781,6 +787,7 @@ def validate_node(state, config):
         if not any(s.split(":")[1].lower() in m.lower() for s in _placeholders)
     ]
     rejected = list(state.get("rejected_ids", []))
+    rejected_families = list(state.get("rejected_families", []))
     for rid in _devkit_rejected_ids:
         if rid and rid not in rejected:
             rejected.append(rid)
@@ -791,6 +798,9 @@ def validate_node(state, config):
         eid = e.get("id_str", "")
         if eid and eid not in rejected:
             rejected.append(eid)
+        fam = _normalize_part_family(eid)
+        if fam and fam not in rejected_families:
+            rejected_families.append(fam)
     if validation_errors:
         _emit(config, "agent:log", {
             "message": f"Validation found {len(validation_errors)} unfixed error(s) — will retry selection"
@@ -806,9 +816,18 @@ def validate_node(state, config):
         "selected_components": comps,
         "validation_errors": validation_errors,
         "rejected_ids": rejected,
+        "rejected_families": rejected_families,
         "_last_validated_component_count": len(comps),
     }
     if validation_errors and state.get("retry_count", 0) >= MAX_VALIDATION_RETRIES:
         error_msgs = "; ".join(validation_errors[:3])
-        result["error"] = f"Validation failed after {MAX_VALIDATION_RETRIES} retries: {error_msgs}"
+        repair_failures = state.get("repair_failures", []) or []
+        if repair_failures:
+            missing_targets = ", ".join(sorted(set(item.split(":", 1)[0] for item in repair_failures[:4])))
+            result["error"] = (
+                f"No compatible component found in the available library after {MAX_VALIDATION_RETRIES} retries "
+                f"for: {missing_targets}. Last validation errors: {error_msgs}"
+            )
+        else:
+            result["error"] = f"Validation failed after {MAX_VALIDATION_RETRIES} retries: {error_msgs}"
     return _stage_result(state, "validate", result)

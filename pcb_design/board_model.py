@@ -45,6 +45,7 @@ class PadDef:
     type: str = "smd"
     rotation: float = 0.0
     drill: Optional[float] = None
+    roundrect_rratio: Optional[float] = None
     layers: list[str] = field(default_factory=lambda: ["F.Cu", "F.Mask", "F.Paste"])
 
     def to_polygon(self) -> Optional["Polygon"]:
@@ -235,6 +236,7 @@ class BoardModel:
                         "width": p.width, "height": p.height,
                         "shape": p.shape, "type": p.type,
                         "rotation": p.rotation, "drill": p.drill,
+                        "roundrect_rratio": p.roundrect_rratio,
                         "layers": p.layers,
                     }
                     for p in c.pads
@@ -290,6 +292,7 @@ class BoardModel:
                     width=p["width"], height=p["height"],
                     shape=p.get("shape", "rect"), type=p.get("type", "smd"),
                     rotation=p.get("rotation", 0.0), drill=p.get("drill"),
+                    roundrect_rratio=p.get("roundrect_rratio"),
                     layers=p.get("layers", ["F.Cu", "F.Mask", "F.Paste"]),
                 )
                 for p in cd.get("pads", [])
