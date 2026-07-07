@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_socketio import SocketIO, emit
 from kicad_rag.client import KicadRAG
+from agent.prompt_router import route_prompt
 
 dotenv_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path, override=True)
@@ -840,30 +841,6 @@ def _load_real_footprint_geometry(symbol_id: str | None, explicit_footprint: str
         return None
 
 
-def _looks_like_component_request(text: str) -> bool:
-    normalized = " ".join((text or "").strip().lower().split())
-    if not normalized:
-        return False
-    design_markers = [
-        " with ",
-        " using ",
-        " connect ",
-        " power supply",
-        "charger",
-        "circuit",
-        "board",
-        "design",
-        "schematic",
-        "system",
-        "usb",
-        "sensor with",
-    ]
-    padded = f" {normalized} "
-    if any(marker in padded for marker in design_markers):
-        return False
-    return len(normalized.split()) <= 4 and len(normalized) <= 48
-
-
 def _build_component_proposal_from_query(text: str):
     results = rag.search(text, k=1)
     if not results:
@@ -935,11 +912,29 @@ def _build_component_proposal_from_query(text: str):
             }
     return proposal
 
+HELP_TEXT = """I'm CircuitBot, an AI PCB design assistant. Here's what I can do:
+
+**Add a component** — Say "add a 10k resistor", "I need an ATMega328P", or "place an LED"
+**Design a circuit** — Say "design a fan controller PCB", "create a power supply", or "build a sensor board"
+**Find a component** — Say "find me a temperature sensor", "search for a 5V regulator"
+**Get help** — Say "help" or "what can you do"
+
+I can turn your natural language descriptions into KiCad schematics and PCB layouts."""
+
+CLARIFICATION_TEXT = """I'm not sure what you'd like me to do. Here are some things I can help with:
+
+- **Add a component** — e.g., "add a 10k resistor" or "place an LED with resistor"
+- **Design a full circuit** — e.g., "design a fan controller board" or "create a USB power supply"
+- **Search for a part** — e.g., "find me a temperature sensor" or "search for BME280"
+
+What would you like?"""
+
+
 @socketio.on('chat:message')
 def handle_chat_message(data):
     session_id = data.get("session_id")
     text = data.get("text", "").strip()
-    
+
     if not session_id:
         emit('agent:error', {'message': 'No session ID provided'})
         return
@@ -952,60 +947,52 @@ def handle_chat_message(data):
     _prune_legacy_mock_history(session)
     session.chat_history.append({"role": "user", "content": text})
 
-    proposal = None
-    if "resistor" in text.lower():
-        proposal = {
-            "type": "add_component",
-            "component": {
-                "name": "10k Resistor 0402",
-                "symbol_id": "Device:R",
-                "footprint": "Resistor_SMD:R_0402_1005Metric",
-                "body": {"width": 1.0, "height": 0.5},
-                "pins": [
-                    {"num": "1", "x": -0.5, "y": 0.0, "targetNet": "I2C_SDA"},
-                    {"num": "2", "x": 0.5, "y": 0.0, "targetNet": "3V3"},
-                ],
-            },
-            "id": str(uuid.uuid4())
-        }
-        geometry = _load_real_footprint_geometry(
-            proposal["component"].get("symbol_id"),
-            proposal["component"].get("footprint"),
-        )
-        if geometry:
-            proposal["component"]["footprint"] = geometry.get("footprint", proposal["component"]["footprint"])
-            logical_pins = proposal["component"]["pins"]
-            logical_by_num = {
-                str(pin.get("num", pin.get("number", ""))): pin
-                for pin in logical_pins
-            }
-            merged_pins = []
-            for pad in geometry.get("pads", []):
-                pad_num = str(pad.get("num", pad.get("number", "")))
-                logical_pin = logical_by_num.get(pad_num)
-                if logical_pin:
-                    merged_pad = pad.copy()
-                    if "name" in logical_pin:
-                        merged_pad["name"] = logical_pin["name"]
-                    if "targetNet" in logical_pin:
-                        merged_pad["targetNet"] = logical_pin["targetNet"]
-                    merged_pins.append(merged_pad)
-                else:
-                    merged_pins.append(pad)
-            proposal["component"]["pins"] = merged_pins or logical_pins
-            proposal["component"]["graphics"] = geometry.get("graphics", [])
-    elif _looks_like_component_request(text):
-        try:
-            proposal = _build_component_proposal_from_query(text)
-        except Exception as exc:
-            print(f"Component proposal lookup failed: {exc}")
+    routing = route_prompt(text)
 
-    if proposal:
-        session.proposals[proposal["id"]] = proposal
-        emit('chat:proposal', proposal)
-    else:
+    if routing["intent"] == "design_pipeline" and routing["confidence"] >= 0.7:
         socketio.emit('agent:log', {'message': 'Agent starting...'}, room=request.sid)
         socketio.start_background_task(_run_agent, text, request.sid)
+        return
+
+    if routing["intent"] == "add_component" and routing["confidence"] >= 0.7:
+        components = routing.get("extracted_components", [])
+        if not components:
+            components = [text]
+        found_count = 0
+        for comp_name in components:
+            try:
+                proposal = _build_component_proposal_from_query(comp_name)
+                if proposal:
+                    session.proposals[proposal["id"]] = proposal
+                    emit('chat:proposal', proposal)
+                    found_count += 1
+            except Exception as exc:
+                print(f"Component proposal lookup failed for '{comp_name}': {exc}")
+        if found_count == 0:
+            emit('chat:reply', {'text': f"Could not find a component matching '{text}' in the library. Try running the full design pipeline instead or use a different search term."})
+        return
+
+    if routing["intent"] == "component_query" and routing["confidence"] >= 0.7:
+        components = routing.get("extracted_components", [])
+        query = components[0] if components else text
+        results = rag.search(query, k=3)
+        if results:
+            info_lines = [f"Found components matching '{query}':"]
+            for r in results:
+                desc = (r.text or "")[:150]
+                info_lines.append(f"  - {r.id_str}: {desc}")
+            info_lines.append("")
+            info_lines.append(f'Tip: type "add {results[0].id_str.split(":")[-1]}" to place one on the board.')
+            emit('chat:reply', {'text': "\n".join(info_lines)})
+        else:
+            emit('chat:reply', {'text': f"No components found matching '{query}'. Try a different search term."})
+        return
+
+    if routing["intent"] == "help" and routing["confidence"] >= 0.6:
+        emit('chat:reply', {'text': HELP_TEXT})
+        return
+
+    emit('chat:reply', {'text': CLARIFICATION_TEXT})
 
 @socketio.on('chat:reject_proposal')
 def handle_reject_proposal(data):
