@@ -131,10 +131,21 @@ def _parse_pad(node: list) -> Optional[PadDef]:
             if len(child) > 1:
                 if isinstance(child[1], (int, float)):
                     pad.drill = float(child[1])
-                elif child[1] == "oval" and len(child) > 2 and isinstance(child[2], (int, float)):
-                    pad.drill = float(child[2])
+                elif child[1] == "oval" and len(child) > 2:
+                    # KiCad order: (drill oval X Y) where X=width, Y=height
+                    if isinstance(child[2], (int, float)):
+                        pad.drill = float(child[2])
+                    if len(child) > 3 and isinstance(child[3], (int, float)):
+                        pad.drill_width = float(child[3])
+            offset_node = _find_one(child, "offset")
+            if offset_node:
+                pad.drill_offset_x = _get_float(offset_node, 1)
+                pad.drill_offset_y = _get_float(offset_node, 2)
         elif key == "roundrect_rratio":
             pad.roundrect_rratio = float(child[1])
+        elif key == "rect_delta":
+            pad.rect_delta_x = _get_float(child, 1)
+            pad.rect_delta_y = _get_float(child, 2)
     return pad
 
 
@@ -182,10 +193,10 @@ def _parse_fp_graphic(node: list) -> Optional[dict]:
 
 
 def _parse_property_text(node: list) -> Optional[dict]:
-    if not isinstance(node, list) or len(node) < 3 or node[0] != "property":
+    if not isinstance(node, list) or len(node) < 3 or node[0] not in ("property", "fp_text"):
         return None
     item = {
-        "kind": "property",
+        "kind": "property" if node[0] == "property" else "fp_text",
         "name": str(node[1]),
         "text": str(node[2]),
         "layer": "F.SilkS",
@@ -285,7 +296,7 @@ def _parse_footprint(node: list) -> Optional[BoardComponent]:
         if child[0] == "layer":
             layer = _normalize_layer_name(_get_str(child, 1, "F.Cu"))
             continue
-        if child[0] == "property":
+        if child[0] in ("property", "fp_text"):
             if len(child) > 2 and child[1] == "Reference":
                 ref = str(child[2])
             elif len(child) > 2 and child[1] == "Value":

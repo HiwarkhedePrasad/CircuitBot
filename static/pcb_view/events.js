@@ -1,4 +1,4 @@
-const pcbEditor = new PcbEditorWebGL('pcbCanvas');
+const pcbEditor = new PcbEditor('pcbCanvas');
 
 function pcbGetCanvas() {
     return document.getElementById('pcbCanvas');
@@ -255,6 +255,24 @@ function pcbHandleWheel(event) {
 }
 
 function pcbHandleMouseDown(event) {
+    if (pcbState.mode === PCB_MODE.GHOST_PLACEMENT) {
+        if (event.button !== 0) return;
+        const finalWorld = pcbEditor.screenToWorld(event.clientX, event.clientY);
+        const activeSocket = window.socket;
+        if (!activeSocket || !pcbState.ghostProposal) return;
+        activeSocket.emit('chat:commit_proposal', {
+            session_id: window.circuitbotChatSessionId || null,
+            id: pcbState.ghostProposal.id, 
+            x: finalWorld.x, 
+            y: finalWorld.y 
+        });
+
+        pcbSetMode(PCB_MODE.IDLE);
+        pcbState.ghostProposal = null;
+        pcbEditor.requestOverlayRefresh();
+        return;
+    }
+
     if (!pcbState.boardModel) return;
     pcbState.pointerDownScreen = { x: event.clientX, y: event.clientY };
     pcbState.pointerDownWorld = pcbEditor.screenToWorld(event.clientX, event.clientY);
@@ -263,6 +281,7 @@ function pcbHandleMouseDown(event) {
     const traceHit = pcbEditor.hitTestTrace(event.clientX, event.clientY);
     const viaHit = pcbEditor.hitTestVia(event.clientX, event.clientY);
     const compHit = pcbEditor.hitTestComponent(event.clientX, event.clientY);
+
     if (pcbState.mode === PCB_MODE.ROUTE || pcbState.activeTool === PCB_TOOL.ROUTE) {
         if (event.button === 2) {
             if (pcbState.routePoints.length >= 2) {
@@ -331,14 +350,18 @@ function pcbHandleMouseDown(event) {
 }
 
 function pcbHandleMouseMove(event) {
-    if (!pcbState.boardModel) return;
     const world = pcbEditor.screenToWorld(event.clientX, event.clientY);
+    pcbState.lastPointerWorld = world;
+    if (pcbState.mode === PCB_MODE.GHOST_PLACEMENT) {
+        pcbEditor.requestOverlayRefresh();
+        return;
+    }
+    if (!pcbState.boardModel) return;
     const padHit = pcbEditor.hitTestPad(event.clientX, event.clientY);
     const viaHit = pcbEditor.hitTestVia(event.clientX, event.clientY);
     const prevHoveredPadKey = pcbState.hoveredPadKey;
     pcbState.hoveredPadKey = pcbState.activeTool === PCB_TOOL.ROUTE ? (padHit ? padHit.key : null) : null;
     pcbState.hoveredViaIndex = pcbState.activeTool === PCB_TOOL.VIA && viaHit ? viaHit.index : null;
-    pcbState.lastPointerWorld = world;
     if (!pcbState.pointerDragMoved && hasPointerExceededThreshold(event)) {
         pcbState.pointerDragMoved = true;
     }
@@ -381,11 +404,12 @@ function pcbHandleMouseMove(event) {
         let routeTarget = routePoint(world);
         if (pcbState.routePoints && pcbState.routePoints.length > 0) {
             const prev = pcbState.routePoints[pcbState.routePoints.length - 1];
-            if (Math.abs(routeTarget.x - prev.x) < 0.6) {
+            const dx = Math.abs(routeTarget.x - prev.x);
+            const dy = Math.abs(routeTarget.y - prev.y);
+            if (dx < 0.6 && dx < dy) {
                 routeTarget.x = prev.x;
                 routeTarget.noSnap = true;
-            }
-            if (Math.abs(routeTarget.y - prev.y) < 0.6) {
+            } else if (dy < 0.6 && dy <= dx) {
                 routeTarget.y = prev.y;
                 routeTarget.noSnap = true;
             }
@@ -563,6 +587,7 @@ window.pcbSetRenderMode = pcbSetRenderMode;
 window.pcbGetViewBounds = pcbGetViewBounds;
 window.pcbSetViewBounds = pcbSetViewBounds;
 window.pcbZoomBy = pcbZoomBy;
+window.pcbSetMode = pcbSetMode;
 window.pcbSetTool = pcbSetTool;
 window.pcbSetRouteStyle = pcbSetRouteStyle;
 window.pcbHandleWheel = pcbHandleWheel;

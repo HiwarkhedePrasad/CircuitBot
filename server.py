@@ -171,13 +171,40 @@ def api_save_layout():
     return jsonify({'ok': True})
 
 
+def _ensure_selected_components_from_board_model(design: dict):
+    if not design.get('selected_components') and design.get('board_model'):
+        bm = design['board_model']
+        comps = []
+        placements = []
+        for comp in bm.get('components', []):
+            ref = comp.get('ref', '')
+            name = comp.get('name', 'AI Component')
+            fp = comp.get('footprint', '')
+            comps.append({
+                'ref_des': ref,
+                'id_str': name if ':' in name else f"Device:{ref}",
+                'category': 'Component',
+                'description': name,
+                'footprint': fp,
+            })
+            placements.append({
+                'ref_des': ref,
+                'x': comp.get('x', 0),
+                'y': comp.get('y', 0),
+                'rotation': comp.get('rotation', 0),
+            })
+        design['selected_components'] = comps
+        design['component_placements'] = placements
+
+
 @app.route('/api/export_sch')
 def api_export_sch():
     """Export the last agent-generated design as a KiCad schematic file."""
     with design_lock:
-        if not LAST_DESIGN.get('selected_components'):
+        if not LAST_DESIGN.get('selected_components') and not LAST_DESIGN.get('board_model'):
             return "No design generated yet. Run the AI agent first.", 404
         design_copy = LAST_DESIGN.copy()
+    _ensure_selected_components_from_board_model(design_copy)
     try:
         from agent.kicad_export import generate_kicad_sch
         text = generate_kicad_sch(design_copy)
@@ -196,9 +223,10 @@ def api_export_sch():
 def api_export_pcb():
     """Export the last agent-generated design as a KiCad PCB file."""
     with design_lock:
-        if not LAST_DESIGN.get('selected_components'):
+        if not LAST_DESIGN.get('selected_components') and not LAST_DESIGN.get('board_model'):
             return "No design generated yet. Run the AI agent first.", 404
         design_copy = LAST_DESIGN.copy()
+    _ensure_selected_components_from_board_model(design_copy)
     try:
         from pcb_design.pcb_export import generate_kicad_pcb
         text = generate_kicad_pcb(design_copy)
@@ -712,6 +740,385 @@ def api_import_pcb():
                 Path(tmp_path).unlink(missing_ok=True)
             except Exception:
                 pass
+
+
+import uuid
+import time
+
+class ChatSession:
+    def __init__(self):
+        self.chat_history = []
+        self.board_model = None
+        self.proposals = {}
+        self.last_active = time.time()
+
+CHAT_SESSIONS: dict[str, ChatSession] = {}
+
+
+def _create_empty_board_model():
+    return {
+        "components": [],
+        "traces": [],
+        "vias": [],
+        "nets": [],
+        "outline_segments": [],
+        "_render_from_model": True,
+    }
+
+
+def _get_or_create_chat_session(session_id: str) -> ChatSession:
+    session = CHAT_SESSIONS.get(session_id)
+    if session is None:
+        session = ChatSession()
+        with design_lock:
+            existing_board = LAST_DESIGN.get("board_model")
+        session.board_model = json.loads(json.dumps(existing_board)) if existing_board else _create_empty_board_model()
+        CHAT_SESSIONS[session_id] = session
+    return session
+
+
+def _prune_legacy_mock_history(session: ChatSession) -> None:
+    session.chat_history = [
+        msg for msg in session.chat_history
+        if not (isinstance(msg, dict) and msg.get("role") == "assistant" and "Mock response" in str(msg.get("content")))
+    ]
+
+
+def _load_real_footprint_geometry(symbol_id: str | None, explicit_footprint: str | None = None) -> dict | None:
+    try:
+        footprint = explicit_footprint or ""
+        if symbol_id:
+            from agent.tools import fetch_footprint
+
+            info = fetch_footprint(symbol_id) or {}
+            footprint = footprint or info.get("footprint", "")
+        if not footprint:
+            return None
+
+        from kicad_rag.store import footprint_path_for
+        from pcb_design.pcb_import import _parse_footprint, parse_sexp
+
+        fp_path = footprint_path_for(footprint)
+        if not fp_path.is_file():
+            return None
+        ast = parse_sexp(fp_path.read_text(encoding="utf-8"))
+        if isinstance(ast, list) and ast and ast[0] not in ("footprint", "module"):
+            ast[0] = "footprint"
+        parsed = _parse_footprint(ast)
+        if not parsed:
+            return None
+        return {
+            "footprint": footprint,
+            "pads": [
+                {
+                    "num": str(p.number),
+                    "number": str(p.number),
+                    "name": str(p.number),
+                    "x": p.x,
+                    "y": p.y,
+                    "width": p.width,
+                    "height": p.height,
+                    "shape": p.shape,
+                    "type": p.type,
+                    "rotation": p.rotation,
+                    "drill": p.drill,
+                    "drill_width": p.drill_width,
+                    "drill_offset_x": p.drill_offset_x,
+                    "drill_offset_y": p.drill_offset_y,
+                    "roundrect_rratio": p.roundrect_rratio,
+                    "rect_delta_x": p.rect_delta_x,
+                    "rect_delta_y": p.rect_delta_y,
+                    "layers": p.layers,
+                    "targetNet": "",
+                }
+                for p in parsed.pads
+            ],
+            "graphics": parsed.graphics,
+        }
+    except Exception as exc:
+        print(f"Footprint geometry load failed for {symbol_id or explicit_footprint}: {exc}")
+        return None
+
+
+def _looks_like_component_request(text: str) -> bool:
+    normalized = " ".join((text or "").strip().lower().split())
+    if not normalized:
+        return False
+    design_markers = [
+        " with ",
+        " using ",
+        " connect ",
+        " power supply",
+        "charger",
+        "circuit",
+        "board",
+        "design",
+        "schematic",
+        "system",
+        "usb",
+        "sensor with",
+    ]
+    padded = f" {normalized} "
+    if any(marker in padded for marker in design_markers):
+        return False
+    return len(normalized.split()) <= 4 and len(normalized) <= 48
+
+
+def _build_component_proposal_from_query(text: str):
+    results = rag.search(text, k=1)
+    if not results:
+        return None
+    best = results[0]
+    pin_defs = rag.pins(best.id_str) or []
+    if not pin_defs:
+        pin_defs = [{"num": "1", "name": "P1"}, {"num": "2", "name": "P2"}]
+
+    pin_count = len(pin_defs)
+    half_span = max((pin_count - 1) * 0.6 / 2, 0.0)
+    pins = []
+    for idx, pin in enumerate(pin_defs):
+        offset_y = half_span - idx * 0.6
+        side = -1 if idx % 2 == 0 else 1
+        pins.append({
+            "num": str(pin.get("number") or pin.get("num") or idx + 1),
+            "name": str(pin.get("name") or pin.get("label") or f"P{idx + 1}"),
+            "x": side * 1.4,
+            "y": offset_y,
+            "width": 0.6,
+            "height": 0.7,
+            "targetNet": "",
+        })
+
+    proposal = {
+        "type": "add_component",
+        "component": {
+            "name": getattr(best, "text", "") or best.id_str.split(":")[-1],
+            "symbol_id": best.id_str,
+            "footprint": getattr(best, "footprint", "") or "",
+            "body": {
+                "width": 3.2 if pin_count > 4 else 2.4,
+                "height": max(1.6, pin_count * 0.5),
+            },
+            "pins": pins,
+        },
+        "id": str(uuid.uuid4()),
+    }
+    geometry = _load_real_footprint_geometry(best.id_str, proposal["component"]["footprint"])
+    if geometry:
+        proposal["component"]["footprint"] = geometry.get("footprint", proposal["component"]["footprint"])
+        logical_pins = proposal["component"]["pins"]
+        logical_by_num = {
+            str(pin.get("num", pin.get("number", ""))): pin
+            for pin in logical_pins
+        }
+        merged_pins = []
+        for pad in geometry.get("pads", []):
+            pad_num = str(pad.get("num", pad.get("number", "")))
+            logical_pin = logical_by_num.get(pad_num)
+            if logical_pin:
+                merged_pad = pad.copy()
+                if "name" in logical_pin:
+                    merged_pad["name"] = logical_pin["name"]
+                if "targetNet" in logical_pin:
+                    merged_pad["targetNet"] = logical_pin["targetNet"]
+                merged_pins.append(merged_pad)
+            else:
+                merged_pins.append(pad)
+        proposal["component"]["pins"] = merged_pins or logical_pins
+        proposal["component"]["graphics"] = geometry.get("graphics", [])
+        pad_xs = [float(p.get("x", 0) or 0) for p in proposal["component"]["pins"]]
+        pad_ys = [float(p.get("y", 0) or 0) for p in proposal["component"]["pins"]]
+        if pad_xs and pad_ys:
+            proposal["component"]["body"] = {
+                "width": max(max(pad_xs) - min(pad_xs) + 1.8, 2.4),
+                "height": max(max(pad_ys) - min(pad_ys) + 1.8, 1.8),
+            }
+    return proposal
+
+@socketio.on('chat:message')
+def handle_chat_message(data):
+    session_id = data.get("session_id")
+    text = data.get("text", "").strip()
+    
+    if not session_id:
+        emit('agent:error', {'message': 'No session ID provided'})
+        return
+
+    if not text:
+        emit('agent:error', {'message': 'No message provided'})
+        return
+
+    session = _get_or_create_chat_session(session_id)
+    _prune_legacy_mock_history(session)
+    session.chat_history.append({"role": "user", "content": text})
+
+    proposal = None
+    if "resistor" in text.lower():
+        proposal = {
+            "type": "add_component",
+            "component": {
+                "name": "10k Resistor 0402",
+                "symbol_id": "Device:R",
+                "footprint": "Resistor_SMD:R_0402_1005Metric",
+                "body": {"width": 1.0, "height": 0.5},
+                "pins": [
+                    {"num": "1", "x": -0.5, "y": 0.0, "targetNet": "I2C_SDA"},
+                    {"num": "2", "x": 0.5, "y": 0.0, "targetNet": "3V3"},
+                ],
+            },
+            "id": str(uuid.uuid4())
+        }
+        geometry = _load_real_footprint_geometry(
+            proposal["component"].get("symbol_id"),
+            proposal["component"].get("footprint"),
+        )
+        if geometry:
+            proposal["component"]["footprint"] = geometry.get("footprint", proposal["component"]["footprint"])
+            logical_pins = proposal["component"]["pins"]
+            logical_by_num = {
+                str(pin.get("num", pin.get("number", ""))): pin
+                for pin in logical_pins
+            }
+            merged_pins = []
+            for pad in geometry.get("pads", []):
+                pad_num = str(pad.get("num", pad.get("number", "")))
+                logical_pin = logical_by_num.get(pad_num)
+                if logical_pin:
+                    merged_pad = pad.copy()
+                    if "name" in logical_pin:
+                        merged_pad["name"] = logical_pin["name"]
+                    if "targetNet" in logical_pin:
+                        merged_pad["targetNet"] = logical_pin["targetNet"]
+                    merged_pins.append(merged_pad)
+                else:
+                    merged_pins.append(pad)
+            proposal["component"]["pins"] = merged_pins or logical_pins
+            proposal["component"]["graphics"] = geometry.get("graphics", [])
+    elif _looks_like_component_request(text):
+        try:
+            proposal = _build_component_proposal_from_query(text)
+        except Exception as exc:
+            print(f"Component proposal lookup failed: {exc}")
+
+    if proposal:
+        session.proposals[proposal["id"]] = proposal
+        emit('chat:proposal', proposal)
+    else:
+        socketio.emit('agent:log', {'message': 'Agent starting...'}, room=request.sid)
+        socketio.start_background_task(_run_agent, text, request.sid)
+
+@socketio.on('chat:reject_proposal')
+def handle_reject_proposal(data):
+    session_id = data.get("session_id")
+    proposal_id = data.get("proposal_id")
+    if session_id in CHAT_SESSIONS:
+        session = CHAT_SESSIONS[session_id]
+        session.proposals.pop(proposal_id, None)
+        session.chat_history.append({
+            "role": "system", 
+            "content": f"The user REJECTED the previous proposal {proposal_id}. The board state has NOT changed."
+        })
+
+
+@socketio.on('chat:resume')
+def handle_chat_resume(data):
+    session_id = (data or {}).get("session_id")
+    if not session_id:
+        emit('agent:error', {'message': 'No session ID provided'})
+        return
+
+    session = _get_or_create_chat_session(session_id)
+    _prune_legacy_mock_history(session)
+    emit('chat:state', {
+        'history': list(session.chat_history),
+        'proposals': list(session.proposals.values()),
+        'board_model': session.board_model,
+    })
+
+@socketio.on('chat:commit_proposal')
+def handle_commit_proposal(data):
+    session_id = data.get("session_id")
+    proposal_id = data.get("id")
+    x = float(data.get("x", 0) or 0)
+    y = float(data.get("y", 0) or 0)
+
+    if not session_id:
+        emit('agent:error', {'message': 'No session ID provided'})
+        return
+
+    session = _get_or_create_chat_session(session_id)
+    proposal = session.proposals.pop(proposal_id, None)
+    if proposal is None:
+        emit('agent:error', {'message': 'Proposal not found or already handled'})
+        return
+
+    board_model = session.board_model or _create_empty_board_model()
+    board_model.setdefault("components", [])
+    board_model.setdefault("traces", [])
+    board_model.setdefault("vias", [])
+    board_model.setdefault("nets", [])
+    board_model.setdefault("outline_segments", [])
+    board_model["_render_from_model"] = True
+
+    comp_count = len([c for c in board_model["components"] if c.get("ref", "").startswith("R")])
+    ref = f"R{comp_count + 1}"
+
+    component = proposal.get("component", {})
+    pads = []
+    for pin in component.get("pins", []):
+        pads.append({
+            "num": pin.get("num", pin.get("number", "")),
+            "number": pin.get("number", pin.get("num", "")),
+            "net": pin.get("targetNet", ""),
+            "x": pin.get("x", 0),
+            "y": pin.get("y", 0),
+            "width": pin.get("width", 0.6),
+            "height": pin.get("height", 0.7),
+            "shape": pin.get("shape", "rect"),
+            "type": pin.get("type", "smd"),
+            "rotation": pin.get("rotation", 0),
+            "drill": pin.get("drill"),
+            "drill_width": pin.get("drill_width"),
+            "drill_offset_x": pin.get("drill_offset_x", 0),
+            "drill_offset_y": pin.get("drill_offset_y", 0),
+            "roundrect_rratio": pin.get("roundrect_rratio"),
+            "rect_delta_x": pin.get("rect_delta_x", 0),
+            "rect_delta_y": pin.get("rect_delta_y", 0),
+            "layers": pin.get("layers", ["F.Cu"]),
+        })
+
+    new_comp = {
+        "ref": ref,
+        "name": component.get("name", "AI Component"),
+        "footprint": component.get("footprint", ""),
+        "x": x,
+        "y": y,
+        "rotation": 0,
+        "layer": "F.Cu",
+        "pads": pads,
+        "graphics": component.get("graphics", []),
+    }
+
+    board_model["components"].append(new_comp)
+    existing_nets = {net.get("name") for net in board_model["nets"] if isinstance(net, dict)}
+    for pad in pads:
+        net_name = pad.get("net")
+        if net_name and net_name not in existing_nets:
+            board_model["nets"].append({"name": net_name})
+            existing_nets.add(net_name)
+
+    session.board_model = board_model
+    session.chat_history.append({
+        "role": "assistant",
+        "content": f"Placed {ref} at ({x:.2f}, {y:.2f}).",
+    })
+
+    with design_lock:
+        LAST_DESIGN["board_model"] = json.loads(json.dumps(board_model))
+        _WIREBENDER_LAYOUT["board_model"] = json.loads(json.dumps(board_model))
+
+    emit('tscircuit:board-model-updated', {'board_model': board_model})
+    emit('chat:reply', {'text': f"Successfully placed {ref} at ({x:.2f}, {y:.2f})."})
 
 
 # ── WebSocket Events ─────────────────────────────────────────────────────────

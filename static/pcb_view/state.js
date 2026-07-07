@@ -3,6 +3,7 @@ let pcbState = {
     renderMode: 'full',
     mode: PCB_MODE.IDLE,
     activeTool: PCB_TOOL.PAN,
+    ghostProposal: null,
     zoom: 1,
     panX: 0,
     panY: 0,

@@ -31,27 +31,61 @@ def _pad_from_dict(pd: dict) -> PadDef:
         type=pd.get("type", "smd"),
         rotation=float(pd.get("rotation", pd.get("ox", 0)) or 0),
         drill=pd.get("drill"),
+        drill_width=pd.get("drill_width"),
+        drill_offset_x=float(pd.get("drill_offset_x", 0) or 0),
+        drill_offset_y=float(pd.get("drill_offset_y", 0) or 0),
+        roundrect_rratio=pd.get("roundrect_rratio"),
+        rect_delta_x=float(pd.get("rect_delta_x", 0) or 0),
+        rect_delta_y=float(pd.get("rect_delta_y", 0) or 0),
         layers=pd.get("layers", ["F.Cu", "F.Mask", "F.Paste"]),
     )
 
 
 def _load_footprint_component(comp: dict) -> BoardComponent | None:
-    """Parse the KiCad footprint file so the PCB view gets pads and graphics."""
+    """Parse the KiCad footprint file so the PCB view gets pads and graphics.
+
+    ⚠️ IMPORTANT: Do NOT swallow exceptions silently here. If the KiCad footprint
+    file fails to load or parse, the frontend will render bare pads with no
+    silkscreen body — which is exactly the bug we are debugging. Every failure
+    mode below logs the reason so it shows up in the backend logs.
+    """
     footprint = comp.get("footprint", "")
     if not footprint:
+        print(f"[pcb_layout] WARNING  component {comp.get('ref_des','?')} has no footprint name", flush=True)
         return None
     try:
         from kicad_rag.store import footprint_path_for
         from pcb_design.pcb_import import _parse_footprint, parse_sexp
 
-        fp_path = footprint_path_for(footprint)
+        try:
+            fp_path = footprint_path_for(footprint)
+        except Exception as e:
+            print(f"[pcb_layout] WARNING  footprint_path_for({footprint!r}) raised: {e!r}", flush=True)
+            return None
         if not fp_path.is_file():
+            print(f"[pcb_layout] WARNING  footprint file not found: {fp_path} (footprint={footprint!r})", flush=True)
             return None
         ast = parse_sexp(fp_path.read_text(encoding="utf-8"))
         if isinstance(ast, list) and ast and ast[0] not in ("footprint", "module"):
             ast[0] = "footprint"
-        return _parse_footprint(ast)
-    except Exception:
+        parsed = _parse_footprint(ast)
+        if parsed is None:
+            print(f"[pcb_layout] WARNING  _parse_footprint returned None for {footprint!r}", flush=True)
+            return None
+        # Sanity-check: did we actually get any pads or graphics?
+        if not parsed.pads and not parsed.graphics:
+            print(f"[pcb_layout] WARNING  footprint {footprint!r} parsed but has NO pads and NO graphics", flush=True)
+        elif not parsed.graphics:
+            print(f"[pcb_layout] WARNING  footprint {footprint!r} parsed but has NO graphics (only pads) -- silkscreen will be missing", flush=True)
+        else:
+            print(f"[pcb_layout] OK  footprint {footprint!r} loaded: {len(parsed.pads)} pads, {len(parsed.graphics)} graphics", flush=True)
+        return parsed
+    except Exception as e:
+        # DO NOT silently swallow -- log the exception so it shows up in the backend logs.
+        # This is the #1 cause of "only pads visible, no silkscreen" on the frontend.
+        import traceback
+        print(f"[pcb_layout] ERROR  _load_footprint_component FAILED for {footprint!r}: {e!r}", flush=True)
+        traceback.print_exc()
         return None
 
 
@@ -65,8 +99,13 @@ def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], st
             if info:
                 hydrated["footprint"] = hydrated.get("footprint") or info.get("footprint", "")
                 hydrated["pads"] = hydrated.get("pads") or info.get("pads", [])
-        except Exception:
-            pass
+        except Exception as e:
+            # Log instead of silently swallowing -- if fetch_footprint fails for a
+            # component, that component will end up with no pads and no footprint,
+            # which is the same "bare pads / missing silkscreen" symptom.
+            import traceback
+            print(f"[pcb_layout] WARNING  fetch_footprint({hydrated.get('id_str')!r}) raised: {e!r}", flush=True)
+            traceback.print_exc()
 
     if not hydrated.get("footprint"):
         cat, _, name = hydrated.get("id_str", "").partition(":")
@@ -213,4 +252,5 @@ def pcb_layout_node(state, config):
                            f"PCB complete — {len(model.components)} components placed. "
                            f"Use the PCB viewer to route traces manually.")
 
-    return {"board_model": board_dict, "_board_model": board_dict}
+
+    return model

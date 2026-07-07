@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedComponent = null;
     let currentPreviewOps = null;
     let agentBusy = false;
-    let currentSchematic = null;
+    let currentSchematic = new Schematic();
     let schematicWireStart = null;
     const MAX_CONVERSATION_MESSAGES = 500;
     const MAX_CONVERSATION_ITEMS = 300;
@@ -159,29 +159,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (viewSchematicBtn) {
         viewSchematicBtn.addEventListener('click', () => {
-            if (currentSchematic && currentSchematic.components.length > 0) {
-                setActiveTab('viewSchematicBtn');
-                enterSchematicView();
-                setPcbToolbarVisibility(false);
-                pcbUploadArea.classList.add('hidden');
-                document.getElementById('routePrompt').classList.remove('hidden');
-            }
+            if (!currentSchematic) currentSchematic = new Schematic();
+            setActiveTab('viewSchematicBtn');
+            enterSchematicView();
+            setPcbToolbarVisibility(false);
+            pcbUploadArea.classList.add('hidden');
+            document.getElementById('routePrompt').classList.remove('hidden');
         });
     }
 
     if (viewPCBBtn) {
         viewPCBBtn.addEventListener('click', () => {
-            setActiveTab('viewPCBBtn');
-            showViewport('pcb');
-            setPcbToolbarVisibility(true);
-            document.getElementById('routePrompt').classList.add('hidden');
-            pcbUploadArea.classList.add('hidden');
             if (pcbState.boardModel) {
-                pcbSetupCanvas();
-                pcbDraw();
-                renderPcbLayersPanel();
-                refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
+                enterPCBView();
             } else {
+                setActiveTab('viewPCBBtn');
+                showViewport('pcb');
+                setPcbToolbarVisibility(true);
+                document.getElementById('routePrompt').classList.add('hidden');
                 showPcbUploadOverlay();
             }
         });
@@ -191,6 +186,33 @@ document.addEventListener('DOMContentLoaded', () => {
         pcbUploadArea.classList.remove('hidden');
         const tsc = document.getElementById('tscircuit-container');
         if (tsc) tsc.style.display = 'none';
+    }
+
+    function ensurePcbBoardReady() {
+        if (window.pcbState && pcbState.boardModel) return;
+        pcbLoadBoard({
+            components: [],
+            traces: [],
+            vias: [],
+            nets: [],
+            outline_segments: [],
+            _render_from_model: true,
+        }, { fetchRatsnest: false });
+    }
+
+    function enterPCBView(refreshGeometry = true) {
+        setActiveTab('viewPCBBtn');
+        showViewport('pcb');
+        setPcbToolbarVisibility(true);
+        document.getElementById('routePrompt').classList.add('hidden');
+        pcbUploadArea.classList.add('hidden');
+        ensurePcbBoardReady();
+        pcbSetupCanvas();
+        pcbDraw();
+        renderPcbLayersPanel();
+        if (refreshGeometry) {
+            refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
+        }
     }
 
     if (pcbPanToolBtn) {
@@ -461,14 +483,114 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function enterSchematicView() {
         showViewport('schematic');
+        if (!currentSchematic) currentSchematic = new Schematic();
         if (currentSchematic) {
             currentSchematic.mode = 'schematic';
+            getRenderer().load(currentSchematic);
             if (currentSchematic.components.length > 0) {
-                getRenderer().load(currentSchematic);
                 getRenderer().zoomToFit();
+            } else {
+                getRenderer().refresh();
             }
         }
         modeIndicator.classList.remove('hidden');
+    }
+
+    function inferBoardComponentCategory(component) {
+        const ref = String(component && component.ref || '').toUpperCase();
+        const footprint = String(component && component.footprint || '').toUpperCase();
+        if (ref.startsWith('R') || footprint.includes('RESISTOR')) return 'Resistor';
+        if (ref.startsWith('C') || footprint.includes('CAPACITOR')) return 'Capacitor';
+        if (ref.startsWith('L') || footprint.includes('INDUCTOR')) return 'Inductor';
+        if (ref.startsWith('D') || footprint.includes('DIODE') || footprint.includes('LED')) return 'Diode';
+        if (ref.startsWith('Q') || footprint.includes('TRANSISTOR')) return 'Transistor';
+        if (ref.startsWith('U') || footprint.includes('QFN') || footprint.includes('SOIC') || footprint.includes('TSSOP')) return 'IC';
+        if (ref.startsWith('J') || footprint.includes('CONN') || footprint.includes('HEADER')) return 'Connector';
+        return 'Board Component';
+    }
+
+    function buildGenericSchematicOpsFromBoardComponent(component) {
+        const pads = Array.isArray(component && component.pads) ? component.pads : [];
+        const pinCount = Math.max(pads.length, 2);
+        const bodyHalfWidth = pinCount <= 2 ? 5.08 : 7.62;
+        const bodyHalfHeight = Math.max(3.81, ((Math.ceil(pinCount / 2) - 1) * 2.54) + 2.54);
+        const topY = bodyHalfHeight;
+        const bottomY = -bodyHalfHeight;
+        const ops = [
+            ['rectangle', ['start', String(-bodyHalfWidth), String(topY)], ['end', String(bodyHalfWidth), String(bottomY)]],
+            ['property', 'Reference', component.ref || 'U?', ['at', '0', String(topY + 2.54), '0']],
+            ['property', 'Value', component.name || component.footprint || 'Component', ['at', '0', String(bottomY - 2.54), '0']],
+        ];
+
+        const leftPads = [];
+        const rightPads = [];
+        pads.forEach((pad, index) => {
+            if (index % 2 === 0) leftPads.push(pad);
+            else rightPads.push(pad);
+        });
+        if (!rightPads.length && leftPads.length === 1) {
+            rightPads.push(leftPads.pop());
+        }
+
+        function pinY(index, total) {
+            if (total <= 1) return 0;
+            return ((total - 1) / 2 - index) * 5.08;
+        }
+
+        leftPads.forEach((pad, index) => {
+            const y = pinY(index, leftPads.length);
+            ops.push([
+                'pin',
+                'passive',
+                'line',
+                ['at', String(-(bodyHalfWidth + 2.54)), String(y), '0'],
+                ['length', '2.54'],
+                ['name', String(pad.net || pad.num || `P${index + 1}`)],
+                ['number', String(pad.num || index + 1)],
+            ]);
+        });
+        rightPads.forEach((pad, index) => {
+            const y = pinY(index, rightPads.length);
+            ops.push([
+                'pin',
+                'passive',
+                'line',
+                ['at', String(bodyHalfWidth + 2.54), String(y), '180'],
+                ['length', '2.54'],
+                ['name', String(pad.net || pad.num || `P${leftPads.length + index + 1}`)],
+                ['number', String(pad.num || leftPads.length + index + 1)],
+            ]);
+        });
+        return ops;
+    }
+
+    function syncSchematicFromBoardModel(boardModel) {
+        if (!boardModel || !Array.isArray(boardModel.components)) return;
+        if (!currentSchematic) currentSchematic = new Schematic();
+        let changed = false;
+        for (const component of boardModel.components) {
+            if (!component || !component.ref) continue;
+            const existing = currentSchematic.components.find((item) => item.refDesignator === component.ref);
+            if (existing) continue;
+            const ops = buildGenericSchematicOpsFromBoardComponent(component);
+            const category = inferBoardComponentCategory(component);
+            const comp = currentSchematic.addRawComponent(
+                `board:${component.ref}`,
+                component.ref,
+                ops,
+                category,
+                component.footprint || component.name || ''
+            );
+            if (comp) {
+                changed = true;
+            }
+        }
+        if (!changed) return;
+        updateComponentListUI();
+        updateSchematicButtons();
+        if (viewSchematicBtn && viewSchematicBtn.classList.contains('active')) {
+            enterSchematicView();
+        }
     }
 
     // ── PCB Canvas Events (keep for pcb_viewer.js) ──────────────────────────
@@ -508,8 +630,12 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.disconnect();
         }
         socket = io();
+        window.socket = socket;
         socket.on('connect', () => {
             addLogEntry('Connected to agent backend.', 'system');
+            if (!chatHydrated && window.circuitbotChatSessionId) {
+                socket.emit('chat:resume', { session_id: window.circuitbotChatSessionId });
+            }
         });
         socket.on('disconnect', () => {
             addLogEntry('Disconnected from agent backend.', 'system');
@@ -868,6 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pcbState) {
                 pcbState.boardModel = detail.board_model;
             }
+            syncSchematicFromBoardModel(detail.board_model);
             if (typeof pcbDraw === 'function') {
                 pcbDraw();
             }
@@ -1030,8 +1157,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateSchematicButtons() {
-        const hasComponents = currentSchematic && currentSchematic.components.length > 0;
-        viewSchematicBtn.disabled = !hasComponents;
+        const hasSchematic = !!currentSchematic;
+        viewSchematicBtn.disabled = !hasSchematic;
         compCount.textContent = (currentSchematic ? currentSchematic.components.length : 0);
     }
 
@@ -1067,23 +1194,171 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── AI Agent ──────────────────────────────────────────────────────────────
+    
+    let sessionId = localStorage.getItem('circuitbot_chat_session');
+    if (!sessionId) {
+        sessionId = Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('circuitbot_chat_session', sessionId);
+    }
+    window.circuitbotChatSessionId = sessionId;
+
+    const activeProposals = {};
+    let chatHydrated = false;
+
+    function setProposalStatus(card, text) {
+        const actions = card ? card.querySelector('.proposal-actions') : null;
+        if (actions) actions.innerHTML = `<em>${text}</em>`;
+    }
+
+    function rejectProposal(id, card) {
+        socket.emit('chat:reject_proposal', { session_id: sessionId, proposal_id: id });
+        delete activeProposals[id];
+        if (card) {
+            card.style.opacity = '0.5';
+            setProposalStatus(card, 'Rejected');
+        }
+    }
+
+    function approveProposal(id, card) {
+        const proposal = activeProposals[id];
+        if (!proposal || typeof pcbState === 'undefined') return;
+
+        enterPCBView(false);
+        pcbState.ghostProposal = proposal;
+        pcbState.lastPointerWorld = pcbState.lastPointerWorld || { x: 0, y: 0 };
+        pcbSetMode(PCB_MODE.GHOST_PLACEMENT);
+        pcbEditor.requestOverlayRefresh();
+
+        if (card) setProposalStatus(card, 'Placing...');
+    }
+
+    function renderProposalCard(data) {
+        activeProposals[data.id] = data;
+
+        const card = document.createElement('div');
+        card.className = 'proposal-card';
+        const header = document.createElement('div');
+        header.className = 'proposal-header';
+        header.textContent = 'AI Proposal';
+        const body = document.createElement('div');
+        body.className = 'proposal-body';
+        body.textContent = `Add: ${data.component.name}`;
+        const actions = document.createElement('div');
+        actions.className = 'proposal-actions';
+        const approveBtn = document.createElement('button');
+        approveBtn.className = 'btn-approve';
+        approveBtn.type = 'button';
+        approveBtn.textContent = 'Approve';
+        approveBtn.addEventListener('click', () => approveProposal(data.id, card));
+        const rejectBtn = document.createElement('button');
+        rejectBtn.className = 'btn-reject';
+        rejectBtn.type = 'button';
+        rejectBtn.textContent = 'Reject';
+        rejectBtn.addEventListener('click', () => rejectProposal(data.id, card));
+        actions.appendChild(approveBtn);
+        actions.appendChild(rejectBtn);
+        card.appendChild(header);
+        card.appendChild(body);
+        card.appendChild(actions);
+        agentConversation.appendChild(card);
+        agentConversation.scrollTop = agentConversation.scrollHeight;
+    }
+
+    function hydrateChatState(data) {
+        if (chatHydrated) return;
+        chatHydrated = true;
+        clearConversation();
+        Object.keys(activeProposals).forEach((key) => delete activeProposals[key]);
+
+        const history = Array.isArray(data.history) ? data.history : [];
+        for (const message of history) {
+            if (message.role === 'user') {
+                const userMsg = document.createElement('div');
+                userMsg.className = 'conv-user-msg';
+                userMsg.textContent = message.content || '';
+                agentConversation.appendChild(userMsg);
+            } else if (message.role === 'assistant') {
+                const agentMsg = document.createElement('div');
+                agentMsg.className = 'conv-agent-msg';
+                agentMsg.textContent = message.content || '';
+                agentConversation.appendChild(agentMsg);
+            } else if (message.role === 'system') {
+                addConversationMessage('log', message.content || '');
+            }
+        }
+
+        const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+        for (const proposal of proposals) {
+            renderProposalCard(proposal);
+        }
+
+        if (!history.length && !proposals.length) {
+            agentConversation.innerHTML = "<div class=\"conv-empty\">Describe a circuit and I'll design it for you.</div>";
+        } else {
+            trimConversationDom();
+            agentConversation.scrollTop = agentConversation.scrollHeight;
+        }
+
+        if (data.board_model) {
+            pcbLoadBoard(data.board_model, { fetchRatsnest: false });
+            renderPcbLayersPanel();
+        }
+    }
 
     agentBtn.addEventListener('click', () => {
-        const prompt = agentPrompt.value.trim();
-        if (!prompt || agentBusy) return;
+        const text = agentPrompt.value.trim();
+        if (!text || agentBusy) return;
+        
         agentBusy = true;
         updateAgentButton();
-        clearConversation();
-        agentConversation.innerHTML = '';
+        
+        agentPrompt.value = '';
+        
         const userMsg = document.createElement('div');
         userMsg.className = 'conv-user-msg';
-        userMsg.textContent = prompt;
+        userMsg.textContent = text;
         agentConversation.appendChild(userMsg);
-        showAgentStatus('Starting agent...', 'thinking');
-        displayNetlist([]);
-        if (!currentSchematic) currentSchematic = new Schematic();
-        socket.emit('agent:generate', { prompt });
+        
+        agentConversation.scrollTop = agentConversation.scrollHeight;
+        showAgentStatus('Thinking...', 'thinking');
+        socket.emit('chat:message', { session_id: sessionId, text: text });
     });
+
+    socket.on('chat:reply', (data) => {
+        agentBusy = false;
+        updateAgentButton();
+        showAgentStatus('Ready', 'ready');
+        
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'conv-agent-msg';
+        msgDiv.textContent = data.text;
+        agentConversation.appendChild(msgDiv);
+        agentConversation.scrollTop = agentConversation.scrollHeight;
+    });
+
+    socket.on('chat:proposal', (data) => {
+        agentBusy = false;
+        updateAgentButton();
+        showAgentStatus('Ready', 'ready');
+        renderProposalCard(data);
+    });
+
+    socket.on('chat:state', (data) => {
+        hydrateChatState(data || {});
+    });
+
+    socket.on('tscircuit:board-model-updated', (data) => {
+        if (data.board_model) {
+            pcbLoadBoard(data.board_model);
+            syncSchematicFromBoardModel(data.board_model);
+            pcbEditor.requestOverlayRefresh();
+            renderPcbLayersPanel();
+        }
+    });
+
+    if (socket && socket.connected && !chatHydrated) {
+        socket.emit('chat:resume', { session_id: sessionId });
+    }
 
     agentPrompt.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {

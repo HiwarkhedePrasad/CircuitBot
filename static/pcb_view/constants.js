@@ -43,6 +43,7 @@ const PCB_MODE = {
     PANNING: 'panning',
     DRAG_COMPONENT: 'drag_component',
     ROUTE: 'route',
+    GHOST_PLACEMENT: 'ghost_placement',
 };
 
 const PCB_TOOL = {

@@ -868,6 +868,64 @@ canvas {
     100% { content: ''; }
 }
 
+/* AI Proposal Card */
+.proposal-card {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 6px 0;
+    max-width: 95%;
+    font-size: 12px;
+    font-family: var(--font-ui);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.proposal-header {
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+
+.proposal-body {
+    color: var(--text-main);
+    margin-bottom: 8px;
+}
+
+.proposal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.proposal-actions button {
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.btn-approve {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-approve:hover {
+    filter: brightness(1.1);
+}
+
+.btn-reject {
+    background: transparent;
+    border: 1px solid var(--text-dim);
+    color: var(--text-dim);
+}
+
+.btn-reject:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+}
+
 /* Input area */
 .agent-input-group {
     display: flex;

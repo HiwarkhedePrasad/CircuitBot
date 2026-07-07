@@ -125,7 +125,7 @@ def test_pcb_render_source_uses_current_saved_board_model():
     assert "(segment (start 10 10) (end 20 20)" in text or "(segment (start 10.0 10.0) (end 20.0 20.0)" in text
 
 
-def test_export_pcb_requires_agent_generated_design_state():
+def test_export_pcb_works_with_board_model_and_empty_selected_components():
     from server import app, LAST_DESIGN, design_lock
 
     board_model = _sample_board_model()
@@ -136,5 +136,5 @@ def test_export_pcb_requires_agent_generated_design_state():
     with app.test_client() as client:
         response = client.get("/api/export_pcb")
 
-    assert response.status_code == 404
-    assert "No design generated yet" in response.data.decode("utf-8")
+    assert response.status_code == 200
+    assert "kicad_pcb" in response.data.decode("utf-8")

@@ -72,13 +72,20 @@ function normalizeBoardModel(boardModel) {
         component.pads = Array.isArray(component.pads) ? component.pads : [];
         component.graphics = Array.isArray(component.graphics) ? component.graphics : [];
         for (const pad of component.pads) {
+            pad.number = String(pad.number ?? pad.num ?? '');
+            pad.num = pad.number;
             pad.x = toFiniteNumber(pad.x);
             pad.y = toFiniteNumber(pad.y);
             pad.width = toFiniteNumber(pad.width, 1);
             pad.height = toFiniteNumber(pad.height, 1);
             pad.rotation = toFiniteNumber(pad.rotation);
             if (pad.drill != null) pad.drill = toFiniteNumber(pad.drill, 0);
+            if (pad.drill_width != null) pad.drill_width = toFiniteNumber(pad.drill_width, 0);
+            pad.drill_offset_x = toFiniteNumber(pad.drill_offset_x, 0);
+            pad.drill_offset_y = toFiniteNumber(pad.drill_offset_y, 0);
             if (pad.roundrect_rratio != null) pad.roundrect_rratio = toFiniteNumber(pad.roundrect_rratio);
+            pad.rect_delta_x = toFiniteNumber(pad.rect_delta_x, 0);
+            pad.rect_delta_y = toFiniteNumber(pad.rect_delta_y, 0);
             pad.layers = expandPadLayers(Array.isArray(pad.layers) ? pad.layers : ['F.Cu']);
         }
     }
@@ -117,8 +124,8 @@ function rotatePoint(x, y, angleDeg) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     return {
-        x: x * cos - y * sin,
-        y: x * sin + y * cos,
+        x: x * cos + y * sin,
+        y: -x * sin + y * cos,
     };
 }
 

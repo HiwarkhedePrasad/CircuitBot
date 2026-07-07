@@ -45,8 +45,33 @@ class PadDef:
     type: str = "smd"
     rotation: float = 0.0
     drill: Optional[float] = None
+    drill_width: Optional[float] = None
+    drill_offset_x: float = 0.0
+    drill_offset_y: float = 0.0
     roundrect_rratio: Optional[float] = None
+    rect_delta_x: float = 0.0
+    rect_delta_y: float = 0.0
     layers: list[str] = field(default_factory=lambda: ["F.Cu", "F.Mask", "F.Paste"])
+
+    def to_dict(self) -> dict:
+        return {
+            "number": self.number,
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "height": self.height,
+            "shape": self.shape,
+            "type": self.type,
+            "rotation": self.rotation,
+            "drill": self.drill,
+            "drill_width": self.drill_width,
+            "drill_offset_x": self.drill_offset_x,
+            "drill_offset_y": self.drill_offset_y,
+            "roundrect_rratio": self.roundrect_rratio,
+            "rect_delta_x": self.rect_delta_x,
+            "rect_delta_y": self.rect_delta_y,
+            "layers": self.layers,
+        }
 
     def to_polygon(self) -> Optional["Polygon"]:
         if not HAS_SHAPELY:
@@ -230,17 +255,7 @@ class BoardModel:
                 "rotation": c.rotation,
                 "layer": c.layer,
                 "value": c.value,
-                "pads": [
-                    {
-                        "number": p.number, "x": p.x, "y": p.y,
-                        "width": p.width, "height": p.height,
-                        "shape": p.shape, "type": p.type,
-                        "rotation": p.rotation, "drill": p.drill,
-                        "roundrect_rratio": p.roundrect_rratio,
-                        "layers": p.layers,
-                    }
-                    for p in c.pads
-                ],
+                "pads": [p.to_dict() for p in c.pads],
                 "graphics": c.graphics,
             }
 
@@ -288,11 +303,16 @@ class BoardModel:
         for cd in data.get("components", []):
             pads = [
                 PadDef(
-                    number=p["number"], x=p["x"], y=p["y"],
+                    number=p.get("number", p.get("num", "")), x=p["x"], y=p["y"],
                     width=p["width"], height=p["height"],
                     shape=p.get("shape", "rect"), type=p.get("type", "smd"),
                     rotation=p.get("rotation", 0.0), drill=p.get("drill"),
+                    drill_width=p.get("drill_width"),
+                    drill_offset_x=p.get("drill_offset_x", 0.0),
+                    drill_offset_y=p.get("drill_offset_y", 0.0),
                     roundrect_rratio=p.get("roundrect_rratio"),
+                    rect_delta_x=p.get("rect_delta_x", 0.0),
+                    rect_delta_y=p.get("rect_delta_y", 0.0),
                     layers=p.get("layers", ["F.Cu", "F.Mask", "F.Paste"]),
                 )
                 for p in cd.get("pads", [])
