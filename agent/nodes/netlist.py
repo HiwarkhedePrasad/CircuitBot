@@ -335,6 +335,7 @@ def netlist_node(state, config):
     try:
         import copy
         from agent.tools import fetch_sexpr as _fetch_sexpr
+        from agent.utils import _create_pwr_flag_component
 
         need_flag = []
         for net in valid_nets:
@@ -354,32 +355,15 @@ def netlist_node(state, config):
             comp_ops = state.get("component_ops", {})
             pm = state.get("pin_matrix", {})
             for i, net_name in enumerate(sorted(need_flag)):
-                ref = f"#FLG{i+1:02d}"
-                selected.append({
-                    "id_str": "power:PWR_FLAG",
-                    "ref_des": ref,
-                    "category": "Power_Management",
-                    "description": f"Power flag for {net_name}",
-                    "footprint": "", "pads": [],
-                    "justification": f"PWR_FLAG: net {net_name} has no power-output pin",
-                    "datasheet_text": "",
-                })
-                comp_ops[ref] = copy.deepcopy(flag_ops)
-                if flag_pin_raw:
-                    pk = list(flag_pin_raw.keys())[0]
-                    pv = flag_pin_raw[pk]
-                    adj_key = f"{ref}:{pv['pin_num']}"
-                    adj_pv = dict(pv)
-                    adj_pv["ref_des"] = ref
-                    pm[adj_key] = adj_pv
-                    power_pins.append({"pin": adj_key, "net": net_name})
-                else:
-                    pm[f"{ref}:1"] = {
-                        "x": 0, "y": 0, "name": "",
-                        "num": "1", "pin_num": "1",
-                        "ref_des": ref, "angle": 90, "etype": "power_out",
-                    }
-                    power_pins.append({"pin": f"{ref}:1", "net": net_name})
+                fc = _create_pwr_flag_component(
+                    net_name, i + 1, flag_ops, flag_pin_raw,
+                    f"PWR_FLAG: net {net_name} has no power-output pin",
+                )
+                selected.append(fc["component"])
+                comp_ops[fc["ref"]] = copy.deepcopy(fc["comp_op"])
+                pkey, pval = fc["pin_entry"]
+                pm[pkey] = pval
+                power_pins.append(fc["power_pin_entry"])
             result["selected_components"] = selected
             result["component_ops"] = comp_ops
             result["pin_matrix"] = pm

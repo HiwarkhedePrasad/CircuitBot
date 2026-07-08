@@ -12,12 +12,20 @@ Improvements over the original:
     at a grid point) — never on a simple corner.
   * Power labels get a short stub so they visually attach to the pin.
 
-Coordinate system note:
+Coordinate system (from kicad-schematic skill):
+- Symbol libraries (.kicad_sym) use Y-up (math convention).
+- Schematics (.kicad_sch) use Y-down (screen convention).
+- Pin at library (px, py), symbol placed at schematic (sx, sy) with rotation R:
+
+    Rotation 0:   sheet_pos = (sx + px, sy - py)
+    Rotation 90:  sheet_pos = (sx + py, sy + px)
+    Rotation 180: sheet_pos = (sx - px, sy + py)
+    Rotation 270: sheet_pos = (sx - py, sy - px)
+
 - CircuitBot's canvas uses Y growing the same direction as the symbol files.
-- KiCad schematic sheets use Y growing DOWNWARD, while symbol-local
-  coordinates grow UPWARD. A pin at local (px, py) of a symbol placed at
-  (X, Y) lands at sheet position (X + px, Y - py).
 - Therefore: sheet_x = canvas_x + offset, sheet_y = -canvas_y + offset.
+
+See docs/kicad-schematic-reference.md for full coordinate transform reference.
 """
 from __future__ import annotations
 
@@ -26,6 +34,11 @@ import re
 import uuid
 
 from agent.exceptions import ExportValidationError
+
+# Re-export shared grid constant from sexpr_utils for consistency
+# Use agent.sexpr_utils.snap() / agent.sexpr_utils.pin_abs() when
+# coordinate transforms are needed outside this module.
+from agent.sexpr_utils import snap as _grid_snap, pin_abs as _pin_abs_global, GRID as _GRID
 
 GRID = 1.27
 

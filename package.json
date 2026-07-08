@@ -8,6 +8,7 @@
     "install-viewer": "node -e \"require('fs').cpSync(require('path').join(require.resolve('@tscircuit/runframe/package.json'), '..', 'dist', 'standalone-preview.min.js'), 'static/tscircuit-viewer.min.js')\""
   },
   "dependencies": {
-    "@tscircuit/runframe": "^0.0.2141"
+    "@tscircuit/runframe": "^0.0.2141",
+    "opencode-llm-proxy": "^1.7.1"
   }
 }

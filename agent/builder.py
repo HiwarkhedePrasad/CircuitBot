@@ -13,8 +13,9 @@ from agent.nodes import (
     power_net_repair_node,
     connectivity_validate_node, connectivity_repair_node,
     validate_repair_node,
+    ask_validation_help_node,
 )
-from agent.utils import _route_after_validate, _route_after_pcb_approval, _route_after_erc
+from agent.utils import _route_after_validate, _route_after_validation_help, _route_after_pcb_approval, _route_after_erc
 
 MAX_ERC_RETRIES = 3
 
@@ -54,6 +55,7 @@ def build_graph() -> StateGraph:
     builder.add_node("ask_pcb_approval", ask_pcb_approval_node)
     builder.add_node("pcb_layout", pcb_layout_node)
     builder.add_node("validate_repair", validate_repair_node)
+    builder.add_node("ask_validation_help", ask_validation_help_node)
     builder.add_node("error_end", error_end_node)
 
     builder.set_entry_point("analyze")
@@ -63,10 +65,16 @@ def build_graph() -> StateGraph:
     builder.add_edge("symbol_compatibility", "validate")
     builder.add_conditional_edges("validate", _route_after_validate, {
         "validate_repair": "validate_repair",
+        "ask_validation_help": "ask_validation_help",
         "dispatch": "dispatch",
         "error_end": "error_end",
     })
     builder.add_edge("validate_repair", "validate")
+    builder.add_conditional_edges("ask_validation_help", _route_after_validation_help, {
+        "validate_repair": "validate_repair",
+        "dispatch": "dispatch",
+        "error_end": "error_end",
+    })
     builder.add_edge("dispatch", "symbol_validate")
     builder.add_edge("symbol_validate", "netlist")
     builder.add_edge("netlist", "power_net_repair")

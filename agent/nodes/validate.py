@@ -544,6 +544,7 @@ def validate_node(state, config):
         for c in comps
     )
 
+    llm_failed = False
     try:
         text = _call_llm(VALIDATE_SYSTEM, VALIDATE_USER.format(
             prompt=prompt,
@@ -552,12 +553,20 @@ def validate_node(state, config):
         ), stage="validate")
     except Exception:
         text = ""
+        llm_failed = True
     text = _clean_json(text)
     try:
-        result = json.loads(text) if text else {"valid": True, "issues": []}
+        result = json.loads(text) if text else {}
     except json.JSONDecodeError:
         print(f"Failed to parse validation JSON: {text[:200]}")
-        result = {"valid": True, "issues": []}
+        result = {}
+    if not result or llm_failed:
+        result = {"valid": False, "issues": [{
+            "id_str": "",
+            "severity": "error",
+            "message": "LLM validation call failed or returned unparseable result — cannot verify BOM correctness",
+            "suggestion": "Retry the validation step or manually review the selected components",
+        }]}
 
     # Inject deterministic pre-check errors into LLM result
     for err in integrity_errors:
@@ -819,15 +828,21 @@ def validate_node(state, config):
         "rejected_families": rejected_families,
         "_last_validated_component_count": len(comps),
     }
+    # Don't set result["error"] here — let _route_after_validate route to
+    # ask_validation_help so the user can decide how to proceed when retries
+    # are exhausted. The error detail is preserved in _validation_error_detail
+    # for the help node to show the user.
     if validation_errors and state.get("retry_count", 0) >= MAX_VALIDATION_RETRIES:
         error_msgs = "; ".join(validation_errors[:3])
         repair_failures = state.get("repair_failures", []) or []
         if repair_failures:
             missing_targets = ", ".join(sorted(set(item.split(":", 1)[0] for item in repair_failures[:4])))
-            result["error"] = (
+            result["_validation_error_detail"] = (
                 f"No compatible component found in the available library after {MAX_VALIDATION_RETRIES} retries "
                 f"for: {missing_targets}. Last validation errors: {error_msgs}"
             )
         else:
-            result["error"] = f"Validation failed after {MAX_VALIDATION_RETRIES} retries: {error_msgs}"
+            result["_validation_error_detail"] = (
+                f"Validation failed after {MAX_VALIDATION_RETRIES} retries: {error_msgs}"
+            )
     return _stage_result(state, "validate", result)

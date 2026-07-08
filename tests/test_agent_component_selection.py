@@ -89,4 +89,4 @@ def test_validate_reports_missing_library_after_max_retries(monkeypatch):
         },
         {"configurable": {"emit": None}},
     )
-    assert "No compatible component found in the available library" in result["error"]
+    assert "No compatible component found in the available library" in result["_validation_error_detail"]

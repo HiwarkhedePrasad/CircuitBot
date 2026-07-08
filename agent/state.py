@@ -55,6 +55,8 @@ class AgentState(TypedDict, total=False):
     error: Optional[str]
     retry_count: int
     validation_errors: List[str]
+    validation_warnings: List[str]
+    _validation_help_result: Optional[dict]
     rejected_ids: Optional[List[str]]
     rejected_families: Optional[List[str]]
     repair_failures: Optional[List[str]]
@@ -68,4 +70,5 @@ class AgentState(TypedDict, total=False):
     _erc_affected_nets: Optional[List[str]]  # net names affected by last ERC repair (targeted re-route)
     _validation_issues: Optional[List[dict]]  # all validation issues collected across stages
     _power_net_repaired: bool           # True after power_net_repair runs
+    _validation_error_detail: Optional[str]  # Detailed error for ask_validation_help
     synthesis_graph: Optional["dict"]   # serialised SynthesisGraph (set by netlist_node)

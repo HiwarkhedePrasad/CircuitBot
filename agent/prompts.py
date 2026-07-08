@@ -383,6 +383,21 @@ PIN MATCHING GUIDELINES:
     Example: a temperature sensor with ``ANALOG_OUT`` pin role and knowledge
     ``[ADC(CH0=1)]`` should connect to an MCU ADC input pin.
 
+9. PIN POSITION COMPUTATION (from kicad-schematic reference):
+   - When generating a netlist, remember that each pin's schematic position
+     is computed as: abs_x = symbol_x + pin_lib_x, abs_y = symbol_y - pin_lib_y
+     for rotation 0. KiCad uses Y-down schematic space.
+   - NEVER output coordinates or wire paths in the netlist JSON — those are
+     handled by the layout/routing engine.
+   - Every pin MUST appear in exactly one net. Unused pins must still be
+     assigned to a net or flagged (the layout engine handles no-connect flags).
+
+10. PWR_FLAG REQUIREMENT:
+    - Power nets driven by voltage regulators (LDOs, buck converters) whose
+      output pin type is "passive" (not "power_out") need a PWR_FLAG.
+    - The agent pipeline injects PWR_FLAGs automatically for nets without
+      a power-output driver. Do NOT add PWR_FLAG references in your netlist.
+
 PCB CALCULATION TOOLS (use when you need to check trace widths or impedances):
 To use a tool, output {"_tool": "tool_name", "args": {...}} instead of the normal JSON array.
 The tool result will be returned and you can continue. Available tools:

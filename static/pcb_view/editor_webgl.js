@@ -10,8 +10,12 @@ class PcbEditorWebGL {
         this._isWebGL2 = false;
         this._instancing = null;
         
-        this._resizeHandler = () => this._resize();
+        this._resizeHandler = () => {
+            if (this._resizeFrame) cancelAnimationFrame(this._resizeFrame);
+            this._resizeFrame = requestAnimationFrame(() => this._resize());
+        };
         this._refreshFrame = null;
+        this._resizeFrame = null;
         this._settleRefreshTimer = null;
         this._history = [];
         
@@ -85,6 +89,10 @@ class PcbEditorWebGL {
         if (this._refreshFrame) {
             cancelAnimationFrame(this._refreshFrame);
             this._refreshFrame = null;
+        }
+        if (this._resizeFrame) {
+            cancelAnimationFrame(this._resizeFrame);
+            this._resizeFrame = null;
         }
         if (this._settleRefreshTimer) {
             clearTimeout(this._settleRefreshTimer);

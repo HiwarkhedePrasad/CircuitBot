@@ -1,0 +1,883 @@
+{
+  "version": "20260206",
+  "generator": "circuitbot",
+  "_pcbnew_content": null,
+  "components": [
+    {
+      "ref": "J1",
+      "footprint": "Connector_PinHeader_2.54mm:PinHeader_2x15_P2.54mm_Vertical",
+      "x": 30.48,
+      "y": 20.32,
+      "rotation": 0,
+      "layer": "F.Cu",
+      "value": "PinHeader_2x15_P2.54mm_Vertical",
+      "pads": [
+        {
+          "number": "1",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "rect",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "2",
+          "x": 2.54,
+          "y": 0.0,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "3",
+          "x": 0.0,
+          "y": 2.54,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "4",
+          "x": 2.54,
+          "y": 2.54,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "5",
+          "x": 0.0,
+          "y": 5.08,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "6",
+          "x": 2.54,
+          "y": 5.08,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "7",
+          "x": 0.0,
+          "y": 7.62,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "8",
+          "x": 2.54,
+          "y": 7.62,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "9",
+          "x": 0.0,
+          "y": 10.16,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "10",
+          "x": 2.54,
+          "y": 10.16,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "11",
+          "x": 0.0,
+          "y": 12.7,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "12",
+          "x": 2.54,
+          "y": 12.7,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "13",
+          "x": 0.0,
+          "y": 15.24,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "14",
+          "x": 2.54,
+          "y": 15.24,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "15",
+          "x": 0.0,
+          "y": 17.78,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "16",
+          "x": 2.54,
+          "y": 17.78,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "17",
+          "x": 0.0,
+          "y": 20.32,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "18",
+          "x": 2.54,
+          "y": 20.32,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "19",
+          "x": 0.0,
+          "y": 22.86,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "20",
+          "x": 2.54,
+          "y": 22.86,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "21",
+          "x": 0.0,
+          "y": 25.4,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "22",
+          "x": 2.54,
+          "y": 25.4,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "23",
+          "x": 0.0,
+          "y": 27.94,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "24",
+          "x": 2.54,
+          "y": 27.94,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "25",
+          "x": 0.0,
+          "y": 30.48,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "26",
+          "x": 2.54,
+          "y": 30.48,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "27",
+          "x": 0.0,
+          "y": 33.02,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "28",
+          "x": 2.54,
+          "y": 33.02,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "29",
+          "x": 0.0,
+          "y": 35.56,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        },
+        {
+          "number": "30",
+          "x": 2.54,
+          "y": 35.56,
+          "width": 1.7,
+          "height": 1.7,
+          "shape": "circle",
+          "type": "thru_hole",
+          "rotation": 0.0,
+          "drill": 1.0,
+          "drill_width": null,
+          "drill_offset_x": 0.0,
+          "drill_offset_y": 0.0,
+          "roundrect_rratio": null,
+          "rect_delta_x": 0.0,
+          "rect_delta_y": 0.0,
+          "layers": [
+            "*.Cu",
+            "*.Mask"
+          ]
+        }
+      ],
+      "graphics": [
+        {
+          "kind": "property",
+          "name": "Reference",
+          "text": "REF**",
+          "layer": "F.SilkS",
+          "x": 1.27,
+          "y": -2.38,
+          "rotation": 0.0,
+          "size": 1.0,
+          "hidden": false
+        },
+        {
+          "kind": "property",
+          "name": "Value",
+          "text": "PinHeader_2x15_P2.54mm_Vertical",
+          "layer": "F.Fab",
+          "x": 1.27,
+          "y": 37.94,
+          "rotation": 0.0,
+          "size": 1.0,
+          "hidden": false
+        },
+        {
+          "kind": "property",
+          "name": "KiLib_Generator",
+          "text": "connector/pin_header_socket",
+          "layer": "F.SilkS",
+          "x": 0.0,
+          "y": 0.0,
+          "rotation": 0.0,
+          "size": 1.0,
+          "hidden": true
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": -1.38,
+            "y": -1.38
+          },
+          "end": {
+            "x": 0.0,
+            "y": -1.38
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": -1.38,
+            "y": 0.0
+          },
+          "end": {
+            "x": -1.38,
+            "y": -1.38
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": -1.38,
+            "y": 1.27
+          },
+          "end": {
+            "x": -1.38,
+            "y": 36.94
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": -1.38,
+            "y": 1.27
+          },
+          "end": {
+            "x": 1.27,
+            "y": 1.27
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": -1.38,
+            "y": 36.94
+          },
+          "end": {
+            "x": 3.92,
+            "y": 36.94
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": 1.27,
+            "y": -1.38
+          },
+          "end": {
+            "x": 3.92,
+            "y": -1.38
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": 1.27,
+            "y": 1.27
+          },
+          "end": {
+            "x": 1.27,
+            "y": -1.38
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.SilkS",
+          "width": 0.12,
+          "start": {
+            "x": 3.92,
+            "y": -1.38
+          },
+          "end": {
+            "x": 3.92,
+            "y": 36.94
+          }
+        },
+        {
+          "kind": "fp_rect",
+          "layer": "F.CrtYd",
+          "width": 0.05,
+          "start": {
+            "x": -1.77,
+            "y": -1.78
+          },
+          "end": {
+            "x": 4.32,
+            "y": 37.34
+          },
+          "fill": "none"
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.Fab",
+          "width": 0.1,
+          "start": {
+            "x": -1.27,
+            "y": 0.0
+          },
+          "end": {
+            "x": 0.0,
+            "y": -1.27
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.Fab",
+          "width": 0.1,
+          "start": {
+            "x": -1.27,
+            "y": 36.83
+          },
+          "end": {
+            "x": -1.27,
+            "y": 0.0
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.Fab",
+          "width": 0.1,
+          "start": {
+            "x": 0.0,
+            "y": -1.27
+          },
+          "end": {
+            "x": 3.81,
+            "y": -1.27
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.Fab",
+          "width": 0.1,
+          "start": {
+            "x": 3.81,
+            "y": -1.27
+          },
+          "end": {
+            "x": 3.81,
+            "y": 36.83
+          }
+        },
+        {
+          "kind": "fp_line",
+          "layer": "F.Fab",
+          "width": 0.1,
+          "start": {
+            "x": 3.81,
+            "y": 36.83
+          },
+          "end": {
+            "x": -1.27,
+            "y": 36.83
+          }
+        },
+        {
+          "kind": "fp_text",
+          "name": "user",
+          "text": "${REFERENCE}",
+          "layer": "F.Fab",
+          "x": 1.27,
+          "y": 17.78,
+          "rotation": 90.0,
+          "size": 1.0,
+          "hidden": false
+        }
+      ]
+    }
+  ],
+  "traces": [],
+  "vias": [],
+  "nets": [],
+  "power_pins": [],
+  "power_labels": [],
+  "outline_segments": []
+}

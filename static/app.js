@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.className = `pcb-layer-row${isVisible ? '' : ' is-hidden'}`;
             row.setAttribute('role', 'button');
             row.setAttribute('tabindex', '0');
+            row.dataset.layerName = layerName;
 
             const swatch = document.createElement('span');
             swatch.className = 'pcb-layer-swatch';
@@ -86,17 +87,6 @@ document.addEventListener('DOMContentLoaded', () => {
             toggle.type = 'button';
             toggle.textContent = isVisible ? '◉' : '◌';
             toggle.title = `${isVisible ? 'Hide' : 'Show'} ${layerName}`;
-            const toggleLayer = () => {
-                setPcbLayerVisible(layerName, !isVisible);
-                pcbDrawCurrent();
-            };
-            row.addEventListener('click', toggleLayer);
-            row.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    toggleLayer();
-                }
-            });
 
             const label = document.createElement('span');
             label.className = 'pcb-layer-name';
@@ -110,6 +100,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         pcbLayersList.appendChild(fragment);
     }
+
+    function pcbLayersListClickHandler(event) {
+        const row = event.target.closest('[data-layer-name]');
+        if (!row) return;
+        const layerName = row.dataset.layerName;
+        if (!layerName) return;
+        const isVisible = isPcbLayerVisible(layerName);
+        setPcbLayerVisible(layerName, !isVisible);
+        pcbDrawCurrent();
+    }
+
+    function pcbLayersListKeyHandler(event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const row = event.target.closest('[data-layer-name]');
+        if (!row) return;
+        const layerName = row.dataset.layerName;
+        if (!layerName) return;
+        event.preventDefault();
+        const isVisible = isPcbLayerVisible(layerName);
+        setPcbLayerVisible(layerName, !isVisible);
+        pcbDrawCurrent();
+    }
+
+    pcbLayersList.addEventListener('click', pcbLayersListClickHandler);
+    pcbLayersList.addEventListener('keydown', pcbLayersListKeyHandler);
 
     function updatePcbToolbar(detail = {}) {
         const activeTool = detail.tool || (window.pcbState && window.pcbState.activeTool) || 'pan';
@@ -677,6 +692,26 @@ document.addEventListener('DOMContentLoaded', () => {
             btnDiv.innerHTML = `
                 <button class="btn-approve" onclick="socket.emit('agent:pcb_approve', {approved: true})">Proceed to PCB</button>
                 <button class="btn-skip" onclick="socket.emit('agent:pcb_approve', {approved: false})">Skip PCB</button>
+            `;
+            agentConversation.appendChild(btnDiv);
+            while (agentConversation.querySelectorAll('.conv-approval-buttons').length > MAX_APPROVAL_BUTTONS) {
+                agentConversation.querySelector('.conv-approval-buttons')?.remove();
+            }
+            agentConversation.scrollTop = agentConversation.scrollHeight;
+        });
+        socket.on('agent:validation_help', (data) => {
+            const errors = (data.errors || []).join('\\n');
+            const msg = `Validation could not auto-fix ${data.errors ? data.errors.length : 0} issue(s) after multiple retries.\\n\\nRemaining issues:\\n${errors || '(none listed)'}\\n\\nHow would you like to proceed?`;
+            addConversationMessage('assistant', msg.replace(/\\n/g, '<br>'));
+            const existingButtons = agentConversation.querySelectorAll('.conv-approval-buttons');
+            existingButtons.forEach(node => node.remove());
+            const btnDiv = document.createElement('div');
+            btnDiv.className = 'conv-approval-buttons';
+            btnDiv.innerHTML = `
+                <button class="btn-approve" onclick="socket.emit('agent:validation_help_response', {action: 'retry'})">Retry</button>
+                <button class="btn-approve" onclick="socket.emit('agent:validation_help_response', {action: 'skip'})">Skip & Continue</button>
+                <button class="btn-approve" onclick="socket.emit('agent:validation_help_response', {action: 'force'})">Force Continue</button>
+                <button class="btn-skip" onclick="socket.emit('agent:validation_help_response', {action: 'terminate'})">Terminate</button>
             `;
             agentConversation.appendChild(btnDiv);
             while (agentConversation.querySelectorAll('.conv-approval-buttons').length > MAX_APPROVAL_BUTTONS) {

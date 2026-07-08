@@ -9,6 +9,7 @@ from agent.nodes import (
     dispatch_node, netlist_node,
     placement_node, routing_node, pcb_layout_node,
     schematic_audit_node, ask_pcb_approval_node,
+    ask_validation_help_node,
 )
 from agent.utils import (
     MAX_LLM_RETRIES, MAX_VALIDATION_RETRIES, MAX_BATCH_PINS,
@@ -22,7 +23,7 @@ from agent.utils import (
     _merge_net, _make_signal_batches,
     _generate_nets_fallback,
     _parse_sexpr_to_ops, _extract_pins_from_ops, _get_attr,
-    _route_after_validate, _sanitize_data,
+    _route_after_validate, _route_after_validation_help, _route_after_pcb_approval, _sanitize_data,
     PIN_ALIASES, COMPLEMENTARY_PAIRS,
 )
 
@@ -31,6 +32,7 @@ __all__ = [
     "analyze_node", "research_node", "select_node", "validate_node",
     "dispatch_node", "netlist_node",
     "placement_node", "routing_node", "pcb_layout_node",
+    "ask_validation_help_node",
     "MAX_LLM_RETRIES", "MAX_VALIDATION_RETRIES", "MAX_BATCH_PINS",
     "GND_NET_NAMES", "POWER_NET_NAMES", "POWER_ETYPES",
     "AgentLLMError",
@@ -42,6 +44,6 @@ __all__ = [
     "_merge_net", "_make_signal_batches",
     "_generate_nets_fallback",
     "_parse_sexpr_to_ops", "_extract_pins_from_ops", "_get_attr",
-    "_route_after_validate", "_route_after_pcb_approval", "_sanitize_data",
+    "_route_after_validate", "_route_after_validation_help", "_route_after_pcb_approval", "_sanitize_data",
     "PIN_ALIASES", "COMPLEMENTARY_PAIRS",
 ]
