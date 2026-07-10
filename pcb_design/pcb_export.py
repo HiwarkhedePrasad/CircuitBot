@@ -6,6 +6,7 @@ track segments.
 """
 from __future__ import annotations
 
+import math
 import re
 import sys
 import uuid
@@ -29,6 +30,31 @@ def _q(s: str) -> str:
 def _fmt(v: float) -> str:
     s = f"{v:.4f}".rstrip("0").rstrip(".")
     return s if s else "0"
+
+
+def _arc_center_from_three_points(p1, p2, p3):
+    """Calculate the center of an arc given three points on the arc.
+
+    KiCad gr_arc format requires (start center) (mid ...) (end ...),
+    but our internal format stores three points ON the arc.
+    """
+    ax, ay = p1["x"], p1["y"]
+    bx, by = p2["x"], p2["y"]
+    cx, cy = p3["x"], p3["y"]
+
+    D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if abs(D) < 1e-10:
+        # Degenerate arc — return midpoint as fallback
+        return {"x": (ax + cx) / 2, "y": (ay + cy) / 2}
+
+    ux = ((ax * ax + ay * ay) * (by - cy) +
+          (bx * bx + by * by) * (cy - ay) +
+          (cx * cx + cy * cy) * (ay - by)) / D
+    uy = ((ax * ax + ay * ay) * (cx - bx) +
+          (bx * bx + by * by) * (ax - cx) +
+          (cx * cx + cy * cy) * (bx - ax)) / D
+
+    return {"x": round(ux, 4), "y": round(uy, 4)}
 
 
 def _snap(v: float) -> float:
@@ -325,8 +351,14 @@ def _generate_from_board_model(board_model: dict) -> str:
     from pcb_design.board_model import BoardModel as BM
     model = BM.from_dict(board_model)
 
+    # Build layers from model.layer_count
+    layer_count = board_model.get("layer_count", 2)
     layers = [
         (0, "F.Cu", "signal"),
+    ]
+    for i in range(1, layer_count - 1):
+        layers.append((i, f"In{i}.Cu", "signal"))
+    layers.extend([
         (31, "B.Cu", "signal"),
         (32, "B.SilkS", "user"),
         (33, "B.Mask", "user"),
@@ -334,7 +366,7 @@ def _generate_from_board_model(board_model: dict) -> str:
         (35, "F.Mask", "user"),
         (36, "F.SilkS", "user"),
         (37, "Edge.Cuts", "user"),
-    ]
+    ])
 
     # Build net index and pin_to_net
     net_index = {"": 0}
@@ -356,9 +388,14 @@ def _generate_from_board_model(board_model: dict) -> str:
         out.append(f"    ({num} {_q(name)} {ltype})")
     out.append("  )")
 
+    # Dynamic stackup section
     out.append("  (setup")
     out.append("    (stackup")
     out.append("      (layer \"F.Cu\" (type \"copper\") (thickness 0.035))")
+    for i in range(1, layer_count - 1):
+        out.append(f"      (layer \"prepreg\" (type \"dielectric\") (thickness 0.2))")
+        out.append(f"      (layer \"In{i}.Cu\" (type \"copper\") (thickness 0.035))")
+    out.append("      (layer \"core\" (type \"dielectric\") (thickness 1.6))")
     out.append("      (layer \"B.Cu\" (type \"copper\") (thickness 0.035))")
     out.append("    )")
     out.append("  )")
@@ -429,6 +466,56 @@ def _generate_from_board_model(board_model: dict) -> str:
         out.append(f"      )")
         out.append(f"    )")
         out.append(f"  )")
+
+    # ── Board outline (Edge.Cuts) ──────────────────────────────────
+    for seg in model.outline_segments:
+        kind = seg.get("kind", "gr_line")
+        width = seg.get("width", 0.1)
+        layer = seg.get("layer", "Edge.Cuts")
+        uuid_str = _new_uuid()
+        if kind == "gr_line":
+            s, e = seg.get("start", {}), seg.get("end", {})
+            out.append(
+                f"  (gr_line (start {_fmt(s.get('x', 0))} {_fmt(s.get('y', 0))})"
+                f" (end {_fmt(e.get('x', 0))} {_fmt(e.get('y', 0))})"
+                f" (stroke (width {_fmt(width)}) (type default))"
+                f" (layer {_q(layer)}) (uuid {uuid_str}))"
+            )
+        elif kind == "gr_arc":
+            s = seg.get("start", {})
+            m = seg.get("mid", {})
+            e = seg.get("end", {})
+            # KiCad gr_arc uses start=center of arc, mid/end are points on the arc
+            center = _arc_center_from_three_points(s, m, e)
+            out.append(
+                f"  (gr_arc (start {_fmt(center['x'])} {_fmt(center['y'])})"
+                f" (mid {_fmt(m.get('x', 0))} {_fmt(m.get('y', 0))})"
+                f" (end {_fmt(e.get('x', 0))} {_fmt(e.get('y', 0))})"
+                f" (stroke (width {_fmt(width)}) (type default))"
+                f" (layer {_q(layer)}) (uuid {uuid_str}))"
+            )
+        elif kind == "gr_rect":
+            s, e = seg.get("start", {}), seg.get("end", {})
+            sx, sy = s.get("x", 0), s.get("y", 0)
+            ex, ey = e.get("x", 0), e.get("y", 0)
+            corners = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
+            for ci in range(4):
+                cx1, cy1 = corners[ci]
+                cx2, cy2 = corners[(ci + 1) % 4]
+                out.append(
+                    f"  (gr_line (start {_fmt(cx1)} {_fmt(cy1)})"
+                    f" (end {_fmt(cx2)} {_fmt(cy2)})"
+                    f" (stroke (width {_fmt(width)}) (type default))"
+                    f" (layer {_q(layer)}) (uuid {_new_uuid()}))"
+                )
+        elif kind == "gr_poly":
+            points = seg.get("points", [])
+            if len(points) >= 3:
+                out.append(f"  (gr_poly (pts")
+                for pt in points:
+                    out.append(f"    (xy {_fmt(pt.get('x', 0))} {_fmt(pt.get('y', 0))})")
+                out.append(f"  ) (stroke (width {_fmt(width)}) (type default))"
+                           f" (fill none) (layer {_q(layer)}) (uuid {uuid_str}))")
 
     out.append(")")
     return "\n".join(out) + "\n"

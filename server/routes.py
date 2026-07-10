@@ -259,7 +259,12 @@ def api_pcb_render_source():
 def api_pcb_enriched_board_model():
     with design_lock:
         if not LAST_DESIGN.get('board_model') and not LAST_DESIGN.get('selected_components'):
-            return jsonify({"error": "No PCB state available yet."}), 404
+            # Return empty board model instead of 404 so PCB view can load
+            empty_model = {
+                "components": [], "traces": [], "vias": [], "nets": [],
+                "outline_segments": [], "layer_count": 2,
+            }
+            return jsonify({"board_model": empty_model})
         design_copy = LAST_DESIGN.copy()
     try:
         from pcb_design.pcb_export import generate_kicad_pcb

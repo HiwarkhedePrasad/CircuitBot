@@ -713,6 +713,27 @@ def validate_node(state, config):
                                 })
                                 break
                 if best:
+                    if not best.get("footprint"):
+                        try:
+                            from kicad_rag.store import resolve_footprint_from_filters
+                            resolved = resolve_footprint_from_filters(best["id_str"])
+                            if resolved:
+                                best["footprint"] = resolved
+                        except Exception as e:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Failed to resolve footprint for {best['id_str']}: {e}")
+                    if not best.get("footprint"):
+                        try:
+                            from agent.tools import fetch_footprint
+                            info = fetch_footprint(best["id_str"])
+                            if info:
+                                best["footprint"] = info.get("footprint", "")
+                                best["pads"] = info.get("pads", [])
+                        except Exception as e:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Failed to fetch footprint for {best['id_str']}: {e}")
                     ref_prefix = _ref_prefix_for(best["id_str"], best["id_str"].split(":")[0])
                     existing_nums = set()
                     for c in comps + corrections:

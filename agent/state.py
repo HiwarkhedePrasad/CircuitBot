@@ -72,3 +72,4 @@ class AgentState(TypedDict, total=False):
     _power_net_repaired: bool           # True after power_net_repair runs
     _validation_error_detail: Optional[str]  # Detailed error for ask_validation_help
     synthesis_graph: Optional["dict"]   # serialised SynthesisGraph (set by netlist_node)
+    layer_count: int                    # PCB layer count (2, 4, 6, or 8) — set by ask_board_config

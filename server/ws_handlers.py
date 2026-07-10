@@ -51,7 +51,7 @@ def handle_disconnect():
 
 @socketio.on('agent:pcb_approve')
 def handle_pcb_approve(data):
-    entry = _agent_events.pop(request.sid, None)
+    entry = _agent_events.get(request.sid)
     if entry:
         entry["result"]["approved"] = data.get("approved", False)
         entry["event"].set()
@@ -67,6 +67,18 @@ def handle_validation_help(data):
             help_result["action"] = data.get("action", "terminate")
         if help_event is not None:
             help_event.set()
+
+
+@socketio.on('agent:board_config')
+def handle_board_config(data):
+    entry = _agent_events.get(request.sid)
+    if entry:
+        board_config_event = entry.get("board_config_event")
+        board_config_result = entry.get("board_config_result")
+        if board_config_result is not None:
+            board_config_result["layer_count"] = data.get("layer_count", 2)
+        if board_config_event is not None:
+            board_config_event.set()
 
 
 # ── Agent Generate ──────────────────────────────────────────────────────

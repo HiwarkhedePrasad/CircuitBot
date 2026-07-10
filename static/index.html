@@ -14,6 +14,7 @@
             <div class="brand">
                 <span class="logo">⚡</span>
                 <span class="title">CircuitBot <span class="version">v0.8.2</span></span>
+                <span class="connection-status" id="connectionStatus" title="Connected to backend">●</span>
             </div>
             <div class="toolbar">
                 <button id="addBtn" class="tool-btn" title="Add Selected Component to Schematic" disabled>
@@ -75,10 +76,14 @@
                     </div>
                     <div id="pcbToolbar" class="pcb-toolbar hidden" aria-label="PCB tools">
                         <div class="pcb-tool-group" role="group" aria-label="PCB interaction tools">
-                            <button id="pcbPanToolBtn" class="pcb-tool-chip active" type="button" title="Pan board">Pan</button>
-                            <button id="pcbSelectToolBtn" class="pcb-tool-chip" type="button" title="Select and move components">Select</button>
-                            <button id="pcbRouteToolBtn" class="pcb-tool-chip" type="button" title="Route traces">Route</button>
-                            <button id="pcbViaToolBtn" class="pcb-tool-chip" type="button" title="Place vias">Via</button>
+                            <button id="pcbPanToolBtn" class="pcb-tool-chip active" type="button" title="Pan board (H)" data-shortcut="H">Pan</button>
+                            <button id="pcbSelectToolBtn" class="pcb-tool-chip" type="button" title="Select and move components (S)" data-shortcut="S">Select</button>
+                            <button id="pcbRouteToolBtn" class="pcb-tool-chip" type="button" title="Route traces (X)" data-shortcut="X">Route</button>
+                            <button id="pcbViaToolBtn" class="pcb-tool-chip" type="button" title="Place vias (V)" data-shortcut="V">Via</button>
+                            <button id="pcbOutlineToolBtn" class="pcb-tool-chip" type="button" title="Draw board outline (O)" data-shortcut="O">Outline</button>
+                        </div>
+                        <div class="pcb-tool-group" role="group" aria-label="PCB help">
+                            <button id="pcbHelpBtn" class="pcb-tool-chip" type="button" title="Keyboard shortcuts (?)" data-shortcut="?">?</button>
                         </div>
                         <div class="pcb-tool-group" role="group" aria-label="PCB routing settings">
                             <label class="pcb-tool-field" for="pcbLayerSelect">
@@ -159,7 +164,16 @@
                         </div>
                         <!-- Activity stream -->
                         <div class="agent-conversation" id="agentConversation">
-                            <div class="conv-empty">Describe a circuit and I'll design it for you.</div>
+                            <div class="conv-empty" id="convEmpty">
+                                <div style="margin-bottom:12px;color:var(--text-main);font-size:13px;">Describe a circuit and I'll design it for you.</div>
+                                <div class="suggestion-chips" id="suggestionChips">
+                                    <button class="suggestion-chip" data-prompt="Design a 3.3V USB power supply with LED indicator">3.3V USB power supply</button>
+                                    <button class="suggestion-chip" data-prompt="ESP32 with button and status LED">ESP32 with button & LED</button>
+                                    <button class="suggestion-chip" data-prompt="Temperature sensor with ADC and display">Temperature sensor</button>
+                                    <button class="suggestion-chip" data-prompt="Battery charger with status LED">Battery charger</button>
+                                    <button class="suggestion-chip" data-prompt="Motor driver circuit with ESP32">Motor driver</button>
+                                </div>
+                            </div>
                         </div>
                         <!-- Command input -->
                         <div class="agent-input-group">
@@ -178,13 +192,22 @@
     <script src="/static/schematic.js?v=12"></script>
     <script src="/static/renderer_legacy.js?v=10"></script>
     <script src="/static/schematic_renderer.js?v=2"></script>
-    <script src="/static/pcb_view/constants.js"></script>
-    <script src="/static/pcb_view/state.js"></script>
-    <script src="/static/pcb_view/utils.js"></script>
-    <script src="/static/pcb_view/gl_math.js"></script>
-    <script src="/static/pcb_view/editor.js"></script>
-    <script src="/static/pcb_view/events.js"></script>
+    <script src="/static/pcb_view/constants.js?v=16"></script>
+    <script src="/static/pcb_view/state.js?v=16"></script>
+    <script src="/static/pcb_view/utils.js?v=16"></script>
+    <script src="/static/pcb_view/gl_math.js?v=16"></script>
+    <script src="/static/pcb_view/kicanvas_transform.js?v=1"></script>
+    <script src="/static/pcb_view/kicanvas_webgl_helpers.js?v=1"></script>
+    <script src="/static/pcb_view/kicanvas_webgl_vector.js?v=1"></script>
+    <script src="/static/pcb_view/kicanvas_webgl_renderer.js?v=1"></script>
+    <script src="/static/pcb_view/kicanvas_board_painter.js?v=1"></script>
+    <script src="/static/pcb_view/stroke-font-data.js?v=1"></script>
+    <script src="/static/pcb_view/stroke-font.js?v=1"></script>
+    <script src="/static/pcb_view/editor_webgl.js?v=16"></script>
+    <script src="/static/pcb_view/events.js?v=16"></script>
     <script src="/static/tscircuit-bridge.js?v=1"></script>
     <script src="/static/app.js?v=13"></script>
+    <!-- Toast notifications -->
+    <div id="toastContainer" class="toast-container"></div>
 </body>
 </html>

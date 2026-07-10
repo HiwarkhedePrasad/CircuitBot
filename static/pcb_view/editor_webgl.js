@@ -23,6 +23,11 @@ class PcbEditorWebGL {
         this._projectionMatrix = mat3.create();
         this._viewMatrix = mat3.create();
         this._viewProjectionMatrix = mat3.create();
+        // KiCanvas Camera2 for coordinate transforms
+        this._camera = new KiCMath.Camera2();
+        // KiCanvas WebGL renderer
+        this._kcRenderer = null;
+        this._kcReady = false;
 
         // Shaders and programs
         this._gridProgram = null;
@@ -75,12 +80,30 @@ class PcbEditorWebGL {
         this._canvas.parentElement.style.position = 'relative';
         this._canvas.parentElement.appendChild(this._overlayCanvas);
         this._overlayCtx = this._overlayCanvas.getContext('2d');
+        this._overlayCtx.imageSmoothingEnabled = true;
         this._syncOverlayVisibility();
 
         window.addEventListener('resize', this._resizeHandler);
+        this._canvas.addEventListener('webglcontextlost', (e) => {
+            e.preventDefault();
+            console.warn('WebGL context lost');
+            this._gl = null;
+            if (this._refreshFrame) { cancelAnimationFrame(this._refreshFrame); this._refreshFrame = null; }
+        });
+        this._canvas.addEventListener('webglcontextrestored', () => {
+            console.log('WebGL context restored');
+            this._gl = null;
+            this.ensure();
+            this.refresh();
+        });
         
         this._initShaders();
         this._resize();
+        this._initKiCanvasRenderer().catch(e => {
+            if (!this._suppressKcWarn) {
+                console.warn('KiCanvas WebGL renderer init deferred or unavailable:', e.message);
+            }
+        });
     }
 
     destroy() {
@@ -193,7 +216,7 @@ class PcbEditorWebGL {
                 vec3 worldPos = uInverseMatrix * vec3(vPos.x, vPos.y, 1.0);
 
                 // Background
-                vec3 bgColor = vec3(0.043, 0.066, 0.086);
+                vec3 bgColor = vec3(0.0, 0.0, 0.0);
 
                 // --- Minor grid lines (1.27mm spacing) ---
                 // Distance from the nearest minor grid line in world units.
@@ -489,6 +512,17 @@ class PcbEditorWebGL {
         mat3.translate(this._viewMatrix, this._viewMatrix, [-pcbState.midX, -pcbState.midY]);
         
         mat3.multiply(this._viewProjectionMatrix, this._projectionMatrix, this._viewMatrix);
+        
+        // Sync KiCanvas Camera2 for coordinate transforms
+        this._syncCameraToState();
+    }
+
+    _syncCameraToState() {
+        const w = this._canvas ? this._canvas.width : 0;
+        const h = this._canvas ? this._canvas.height : 0;
+        this._camera.viewport_size = new KiCMath.Vec2(w, h);
+        this._camera.center = new KiCMath.Vec2(pcbState.midX, pcbState.midY);
+        this._camera.zoom = pcbState.baseScale * pcbState.zoom;
     }
 
     _setProjectionMatrix(out, width, height) {
@@ -503,6 +537,20 @@ class PcbEditorWebGL {
         out[7] = 1;
         out[8] = 1;
         return out;
+    }
+
+    async _initKiCanvasRenderer() {
+        if (this._kcReady || !this._isWebGL2 || !this._gl) return;
+        try {
+            const { WebGL2Renderer } = KiCRender;
+            this._kcRenderer = new WebGL2Renderer(this._canvas);
+            await this._kcRenderer.setup(this._gl);
+            this._kcReady = true;
+            this.refresh();
+    } catch (e) {
+        console.error('KiCanvas WebGL renderer init failed:', e);
+        this._kcReady = false;
+    }
     }
     
     screenToWorld(sx, sy) {
@@ -546,10 +594,11 @@ class PcbEditorWebGL {
         if (!this._gl) return;
         const gl = this._gl;
         
+        gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         
-        gl.clearColor(0.043, 0.066, 0.086, 1.0);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         // 1. Render Grid
@@ -568,8 +617,94 @@ class PcbEditorWebGL {
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.disableVertexAttribArray(aPos);
         }
+        // Reset GL state after legacy grid shader so KiCanvas doesn't inherit
+        // stale program or VAO bindings.
+        gl.useProgram(null);
+        gl.bindVertexArray(null);
+
+        // 2. Render KiCanvas board content (if available)
+        // Track whether KiCanvas succeeded so the overlay knows whether to
+        // fall back to Canvas2D for board content (traces, pads, etc.).
+        this._kcRenderSucceeded = false;
+        if (this._kcReady && this._kcRenderer && pcbState.boardModel) {
+            try {
+                this._renderKiCanvasContent();
+                this._kcRenderSucceeded = true;
+            } catch (err) {
+                console.warn('[PCB] KiCanvas render failed, falling back to Canvas2D:', err);
+                this._kcRenderSucceeded = false;
+                // Disable KiCanvas permanently so subsequent frames don't keep failing
+                this._kcReady = false;
+            }
+        }
         
+        // 3. Render overlay (text, airwires, selection, ghost)
         this._renderOverlay();
+    }
+
+    _renderKiCanvasContent() {
+        const r = this._kcRenderer;
+        if (!r || !r.gl) throw new Error('KiCanvas renderer or GL context unavailable');
+        const gl = r.gl;
+
+        // Do NOT use DEPTH_TEST here. All board content is a single flat 2D layer;
+        // the shared depth buffer with GREATER would reject every primitive type
+        // after the first (all drawn at the same depth), hiding traces, pads, etc.
+        gl.disable(gl.DEPTH_TEST);
+
+        // Dispose any stale layers from previous frames to prevent GPU memory
+        // leak and stale accumulation (e.g. if rendering threw between startLayer
+        // and removeLayer in a prior frame).
+        for (const layer of r.layers.slice()) {
+            layer.dispose();
+        }
+        r.layers.length = 0;
+
+        // Build view * projection matrix (world → clip space)
+        const w = this._canvas.width;
+        const h = this._canvas.height;
+        const proj = KiCMath.Mat3.orthographic(w, h);
+        r.projectionMatrix = proj;
+
+        const scale = pcbState.baseScale * pcbState.zoom;
+        // multiply_self does LEFT-multiply (this = b * this), so chain is built
+        // in reverse order vs glMatrix: center-translate first, scale, screen-translate last.
+        const viewMat = KiCMath.Mat3.identity()
+            .translate_self(-pcbState.midX, -pcbState.midY)
+            .scale_self(scale, -scale)
+            .translate_self(pcbState.cx + pcbState.panX, pcbState.cy + pcbState.panY);
+
+        // multiply_self(b) computes this = b * this (left-multiply).
+        // To get proj * viewMat, we need: viewMat.copy() then multiply_self(proj).
+        const camera = viewMat.copy().multiply_self(proj);
+
+        // Paint board content into a layer
+        const boardLayer = r.startLayer('board');
+        // state.matrix is a LOCAL/MODEL transform applied during primitive creation.
+        // Camera matrix (proj * view) is applied in the shader during render().
+        // If we set state.matrix=viewMat here, the view transform would be applied
+        // TWICE (once during primitive creation, once in the shader via camera).
+        r.state.matrix = KiCMath.Mat3.identity();
+        const painter = new KiCBoard.BoardPainter(
+            r, pcbState.boardModel, pcbState.visibleLayers || {}
+        );
+        painter.paint();
+        r.endLayer();
+
+        // Render the layer — only render the boardLayer we just created,
+        // not ALL accumulated layers (which could include stale layers).
+        if (boardLayer) {
+            boardLayer.render(camera, 0.5, 1.0);
+        }
+
+        // Clean up GPU resources and remove from layer stack
+        boardLayer.dispose();
+        r.removeLayer(boardLayer);
+
+        // Reset GL state so legacy shaders (grid) don't inherit VAO bindings
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+        gl.disable(gl.DEPTH_TEST);
     }
 
     _renderOverlay() {
@@ -580,7 +715,14 @@ class PcbEditorWebGL {
 
         const model = pcbState.boardModel;
         if (!model) return;
-        this._drawBoardCanvas(ctx, model);
+        // When KiCanvas WebGL successfully rendered board content, only draw UI
+        // overlays here (text, airwires, selection, ghost). When KiCanvas is
+        // unavailable or failed, fall back to Canvas2D for ALL board content.
+        // Use _kcRenderSucceeded (not _kcReady) so silent failures (no throw
+        // but no visible output) also trigger the fallback.
+        if (!this._kcRenderSucceeded) {
+            this._drawBoardCanvas(ctx, model);
+        }
         this._drawAirwiresCanvas(ctx, model);
         this._drawBoardTexts(ctx, model);
 
@@ -588,6 +730,54 @@ class PcbEditorWebGL {
         if (pcbState.routePoints && pcbState.routePoints.length > 0) {
             const points = pcbState.routeCursor ? appendRoutePoint(pcbState.routePoints, pcbState.routeCursor) : pcbState.routePoints;
             this._strokeWorldPath(ctx, points, Math.max(pcbState.routeWidth || 0.25, 0.2), '#fff1a8', 0.95);
+            // Snap-to-grid crosshair indicator at cursor
+            if (pcbState.routeCursor) {
+                const cp = this.worldToScreen(pcbState.routeCursor.x, pcbState.routeCursor.y);
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255, 241, 168, 0.6)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(cp.x - 8, cp.y); ctx.lineTo(cp.x + 8, cp.y);
+                ctx.moveTo(cp.x, cp.y - 8); ctx.lineTo(cp.x, cp.y + 8);
+                ctx.stroke();
+                // Route info tooltip
+                const allPts = appendRoutePoint(pcbState.routePoints, pcbState.routeCursor);
+                let routeLen = 0;
+                for (let i = 1; i < allPts.length; i++) {
+                    routeLen += Math.hypot(allPts[i].x - allPts[i-1].x, allPts[i].y - allPts[i-1].y);
+                }
+                const netName = pcbState.routeNetName || '';
+                const info = netName ? `${netName}  ${routeLen.toFixed(2)}mm` : `${routeLen.toFixed(2)}mm`;
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.font = '11px "JetBrains Mono", monospace';
+                ctx.textAlign = 'left';
+                const tw = ctx.measureText(info).width;
+                ctx.fillRect(cp.x + 12, cp.y - 16, tw + 8, 18);
+                ctx.fillStyle = '#fff1a8';
+                ctx.fillText(info, cp.x + 16, cp.y - 3);
+                ctx.restore();
+            }
+        }
+
+        // Draw outline preview during drawing
+        if (pcbState.outlinePoints && pcbState.outlinePoints.length > 0) {
+            ctx.save();
+            ctx.setLineDash([7, 6]);
+            const allPts = pcbState.outlineDraft
+                ? [...pcbState.outlinePoints, pcbState.outlineDraft]
+                : pcbState.outlinePoints;
+            if (allPts.length >= 2) {
+                this._strokeWorldPath(ctx, allPts, 0.15, '#19d7b0', 0.85);
+            }
+            // Draw placed vertices
+            for (const pt of pcbState.outlinePoints) {
+                const sp = this.worldToScreen(pt.x, pt.y);
+                ctx.fillStyle = '#19d7b0';
+                ctx.beginPath();
+                ctx.arc(sp.x, sp.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
         }
 
         // Highlight Selected Component
@@ -608,6 +798,77 @@ class PcbEditorWebGL {
                 ctx.fill();
                 ctx.stroke();
             }
+        }
+
+        // Highlight Hovered Component (subtle glow, only when not selected)
+        if (pcbState.hoveredComponentRef && pcbState.hoveredComponentRef !== pcbState.selectedComponentRef) {
+            const comp = model.components.find(c => c.ref === pcbState.hoveredComponentRef);
+            if (comp) {
+                const bounds = getComponentBounds(comp);
+                const tl = this.worldToScreen(bounds.minX, bounds.minY);
+                const br = this.worldToScreen(bounds.maxX, bounds.maxY);
+                const rx = Math.min(tl.x, br.x);
+                const ry = Math.min(tl.y, br.y);
+                const rw = Math.abs(br.x - tl.x);
+                const rh = Math.abs(br.y - tl.y);
+                ctx.strokeStyle = 'rgba(77, 241, 194, 0.4)';
+                ctx.lineWidth = 1;
+                this._roundRectPath(ctx, rx, ry, rw, rh, 8);
+                ctx.stroke();
+            }
+        }
+
+        // Highlight Hovered Trace (for delete feedback)
+        if (pcbState.hoveredTraceIndex != null && model.traces) {
+            const trace = model.traces[pcbState.hoveredTraceIndex];
+            if (trace && trace.path && trace.path.length >= 2) {
+                ctx.save();
+                this._strokeWorldPath(ctx, trace.path, (trace.width || 0.254) + 0.15, '#ff5555', 0.7);
+                ctx.restore();
+            }
+        }
+
+        // Net highlighting — glow pads and traces belonging to the highlighted net
+        if (pcbState.highlightedNet && model) {
+            const hNet = pcbState.highlightedNet;
+            ctx.save();
+            // Highlight pads
+            for (const comp of model.components || []) {
+                for (const pad of comp.pads || []) {
+                    const padNet = pad.net || getNetNameForPad(model, comp.ref, pad.number);
+                    if (padNet === hNet) {
+                        const center = getComponentPadPosition(comp, pad);
+                        const sp = this.worldToScreen(center.x, center.y);
+                        const r = this._worldRadiusToPixels(Math.max(pad.width, pad.height) / 2) + 4;
+                        ctx.beginPath();
+                        ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(77, 241, 194, 0.25)';
+                        ctx.fill();
+                        ctx.strokeStyle = '#4df1c2';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                }
+            }
+            // Highlight traces
+            for (const trace of model.traces || []) {
+                if (trace.net === hNet) {
+                    this._strokeWorldPath(ctx, trace.path, (trace.width || 0.254) + 0.2, '#4df1c2', 0.4);
+                }
+            }
+            // Highlight airwires
+            const hEdges = (pcbState.ratsnest || {})[hNet] || [];
+            for (const edge of hEdges) {
+                const start = this._resolveAirwireEndpoint(model, edge, 'from', 'x1', 'y1');
+                const end = this._resolveAirwireEndpoint(model, edge, 'to', 'x2', 'y2');
+                if (start && end) this._strokeWorldPath(ctx, [start, end], 0.3, '#4df1c2', 0.8);
+            }
+            // Net name label
+            ctx.font = '11px "JetBrains Mono", monospace';
+            ctx.fillStyle = '#4df1c2';
+            ctx.textAlign = 'left';
+            ctx.fillText('Net: ' + hNet, 10, 30);
+            ctx.restore();
         }
 
         // Draw Ghost Component for AI Proposals
@@ -690,15 +951,43 @@ class PcbEditorWebGL {
         const ratsnest = pcbState.ratsnest || {};
         const netNames = Object.keys(ratsnest);
         if (!netNames.length) return;
+
+        // When actively routing, redirect airwires for the routed net
+        // so the suggestion line follows the cursor (not the original pad).
+        const isRouting = pcbState.mode === PCB_MODE.ROUTE && pcbState.routeStartAnchor;
+        const routeNet = isRouting ? pcbState.routeNetName : null;
+        const routeSourceKey = isRouting ? pcbState.routeStartAnchor.key : null;
+        const routeCursor = isRouting ? pcbState.routeCursor : null;
+
         ctx.save();
-        ctx.setLineDash([7, 6]);
+        ctx.setLineDash([4, 4]); // KiCad-style thin dashed line
         for (const netName of netNames) {
             const edges = ratsnest[netName] || [];
+            const isCurrentNet = netName === routeNet;
             for (const edge of edges) {
-                const start = this._resolveAirwireEndpoint(model, edge, 'from', 'x1', 'y1');
-                const end = this._resolveAirwireEndpoint(model, edge, 'to', 'x2', 'y2');
+                let start = this._resolveAirwireEndpoint(model, edge, 'from', 'x1', 'y1');
+                let end = this._resolveAirwireEndpoint(model, edge, 'to', 'x2', 'y2');
                 if (!start || !end) continue;
-                this._strokeWorldPath(ctx, [start, end], 0.24, '#ffffff', 0.52);
+
+                // Redirect airwire endpoints from the route source pad to the cursor
+                if (isRouting && netName === routeNet && routeCursor) {
+                    if (edge.from === routeSourceKey) {
+                        start = { x: routeCursor.x, y: routeCursor.y };
+                    }
+                    if (edge.to === routeSourceKey) {
+                        end = { x: routeCursor.x, y: routeCursor.y };
+                    }
+                }
+
+                // Bright airwire for current net, dim for others (only when routing)
+                if (isRouting && isCurrentNet) {
+                    this._strokeWorldPath(ctx, [start, end], 0.25, '#00ffcc', 0.9);
+                } else if (isRouting && !isCurrentNet) {
+                    this._strokeWorldPath(ctx, [start, end], 0.15, '#333333', 0.3);
+                } else {
+                    // Not routing - show all airwires bright
+                    this._strokeWorldPath(ctx, [start, end], 0.15, '#aab8c8', 0.7);
+                }
             }
         }
         ctx.restore();
@@ -718,29 +1007,39 @@ class PcbEditorWebGL {
 
     _drawBoardCanvas(ctx, model) {
         this._drawBoardOutline(ctx, model);
-        this._drawTracesCanvas(ctx, model.traces || []);
-        this._drawViasCanvas(ctx, model.vias || []);
 
         const components = model.components || [];
 
-        // Pass 1: all solder mask expansions for every component (bottom layer)
+        // Pass 1: all body fills for every component (bottom — behind everything)
+        for (const component of components) {
+            this._drawComponentBodyFill(ctx, component);
+        }
+
+        // Pass 2: all copper traces — drawn AFTER body fill so component shadows
+        // correctly obscure traces underneath the component body.
+        this._drawTracesCanvas(ctx, model.traces || []);
+
+        // Pass 3: all vias
+        this._drawViasCanvas(ctx, model.vias || []);
+
+        // Pass 4: all solder mask expansions for every component
         for (const component of components) {
             this._drawComponentMasksCanvas(ctx, component);
         }
 
-        // Pass 2: all copper pads for every component (middle layer)
+        // Pass 5: all copper pads for every component (on top of traces)
         for (const component of components) {
             this._drawComponentCopperCanvas(ctx, component);
         }
 
-        // Pass 3: all drill holes for every component (top — punches through copper)
+        // Pass 6: all drill holes for every component (punches through copper)
         for (const component of components) {
             this._drawComponentDrillsCanvas(ctx, component);
         }
 
-        // Graphics (silkscreen, fab, courtyard) drawn last
+        // Pass 7: Graphics (silkscreen, fab, courtyard) drawn on top
         for (const component of components) {
-            this._drawComponentGraphicsCanvas(ctx, component);
+            this._drawComponentGraphicsCanvas(ctx, component, true);
         }
     }
 
@@ -806,7 +1105,7 @@ class PcbEditorWebGL {
         if (!segments.length) return;
         ctx.save();
         ctx.strokeStyle = '#19d7b0';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = Math.max(this._worldRadiusToPixels(0.1), 0.75);
         ctx.shadowColor = 'rgba(6, 59, 50, 0.85)';
         ctx.shadowBlur = 10;
         ctx.lineJoin = 'round';
@@ -831,6 +1130,15 @@ class PcbEditorWebGL {
         if (Array.isArray(segment.points) && segment.points.length > 1) {
             return segment.points;
         }
+        if (segment.kind === 'gr_rect' && segment.start && segment.end) {
+            return [
+                segment.start,
+                { x: segment.end.x, y: segment.start.y },
+                segment.end,
+                { x: segment.start.x, y: segment.end.y },
+                segment.start
+            ];
+        }
         if (segment.kind === 'gr_arc' && segment.start && segment.mid && segment.end) {
             return arcPoints(segment.start, segment.mid, segment.end, 28);
         }
@@ -841,15 +1149,15 @@ class PcbEditorWebGL {
     }
 
     _drawTracesCanvas(ctx, traces) {
-        for (const trace of traces) {
+        // Bottom copper first, then front copper, so bottom traces sit behind.
+        const group = (layer) => isBottomCopperLayer(layer) ? 0 : 1;
+        const sorted = (traces || []).slice().sort((a, b) => group(a.layer) - group(b.layer));
+        for (const trace of sorted) {
             if (!isPcbLayerVisible(trace.layer || 'F.Cu')) continue;
             const path = trace.path || [];
             if (path.length < 2) continue;
-            // Robust color resolution: support numeric (0xRRGGBB) or string ('RRGGBB' / '#RRGGBB') inputs.
-            // The old _hexToCss(Number(color)) returned #NaN when copperColorForLayer returned a string.
             const rawColor = (typeof copperColorForLayer === 'function') ? copperColorForLayer(trace.layer) : null;
             const color = this._copperColorForLayer(trace.layer, rawColor);
-            // KiCad-like: traces are copper, with full opacity so they read clearly.
             const traceWidth = Math.max(trace.width || 0.254, 0.14);
             this._strokeWorldPath(ctx, path, traceWidth, color, 1.0);
         }
@@ -884,9 +1192,14 @@ class PcbEditorWebGL {
             const outerR = this._worldRadiusToPixels(Math.max(via.diameter || 0.6, 0.6) / 2);
             const drillR = this._worldRadiusToPixels(Math.max(via.drill || Math.max((via.diameter || 0.6) * 0.45, 0.2), 0.18) / 2);
 
+            // Determine via copper color based on layers.
+            const hasTop = viaLayers.some((l) => isFrontCopperLayer(l));
+            const hasBot = viaLayers.some((l) => isBottomCopperLayer(l));
+            const viaColor = hasBot && !hasTop ? '#7f9bff' : hasTop && !hasBot ? '#b87333' : '#caa15f';
+
             // 1. Copper annular ring (KiCad-like copper pad around the hole).
             ctx.beginPath();
-            ctx.fillStyle = '#b87333';
+            ctx.fillStyle = viaColor;
             ctx.arc(center.x, center.y, outerR, 0, Math.PI * 2);
             ctx.fill();
 
@@ -922,7 +1235,13 @@ class PcbEditorWebGL {
     }
 
     _drawComponentMasksCanvas(ctx, component) {
-        const pads = (component.pads || []).slice().sort((a, b) => ((b.width || 0) * (b.height || 0)) - ((a.width || 0) * (a.height || 0)));
+        const pads = (component.pads || []).slice().sort((a, b) => {
+            // Bottom masks behind top masks; within same layer, largest first.
+            const aBot = (a.layers || []).some((l) => l === 'B.Mask') ? 0 : 1;
+            const bBot = (b.layers || []).some((l) => l === 'B.Mask') ? 0 : 1;
+            if (aBot !== bBot) return aBot - bBot;
+            return ((b.width || 0) * (b.height || 0)) - ((a.width || 0) * (a.height || 0));
+        });
         for (const pad of pads) {
             const padLayers = pad.layers || ['F.Cu'];
             const maskLayers = padLayers.filter((layer) => layer === 'F.Mask' || layer === 'B.Mask');
@@ -937,7 +1256,14 @@ class PcbEditorWebGL {
     }
 
     _drawComponentCopperCanvas(ctx, component) {
-        const pads = (component.pads || []).slice().sort((a, b) => ((b.width || 0) * (b.height || 0)) - ((a.width || 0) * (a.height || 0)));
+        const pads = (component.pads || []).slice().sort((a, b) => {
+            // Bottom copper behind front copper; through-hole in middle.
+            const aGroup = (a.layers || []).some(isBottomCopperLayer) ? 0 : ((a.type === 'thru_hole' || a.type === 'np_thru_hole' || a.type === 'tht') ? 1 : 2);
+            const bGroup = (b.layers || []).some(isBottomCopperLayer) ? 0 : ((b.type === 'thru_hole' || b.type === 'np_thru_hole' || b.type === 'tht') ? 1 : 2);
+            if (aGroup !== bGroup) return aGroup - bGroup;
+            return ((b.width || 0) * (b.height || 0)) - ((a.width || 0) * (a.height || 0));
+        });
+        const dimAlpha = this._getRoutingDimAlpha(component);
         for (const pad of pads) {
             if (!(pad.layers || ['F.Cu']).some((layer) => isPcbLayerVisible(layer))) continue;
             const center = getComponentPadPosition(component, pad);
@@ -945,21 +1271,16 @@ class PcbEditorWebGL {
             const width = pad.width || 1;
             const height = pad.height || 1;
             const isBottom = (pad.layers || []).some((layer) => isBottomCopperLayer(layer));
-            const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht' || pad.drill;
-            // KiCad-like copper palette:
-            //   - Top SMD: warm copper (#b87333 — classic copper tone)
-            //   - Bottom SMD: blue-tinted copper (so back-side pads are distinguishable)
-            //   - Through-hole: slightly brighter copper (annular ring is the visible pad)
-            const copperColor = isThrough ? '#caa15f' : (isBottom ? '#7f9bff' : '#b87333');
-            // Visible edge so pads don't look like flat colored squares even when very small.
-            const strokeColor = isThrough ? '#f0d39e' : (isBottom ? '#aac1ff' : '#e6b577');
-            this._fillPadShape(ctx, center, width, height, pad.shape || 'rect', rotation, copperColor, 1, pad.roundrect_rratio, strokeColor, pad.rect_delta_x, pad.rect_delta_y);
+            const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht';
+            const copperColor = isThrough ? '#ffcc88' : (isBottom ? '#5599ff' : '#ff6655');
+            const strokeColor = isThrough ? '#ffdd99' : (isBottom ? '#66aaff' : '#ff8877');
+            this._fillPadShape(ctx, center, width, height, pad.shape || 'rect', rotation, copperColor, dimAlpha, pad.roundrect_rratio, strokeColor, pad.rect_delta_x, pad.rect_delta_y);
         }
     }
 
     _drawComponentDrillsCanvas(ctx, component) {
         for (const pad of component.pads || []) {
-            const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht' || pad.drill;
+            const isThrough = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' || pad.type === 'tht';
             if (!isThrough) continue;
             if (!(pad.layers || ['F.Cu']).some((layer) => isPcbLayerVisible(layer))) continue;
             const center = getComponentPadPosition(component, pad);
@@ -973,7 +1294,7 @@ class PcbEditorWebGL {
             const rawDrill = pad.drill || Math.min(width, height) * 0.45;
             const drill = Math.max(Math.min(rawDrill, maxDrill), 0.2);
             const drillWidth = Math.min(pad.drill_width || drill, maxDrill);
-            const offset = rotatePoint(pad.drill_offset_x || 0, pad.drill_offset_y || 0, component.rotation || 0);
+            const offset = rotatePoint(pad.drill_offset_x || 0, pad.drill_offset_y || 0, -(component.rotation || 0));
             this._fillPadDrill(ctx, { x: center.x + offset.x, y: center.y + offset.y }, drill, drillWidth, rotation);
         }
     }
@@ -985,7 +1306,7 @@ class PcbEditorWebGL {
         this._drawComponentDrillsCanvas(ctx, component);
     }
 
-    _drawComponentGraphicsCanvas(ctx, component) {
+    _drawComponentGraphicsCanvas(ctx, component, skipBodyFill = false) {
         const grouped = {
             'F.CrtYd': [],
             'B.CrtYd': [],
@@ -1004,14 +1325,15 @@ class PcbEditorWebGL {
         // Always draw a subtle dark body behind the pads so the component
         // looks like a physical part, not just floating pads. This runs
         // regardless of whether silkscreen graphics exist.
-        this._drawComponentBodyFill(ctx, component);
+        if (!skipBodyFill) this._drawComponentBodyFill(ctx, component);
 
-        for (const item of grouped['F.CrtYd']) this._drawGraphicItem(ctx, component, item, '#3d7570', 0.7, true);
-        for (const item of grouped['B.CrtYd']) this._drawGraphicItem(ctx, component, item, '#3d7570', 0.45, true);
-        for (const item of grouped['F.Fab']) this._drawGraphicItem(ctx, component, item, '#8eb0aa', 0.9, false, 'rgba(58, 104, 96, 0.18)');
-        for (const item of grouped['B.Fab']) this._drawGraphicItem(ctx, component, item, '#8eb0aa', 0.55, false, 'rgba(58, 104, 96, 0.12)');
-        for (const item of grouped['F.SilkS']) this._drawGraphicItem(ctx, component, item, '#f2f5f4', 1, false, 'rgba(220, 240, 235, 0.10)');
-        for (const item of grouped['B.SilkS']) this._drawGraphicItem(ctx, component, item, '#cfd8d5', 0.55, false, 'rgba(200, 220, 215, 0.08)');
+        const graphicsDimAlpha = this._getRoutingDimAlpha(component);
+        for (const item of grouped['F.CrtYd']) this._drawGraphicItem(ctx, component, item, '#3d7570', 0.7 * graphicsDimAlpha, true);
+        for (const item of grouped['B.CrtYd']) this._drawGraphicItem(ctx, component, item, '#3d7570', 0.45 * graphicsDimAlpha, true);
+        for (const item of grouped['F.Fab']) this._drawGraphicItem(ctx, component, item, '#8eb0aa', 0.9 * graphicsDimAlpha, false, 'rgba(58, 104, 96, 0.18)');
+        for (const item of grouped['B.Fab']) this._drawGraphicItem(ctx, component, item, '#8eb0aa', 0.55 * graphicsDimAlpha, false, 'rgba(58, 104, 96, 0.12)');
+        for (const item of grouped['F.SilkS']) this._drawGraphicItem(ctx, component, item, '#ffffff', graphicsDimAlpha, false, 'rgba(255, 255, 255, 0.15)');
+        for (const item of grouped['B.SilkS']) this._drawGraphicItem(ctx, component, item, '#dddddd', 0.55 * graphicsDimAlpha, false, 'rgba(220, 220, 220, 0.10)');
 
         // ── Fallback body outline ─────────────────────────────────────────
         // If the backend failed to load the KiCad footprint graphics (the Python
@@ -1051,7 +1373,8 @@ class PcbEditorWebGL {
         const a = this.worldToScreen(minX, minY);
         const b = this.worldToScreen(maxX, maxY);
         ctx.save();
-        ctx.fillStyle = 'rgba(14, 17, 24, 0.40)';
+        const dimAlpha = this._getRoutingDimAlpha(component);
+        ctx.fillStyle = `rgba(20, 25, 35, ${0.50 * dimAlpha})`;
         const fx = Math.min(a.x, b.x);
         const fy = Math.min(a.y, b.y);
         const fw = Math.abs(b.x - a.x);
@@ -1082,6 +1405,20 @@ class PcbEditorWebGL {
         ctx.arc(screen.x, screen.y, markerR, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+    }
+
+    _isComponentConnectedToNet(component, netName) {
+        if (!netName) return true;
+        for (const pad of component.pads || []) {
+            if (pad.net === netName) return true;
+        }
+        return false;
+    }
+
+    _getRoutingDimAlpha(component) {
+        const isRouting = pcbState.mode === PCB_MODE.ROUTE && pcbState.routeNetName;
+        if (!isRouting) return 1.0;
+        return this._isComponentConnectedToNet(component, pcbState.routeNetName) ? 1.0 : 0.2;
     }
 
     /**
@@ -1144,35 +1481,50 @@ class PcbEditorWebGL {
         ctx.restore();
     }
 
+    _lineDashForStyle(lineStyle, lineWidthPx) {
+        if (!lineStyle || lineStyle === 'solid' || lineStyle === 'default') return [];
+        const dashLen = Math.max(11 * lineWidthPx, 2);
+        const gapLen = Math.max(4 * lineWidthPx, 2);
+        const dotLen = Math.max(0.2 * lineWidthPx, 1);
+        switch (lineStyle) {
+            case 'dash': return [dashLen, gapLen];
+            case 'dot': return [dotLen, gapLen];
+            case 'dash_dot': return [dashLen, gapLen, dotLen, gapLen];
+            case 'dash_dot_dot': return [dashLen, gapLen, dotLen, gapLen, dotLen, gapLen];
+            default: return [];
+        }
+    }
+
     _drawGraphicItem(ctx, component, item, strokeStyle, alpha, dashed = false, fillStyle = null) {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        const strokeWidth = item.width || 0.15;
-        ctx.lineWidth = Math.max(this._worldRadiusToPixels(strokeWidth), dashed ? 1 : 1.2);
-        if (dashed) {
-            ctx.setLineDash([ctx.lineWidth * 2.5, ctx.lineWidth * 2.5]);
-        }
+        const strokeWidth = item.width || 0.12;
+        ctx.lineWidth = this._worldRadiusToPixels(strokeWidth);
+        const dash = this._lineDashForStyle(item.line_style || (dashed ? 'dash' : 'solid'), ctx.lineWidth);
+        if (dash.length) ctx.setLineDash(dash);
         ctx.strokeStyle = strokeStyle;
         
-        const isFilled = item.fill && item.fill !== 'none';
+        // KiCad fill can be boolean ('yes'/'no'), a color string, or 'none'.
+        const fill = item.fill;
+        const isFilled = fill === true || fill === 'yes' || fill === 'outline' ||
+            (typeof fill === 'string' && fill !== 'none' && fill !== 'no');
         const effectiveFillStyle = fillStyle || strokeStyle;
 
         if (item.kind === 'fp_circle') {
             const center = this._transformGraphicPoints(component, [item.center])[0];
-            const end = this._transformGraphicPoints(component, [item.end])[0];
+            const screenCenter = this.worldToScreen(center.x, center.y);
             const radiusWorld = Math.hypot(item.end.x - item.center.x, item.end.y - item.center.y);
             const radiusScreen = this._worldRadiusToPixels(radiusWorld);
             ctx.beginPath();
             if (isFilled) {
-                ctx.arc(center.x, center.y, radiusScreen + (ctx.lineWidth / 2), 0, 2 * Math.PI);
+                ctx.arc(screenCenter.x, screenCenter.y, radiusScreen + (ctx.lineWidth / 2), 0, 2 * Math.PI);
                 ctx.fillStyle = effectiveFillStyle;
                 ctx.fill();
-            } else {
-                ctx.arc(center.x, center.y, radiusScreen, 0, 2 * Math.PI);
-                ctx.stroke();
             }
+            ctx.arc(screenCenter.x, screenCenter.y, radiusScreen, 0, 2 * Math.PI);
+            ctx.stroke();
             ctx.restore();
             return;
         }
@@ -1191,9 +1543,11 @@ class PcbEditorWebGL {
             ctx.fill();
         }
         
-        ctx.beginPath();
-        this._screenPathFromWorldPoints(ctx, points);
-        ctx.stroke();
+        if (!isFilled || item.kind !== 'fp_rect' || strokeStyle !== fillStyle) {
+            ctx.beginPath();
+            this._screenPathFromWorldPoints(ctx, points);
+            ctx.stroke();
+        }
         ctx.restore();
     }
 
@@ -1228,7 +1582,7 @@ class PcbEditorWebGL {
 
     _transformGraphicPoints(component, points) {
         return (points || []).map((point) => {
-            const rotated = rotatePoint(point.x || 0, point.y || 0, component.rotation || 0);
+            const rotated = rotatePoint(point.x || 0, point.y || 0, -(component.rotation || 0));
             return {
                 x: component.x + rotated.x,
                 y: component.y + rotated.y,
@@ -1312,7 +1666,7 @@ class PcbEditorWebGL {
             const point = this._transformGraphicPoints(component, [{ x: item.x || 0, y: item.y || 0 }])[0];
             const rotation = (component.rotation || 0) + (item.rotation || 0);
             
-            // KiCanvas uses StrokeFont, we emulate the stroke look and size by mapping sizes
+            // Stroke font (Hershey vector) rendering for KiCad-style text
             const sizeWorld = Math.max(item.size || 1.0, 0.4);
             const fontPx = Math.max(this._worldRadiusToPixels(sizeWorld), 3);
             if (fontPx < 5) continue; // Too small to render nicely
@@ -1364,17 +1718,20 @@ class PcbEditorWebGL {
         if (!text) return;
         const offsetRot = rotatePoint(0, options.offsetWorldY || 0, options.rotation || 0);
         const pt = this.worldToScreen(worldX + offsetRot.x, worldY + offsetRot.y);
-        ctx.save();
-        ctx.translate(pt.x, pt.y);
-        ctx.rotate(-((options.rotation || 0) * Math.PI / 180));
-        ctx.font = `${options.fontWeight || '600'} ${Math.max(options.fontPx || 10, 8)}px "JetBrains Mono", monospace`;
-        ctx.fillStyle = options.fill || '#e9f7f4';
-        if (options.shadow) {
-            ctx.shadowColor = options.shadow;
-            ctx.shadowBlur = 4;
-        }
-        ctx.fillText(text, 0, 0);
-        ctx.restore();
+        
+        let rotation = options.rotation || 0;
+        while (rotation > 90) rotation -= 180;
+        while (rotation <= -90) rotation += 180;
+        
+        const fontPx = Math.max(options.fontPx || 10, 6);
+        const sf = getStrokeFont();
+        sf.renderText(ctx, text, pt.x, pt.y, fontPx, {
+            rotation,
+            color: options.fill || '#e9f7f4',
+            strokeWidth: Math.max(fontPx / 10, 0.8),
+            halign: 'center',
+            valign: 'middle',
+        });
     }
 
     _strokeWorldPath(ctx, points, widthWorld, strokeStyle, alpha = 1) {
@@ -1382,13 +1739,11 @@ class PcbEditorWebGL {
         ctx.save();
         ctx.strokeStyle = strokeStyle;
         ctx.globalAlpha = alpha;
-        ctx.lineWidth = Math.max(this._worldRadiusToPixels(widthWorld), 1.2);
+        ctx.lineWidth = this._worldRadiusToPixels(widthWorld);
         ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.shadowColor = strokeStyle;
-        ctx.shadowBlur = Math.max(ctx.lineWidth * 0.4, 1);
+        ctx.lineJoin = 'miter';
         ctx.beginPath();
-        this._screenSmoothPath(ctx, points);
+        this._screenPathFromWorldPoints(ctx, points);
         ctx.stroke();
         ctx.restore();
     }
@@ -1437,9 +1792,8 @@ class PcbEditorWebGL {
         const wScreen = this._worldRadiusToPixels(wWorld) * 2; // diameter
         const hScreen = this._worldRadiusToPixels(hWorld) * 2;
 
-        // KiCad-like: border is always drawn so pads never look like flat colored squares.
-        // Border width scales with pad size, capped so it doesn't dominate tiny pads.
-        const borderPx = Math.max(0.75, Math.min(1.5, Math.min(wScreen, hScreen) * 0.10));
+        // Border width scales with pad size so it remains proportional at any zoom.
+        const borderPx = Math.max(0.5, Math.min(wScreen, hScreen) * 0.08);
         ctx.fillStyle = fillStyle;
         if (strokeStyle) {
             ctx.strokeStyle = strokeStyle;
@@ -1453,55 +1807,55 @@ class PcbEditorWebGL {
             ctx.fill();
             if (strokeStyle) ctx.stroke();
         } else if (shape === 'oval') {
+            // KiCanvas draws oval as a thick line with round caps (KiCad convention)
             const halfSizeX = wScreen / 2;
             const halfSizeY = hScreen / 2;
             const halfWidth = Math.min(halfSizeX, halfSizeY);
             const halfLenX = halfSizeX - halfWidth;
             const halfLenY = halfSizeY - halfWidth;
-            
-            if (halfLenX <= 0.001 && halfLenY <= 0.001) {
+
+            if (Math.abs(halfLenX) < 0.5 && Math.abs(halfLenY) < 0.5) {
                 ctx.arc(0, 0, halfWidth, 0, Math.PI * 2);
                 ctx.fill();
                 if (strokeStyle) ctx.stroke();
             } else {
-                // Filled capsule body.
                 ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
                 ctx.lineWidth = halfWidth * 2;
-                ctx.strokeStyle = fillStyle;
                 ctx.beginPath();
                 ctx.moveTo(-halfLenX, -halfLenY);
                 ctx.lineTo(halfLenX, halfLenY);
                 ctx.stroke();
-                // Border capsule (slightly inset so it stays inside the fill).
                 if (strokeStyle) {
-                    const innerHalf = Math.max(halfWidth - borderPx / 2, 0.5);
-                    ctx.lineWidth = innerHalf * 2;
+                    ctx.lineWidth = borderPx;
                     ctx.strokeStyle = strokeStyle;
-                    ctx.beginPath();
-                    ctx.moveTo(-halfLenX, -halfLenY);
-                    ctx.lineTo(halfLenX, halfLenY);
                     ctx.stroke();
-                    // Restore fill-equivalent stroke for any later callers.
-                    ctx.lineWidth = halfWidth * 2;
-                    ctx.strokeStyle = fillStyle;
                 }
             }
         } else if (shape === 'roundrect' || shape === 'trapezoid') {
-            // Porting KiCanvas roundrect/trapezoid exact drawing
+            // KiCanvas roundrect/trapezoid exact port
             const rounding = Math.min(wScreen, hScreen) * (roundrectRratio != null ? roundrectRratio : 0.25);
             const halfSizeX = (wScreen / 2) - rounding;
             const halfSizeY = (hScreen / 2) - rounding;
-            
-            const trapDeltaX = this._worldRadiusToPixels(rectDeltaX || 0) * 2 * 0.5;
-            const trapDeltaY = this._worldRadiusToPixels(rectDeltaY || 0) * 2 * 0.5;
-            
+
+            // KiCanvas: trap_delta = rect_delta * 0.5 (world units)
+            // In screen pixels: trap_delta_world * baseScale * zoom * 2 = rect_delta * baseScale * zoom
+            // worldRadiusToPixels(value) = value * baseScale * zoom (for typical values)
+            const td_x = this._worldRadiusToPixels(rectDeltaX || 0);  // affects Y
+            const td_y = this._worldRadiusToPixels(rectDeltaY || 0);  // affects X
+
+            // KiCanvas corner order with swapped X/Y delta:
+            // Corner 0: (-hs.x - td.y,  hs.y + td.x)
+            // Corner 1: ( hs.x + td.y,  hs.y - td.x)
+            // Corner 2: ( hs.x - td.y, -hs.y + td.x)
+            // Corner 3: (-hs.x + td.y, -hs.y - td.x)
             const rectPoints = [
-                { x: -halfSizeX - trapDeltaY, y: halfSizeY + trapDeltaX },
-                { x: halfSizeX + trapDeltaY, y: halfSizeY - trapDeltaX },
-                { x: halfSizeX - trapDeltaY, y: -halfSizeY + trapDeltaX },
-                { x: -halfSizeX + trapDeltaY, y: -halfSizeY - trapDeltaX },
+                { x: -halfSizeX - td_y, y:  halfSizeY + td_x },
+                { x:  halfSizeX + td_y, y:  halfSizeY - td_x },
+                { x:  halfSizeX - td_y, y: -halfSizeY + td_x },
+                { x: -halfSizeX + td_y, y: -halfSizeY - td_x },
             ];
-            
+
             ctx.beginPath();
             ctx.moveTo(rectPoints[0].x, rectPoints[0].y);
             for (let i = 1; i < 4; i++) {
@@ -1509,32 +1863,35 @@ class PcbEditorWebGL {
             }
             ctx.closePath();
             ctx.fill();
-            
-            // The magic roundrect stroke
+
+            // Roundrect rounded corners via thick stroke
             if (rounding > 0) {
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
                 ctx.lineWidth = rounding * 2;
-                ctx.strokeStyle = fillStyle; // extend the fill
+                ctx.strokeStyle = fillStyle;
                 ctx.stroke();
             }
-            
+
             if (strokeStyle) {
                 ctx.lineWidth = borderPx;
                 ctx.strokeStyle = strokeStyle;
                 ctx.stroke();
             }
         } else {
-            // Standard rect — always stroke so the pad has a visible edge (KiCad-like).
-            ctx.rect(-wScreen / 2, -hScreen / 2, wScreen, hScreen);
+            // KiCanvas draws rect as filled polygon (4 corners), no extra stroke
+            const hw = wScreen / 2;
+            const hh = hScreen / 2;
+            ctx.beginPath();
+            ctx.moveTo(-hw, -hh);
+            ctx.lineTo( hw, -hh);
+            ctx.lineTo( hw,  hh);
+            ctx.lineTo(-hw,  hh);
+            ctx.closePath();
             ctx.fill();
-            if (strokeStyle) ctx.stroke();
-            else {
-                // Even without an explicit stroke color, draw a subtle darker edge so the
-                // pad doesn't blend into the background (which is what produces the
-                // "flat colored square" look in the bug screenshots).
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-                ctx.lineWidth = 1;
+            if (strokeStyle) {
+                ctx.lineWidth = borderPx;
+                ctx.strokeStyle = strokeStyle;
                 ctx.stroke();
             }
         }
@@ -1741,11 +2098,14 @@ class PcbEditorWebGL {
 
     pushHistory(name, before, after) {
         this._history.push({ name, before, after });
+        this._redoStack = [];
     }
     
     async undo() {
         if (this._history.length > 0) {
             const entry = this._history.pop();
+            if (!this._redoStack) this._redoStack = [];
+            this._redoStack.push(entry);
             pcbState.boardModel = entry.before;
             pcbState.ratsnest = this._computeClientRatsnest(pcbState.boardModel);
             this._buildBuffers();
@@ -1753,7 +2113,17 @@ class PcbEditorWebGL {
             await this.saveBoardModel();
         }
     }
-    async redo() {}
+    async redo() {
+        if (this._redoStack && this._redoStack.length > 0) {
+            const entry = this._redoStack.pop();
+            this._history.push(entry);
+            pcbState.boardModel = entry.after;
+            pcbState.ratsnest = this._computeClientRatsnest(pcbState.boardModel);
+            this._buildBuffers();
+            this.refresh();
+            await this.saveBoardModel();
+        }
+    }
 
     refreshAirwires() {
         if (!pcbState.boardModel) {
@@ -1770,6 +2140,8 @@ class PcbEditorWebGL {
         const model = normalizeBoardModel(boardModel || { components: [], traces: [], vias: [], nets: [] });
         const result = {};
         const nets = Array.isArray(model.nets) ? model.nets : [];
+        const TOLERANCE = 0.1; // 0.1mm tolerance for matching trace endpoints to pad positions
+
         for (const netEntry of nets) {
             const netName = netEntry.name || netEntry.net || '';
             const pinKeys = Array.isArray(netEntry.pins) ? netEntry.pins : [];
@@ -1780,20 +2152,47 @@ class PcbEditorWebGL {
                 if (pos) positions.push({ pinKey, pos });
             }
             if (positions.length < 2) continue;
+
+            // Build adjacency from traces with tolerance-based matching
             const adjacency = new Map();
+            const posKeys = positions.map((entry, idx) => ({
+                idx,
+                key: `${Number(entry.pos.x).toFixed(2)},${Number(entry.pos.y).toFixed(2)}`,
+                x: entry.pos.x,
+                y: entry.pos.y
+            }));
+
+            // Helper to find which pad position a point is close to
+            const findClosestPadKey = (point) => {
+                const px = Number(point.x);
+                const py = Number(point.y);
+                for (const pk of posKeys) {
+                    if (Math.abs(pk.x - px) < TOLERANCE && Math.abs(pk.y - py) < TOLERANCE) {
+                        return pk.key;
+                    }
+                }
+                return null;
+            };
+
             for (const trace of model.traces || []) {
                 if (String(trace.net || '').toUpperCase() !== String(netName).toUpperCase()) continue;
                 const path = Array.isArray(trace.path) ? trace.path : [];
                 if (path.length < 2) continue;
                 const start = path[0];
                 const end = path[path.length - 1];
-                const startKey = `${Number(start.x).toFixed(2)},${Number(start.y).toFixed(2)}`;
-                const endKey = `${Number(end.x).toFixed(2)},${Number(end.y).toFixed(2)}`;
-                if (!adjacency.has(startKey)) adjacency.set(startKey, []);
-                if (!adjacency.has(endKey)) adjacency.set(endKey, []);
-                adjacency.get(startKey).push(endKey);
-                adjacency.get(endKey).push(startKey);
+
+                // Use tolerance-based matching to find closest pad positions
+                const startKey = findClosestPadKey(start);
+                const endKey = findClosestPadKey(end);
+
+                if (startKey && endKey && startKey !== endKey) {
+                    if (!adjacency.has(startKey)) adjacency.set(startKey, []);
+                    if (!adjacency.has(endKey)) adjacency.set(endKey, []);
+                    adjacency.get(startKey).push(endKey);
+                    adjacency.get(endKey).push(startKey);
+                }
             }
+
             const pointToIndices = new Map();
             positions.forEach((entry, index) => {
                 const key = `${Number(entry.pos.x).toFixed(2)},${Number(entry.pos.y).toFixed(2)}`;
@@ -1908,3 +2307,5 @@ class PcbEditorWebGL {
         return pcbState.ratsnest;
     }
 }
+
+window.PcbEditorWebGL = PcbEditorWebGL;

@@ -19,6 +19,7 @@ from agent.nodes.connectivity_validate import connectivity_validate_node
 from agent.nodes.connectivity_repair import connectivity_repair_node
 from agent.nodes.validate_repair import validate_repair_node
 from agent.nodes.ask_validation_help import ask_validation_help_node
+from agent.nodes.ask_board_config import ask_board_config_node
 
 __all__ = [
     "analyze_node", "research_node", "select_node",
@@ -33,4 +34,5 @@ __all__ = [
     "connectivity_validate_node", "connectivity_repair_node",
     "validate_repair_node",
     "ask_validation_help_node",
+    "ask_board_config_node",
 ]

@@ -177,12 +177,30 @@ class BoardModel:
         (36, "F.SilkS", "user"),
         (37, "Edge.Cuts", "user"),
     ])
+    layer_count: int = 2
 
     def component_at(self, ref: str) -> Optional[BoardComponent]:
         for c in self.components:
             if c.ref == ref:
                 return c
         return None
+
+    def apply_layer_count(self, count: int) -> None:
+        """Set the layer count and regenerate the layer list.
+
+        Layer numbering follows KiCad convention:
+          F.Cu=0, In1.Cu=1 ... In8.Cu=8, B.Cu=31, F.SilkS=36, Edge.Cuts=37
+        """
+        self.layer_count = count
+        copper = [(0, "F.Cu", "signal")]
+        inner_layer_ids = list(range(1, count - 1)) if count > 2 else []
+        for lid in inner_layer_ids:
+            copper.append((lid, f"In{lid}.Cu", "signal"))
+        copper.append((31, "B.Cu", "signal"))
+        self.layers = copper + [
+            (36, "F.SilkS", "user"),
+            (37, "Edge.Cuts", "user"),
+        ]
 
     def normalize_nets(self) -> None:
         """Convert any KiCad-imported net entries to the canonical format.
@@ -286,6 +304,7 @@ class BoardModel:
             "power_pins": self.power_pins,
             "power_labels": self.power_labels,
             "outline_segments": self.outline_segments,
+            "layer_count": self.layer_count,
         }
 
     @staticmethod
@@ -298,8 +317,12 @@ class BoardModel:
             power_pins=data.get("power_pins", []),
             power_labels=data.get("power_labels", []),
             outline_segments=data.get("outline_segments", []),
+            layer_count=data.get("layer_count", 2),
         )
         model.normalize_nets()
+        layer_count = data.get("layer_count")
+        if layer_count and layer_count in (2, 4, 6, 8):
+            model.apply_layer_count(layer_count)
         for cd in data.get("components", []):
             pads = [
                 PadDef(

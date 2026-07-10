@@ -1,4 +1,4 @@
-const pcbEditor = new PcbEditor('pcbCanvas');
+const pcbEditor = new PcbEditorWebGL('pcbCanvas');
 
 function pcbGetCanvas() {
     return document.getElementById('pcbCanvas');
@@ -81,12 +81,37 @@ function pcbSetViewBounds(bounds) {
     pcbEditor.refresh();
 }
 
+function pcbUpdateZoomDisplay() {
+    const el = document.getElementById('zoomLevel');
+    if (el) el.textContent = Math.round(pcbState.zoom * 100) + '%';
+}
+
+let _zoomAnimFrame = null;
+let _zoomTarget = null;
+
 function pcbZoomBy(factor) {
     if (!pcbState.boardModel) return;
-    pcbState.zoom = Math.min(Math.max(pcbState.zoom * factor, 0.1), 25);
-    pcbEditor._applyCamera();
-    pcbEditor.requestOverlayRefresh();
-    pcbEditor.requestSettledRefresh();
+    const target = Math.min(Math.max(pcbState.zoom * factor, 0.1), 25);
+    // Animated zoom
+    if (_zoomAnimFrame) cancelAnimationFrame(_zoomAnimFrame);
+    const startZoom = pcbState.zoom;
+    const startTime = performance.now();
+    const duration = 120; // ms
+    function animate(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+        const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // easeInOutQuad
+        pcbState.zoom = startZoom + (target - startZoom) * ease;
+        pcbUpdateZoomDisplay();
+        pcbEditor._applyCamera();
+        if (t < 1) {
+            _zoomAnimFrame = requestAnimationFrame(animate);
+        } else {
+            _zoomAnimFrame = null;
+            pcbEditor.requestOverlayRefresh();
+            pcbEditor.requestSettledRefresh();
+        }
+    }
+    _zoomAnimFrame = requestAnimationFrame(animate);
 }
 
 function pcbSetCursor(cursor) {
@@ -104,7 +129,9 @@ function pcbUpdateCursor() {
     } else if (pcbState.mode === PCB_MODE.DRAG_COMPONENT) {
         pcbSetCursor('move');
     } else if (pcbState.activeTool === PCB_TOOL.SELECT) {
-        pcbSetCursor(pcbState.hoveredPadKey ? 'pointer' : 'default');
+        pcbSetCursor(pcbState.hoveredPadKey || pcbState.hoveredTraceIndex != null ? 'pointer' : 'default');
+    } else if (pcbState.hoveredTraceIndex != null) {
+        pcbSetCursor('pointer');
     } else {
         pcbSetCursor('grab');
     }
@@ -118,7 +145,7 @@ function pcbSetMode(mode) {
 
 function pcbSetTool(tool) {
     if (!Object.values(PCB_TOOL).includes(tool)) return;
-    if (pcbState.activeTool === tool && pcbState.mode !== PCB_MODE.ROUTE) {
+    if (pcbState.activeTool === tool && pcbState.mode !== PCB_MODE.ROUTE && pcbState.mode !== PCB_MODE.DRAW_OUTLINE) {
         dispatchPcbInteractionUpdated();
         return;
     }
@@ -129,11 +156,28 @@ function pcbSetTool(tool) {
         pcbState.routeVias = [];
         pcbState.routeCursor = null;
     }
+    if (tool !== PCB_TOOL.OUTLINE) {
+        pcbState.outlinePoints = [];
+        pcbState.outlineDraft = null;
+    }
     pcbState.hoveredViaIndex = null;
     pcbState.dragViaIndex = null;
     pcbState.activeTool = tool;
     pcbSetMode(PCB_MODE.IDLE);
     pcbEditor.requestOverlayRefresh();
+
+    // Show tool selection feedback
+    const toolNames = {
+        [PCB_TOOL.PAN]: 'Pan',
+        [PCB_TOOL.SELECT]: 'Select',
+        [PCB_TOOL.ROUTE]: 'Route',
+        [PCB_TOOL.VIA]: 'Via',
+        [PCB_TOOL.OUTLINE]: 'Outline'
+    };
+    const toolName = toolNames[tool] || tool;
+    if (typeof showToast === 'function') {
+        showToast(`${toolName} tool active`, 'info');
+    }
 }
 
 function pcbSetRouteStyle(style = {}) {
@@ -153,10 +197,43 @@ function pcbCancelDraw() {
     pcbState.routePoints = [];
     pcbState.routeVias = [];
     pcbState.routeCursor = null;
+    pcbState.outlinePoints = [];
+    pcbState.outlineDraft = null;
     pcbState.pointerDownScreen = null;
     pcbState.pointerDownWorld = null;
     pcbState.pointerDragMoved = false;
     pcbEditor.requestOverlayRefresh();
+}
+
+function pcbFinalizeOutline() {
+    if (!pcbState.boardModel) return;
+    const pts = pcbState.outlinePoints;
+    if (pts.length < 2) {
+        pcbCancelDraw();
+        return;
+    }
+
+    // Build outline segments from the placed points
+    const segments = [];
+    for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        segments.push({
+            kind: 'gr_line',
+            layer: 'Edge.Cuts',
+            width: 0.1,
+            start: { x: a.x, y: a.y },
+            end: { x: b.x, y: b.y },
+        });
+    }
+
+    pcbState.boardModel.outline_segments = segments;
+    pcbState.outlinePoints = [];
+    pcbState.outlineDraft = null;
+    pcbSetMode(PCB_MODE.IDLE);
+    pcbEditor.refresh();
+    pcbEditor.saveBoardModel().catch(() => {});
+    dispatchBoardSync(true, { saved: true });
 }
 
 async function commitRouteToBoard(targetPad) {
@@ -196,8 +273,9 @@ async function commitRouteToBoard(targetPad) {
         }
     }
     const after = deepClone(pcbState.boardModel);
-    pcbEditor.refreshAirwires();
-    pcbEditor.markDirty('trace', 'footprint', 'overlay');
+    // Force recompute ratsnest with the new trace
+    pcbState.ratsnest = pcbEditor._computeClientRatsnest(pcbState.boardModel);
+    pcbEditor.requestOverlayRefresh();
     pcbEditor.refresh();
     pcbCancelDraw();
     try {
@@ -205,7 +283,6 @@ async function commitRouteToBoard(targetPad) {
         pcbEditor.pushHistory('route trace', before, after);
     } catch (error) {
         pcbState.boardModel = before;
-        pcbEditor.markDirty('trace', 'footprint', 'overlay');
         pcbEditor.refresh();
         dispatchBoardSync(false, { error: error.message, fallback_saved: false });
     }
@@ -218,14 +295,12 @@ async function placeViaAt(point) {
     pcbState.boardModel.vias = pcbState.boardModel.vias || [];
     pcbState.boardModel.vias.push(via);
     const after = deepClone(pcbState.boardModel);
-    pcbEditor.markDirty('trace', 'footprint', 'overlay');
     pcbEditor.refresh();
     try {
         await pcbEditor.saveBoardModel();
         pcbEditor.pushHistory('place via', before, after);
     } catch (error) {
         pcbState.boardModel = before;
-        pcbEditor.markDirty('trace', 'footprint', 'overlay');
         pcbEditor.refresh();
         dispatchBoardSync(false, { error: error.message, fallback_saved: false });
     }
@@ -248,6 +323,7 @@ function pcbHandleWheel(event) {
     pcbState.panX = (sx - pcbState.cx) * (1 - actualFactor) + pcbState.panX * actualFactor;
     pcbState.panY = (sy - pcbState.cy) * (1 - actualFactor) + pcbState.panY * actualFactor;
     pcbState.zoom = newZoom;
+    pcbUpdateZoomDisplay();
 
     pcbEditor._applyCamera();
     pcbEditor.requestOverlayRefresh();
@@ -282,14 +358,29 @@ function pcbHandleMouseDown(event) {
     const viaHit = pcbEditor.hitTestVia(event.clientX, event.clientY);
     const compHit = pcbEditor.hitTestComponent(event.clientX, event.clientY);
 
+    // ── Outline drawing mode ───────────────────────────────────────
+    if (pcbState.mode === PCB_MODE.DRAW_OUTLINE || pcbState.activeTool === PCB_TOOL.OUTLINE) {
+        if (event.button === 2) {
+            // Right-click: finalize the outline
+            pcbFinalizeOutline();
+            return;
+        }
+        if (event.button !== 0) return;
+        const world = pcbEditor.screenToWorld(event.clientX, event.clientY);
+        const snapped = { x: snapToGrid(world.x), y: snapToGrid(world.y) };
+        pcbState.outlinePoints.push(snapped);
+        pcbState.outlineDraft = { ...snapped };
+        if (pcbState.mode !== PCB_MODE.DRAW_OUTLINE) {
+            pcbSetMode(PCB_MODE.DRAW_OUTLINE);
+        }
+        pcbEditor.requestOverlayRefresh();
+        return;
+    }
+
     if (pcbState.mode === PCB_MODE.ROUTE || pcbState.activeTool === PCB_TOOL.ROUTE) {
         if (event.button === 2) {
-            if (pcbState.routePoints.length >= 2) {
-                const finalTarget = pcbState.routeCursor || pcbState.routePoints[pcbState.routePoints.length - 1];
-                commitRouteToBoard(finalTarget);
-            } else {
-                pcbCancelDraw();
-            }
+            // Show via modal instead of committing
+            pcbShowViaModal(event.clientX, event.clientY);
             return;
         }
         if (event.button !== 0) return;
@@ -307,6 +398,12 @@ function pcbHandleMouseDown(event) {
         }
         if (padHit && pcbState.routeStartAnchor && pcbState.routeStartAnchor.key !== padHit.key) {
             commitRouteToBoard({ x: padHit.x, y: padHit.y, noSnap: true, pad: padHit.pad });
+            return;
+        }
+        // Auto-snap to nearby pad if click is within 1.5mm
+        const nearbyPad = findNearbyPad(event.clientX, event.clientY, 1.5);
+        if (nearbyPad && pcbState.routeStartAnchor && pcbState.routeStartAnchor.key !== nearbyPad.key) {
+            commitRouteToBoard({ x: nearbyPad.x, y: nearbyPad.y, noSnap: true, pad: nearbyPad.pad });
             return;
         }
         if (traceHit) {
@@ -331,6 +428,12 @@ function pcbHandleMouseDown(event) {
         placeViaAt(pcbState.pointerDownWorld);
         return;
     }
+    // Right-click context menu in Select mode
+    if (pcbState.activeTool === PCB_TOOL.SELECT && event.button === 2) {
+        event.preventDefault();
+        pcbShowContextMenu(event.clientX, event.clientY, compHit);
+        return;
+    }
     if (pcbState.activeTool === PCB_TOOL.SELECT && event.button === 0 && compHit) {
         pcbState.selectedComponentRef = compHit.ref;
         pcbState.dragComponentRef = compHit.ref;
@@ -352,6 +455,9 @@ function pcbHandleMouseDown(event) {
 function pcbHandleMouseMove(event) {
     const world = pcbEditor.screenToWorld(event.clientX, event.clientY);
     pcbState.lastPointerWorld = world;
+    // Update coordinate display
+    const coordEl = document.getElementById('coordDisplay');
+    if (coordEl) coordEl.textContent = `X: ${world.x.toFixed(2)} Y: ${world.y.toFixed(2)}`;
     if (pcbState.mode === PCB_MODE.GHOST_PLACEMENT) {
         pcbEditor.requestOverlayRefresh();
         return;
@@ -359,9 +465,15 @@ function pcbHandleMouseMove(event) {
     if (!pcbState.boardModel) return;
     const padHit = pcbEditor.hitTestPad(event.clientX, event.clientY);
     const viaHit = pcbEditor.hitTestVia(event.clientX, event.clientY);
+    const compHit = pcbEditor.hitTestComponent(event.clientX, event.clientY);
     const prevHoveredPadKey = pcbState.hoveredPadKey;
     pcbState.hoveredPadKey = pcbState.activeTool === PCB_TOOL.ROUTE ? (padHit ? padHit.key : null) : null;
     pcbState.hoveredViaIndex = pcbState.activeTool === PCB_TOOL.VIA && viaHit ? viaHit.index : null;
+    // Track hovered trace for deletion (when not routing or using other tools)
+    const traceHit = pcbEditor.hitTestTrace(event.clientX, event.clientY);
+    pcbState.hoveredTraceIndex = traceHit ? pcbState.boardModel.traces.indexOf(traceHit.trace) : null;
+    const prevHoveredComp = pcbState.hoveredComponentRef;
+    pcbState.hoveredComponentRef = compHit ? compHit.ref : null;
     if (!pcbState.pointerDragMoved && hasPointerExceededThreshold(event)) {
         pcbState.pointerDragMoved = true;
     }
@@ -382,7 +494,6 @@ function pcbHandleMouseMove(event) {
             component.x = pcbState.dragOrigin.x + (world.x - pcbState.dragPointerStart.x);
             component.y = pcbState.dragOrigin.y + (world.y - pcbState.dragPointerStart.y);
             pcbEditor.refreshAirwires();
-            pcbEditor.markDirty('footprint', 'text', 'airwire');
             pcbEditor.requestRefresh();
         }
         return;
@@ -395,9 +506,14 @@ function pcbHandleMouseMove(event) {
         if (via) {
             via.x = snapToGrid(pcbState.dragOrigin.x + (world.x - pcbState.dragPointerStart.x));
             via.y = snapToGrid(pcbState.dragOrigin.y + (world.y - pcbState.dragPointerStart.y));
-            pcbEditor.markDirty('trace', 'airwire');
             pcbEditor.requestRefresh();
         }
+        return;
+    }
+    if (pcbState.mode === PCB_MODE.DRAW_OUTLINE) {
+        const world = pcbEditor.screenToWorld(event.clientX, event.clientY);
+        pcbState.outlineDraft = { x: snapToGrid(world.x), y: snapToGrid(world.y) };
+        pcbEditor.requestOverlayRefresh();
         return;
     }
     if (pcbState.mode === PCB_MODE.ROUTE) {
@@ -430,6 +546,13 @@ function pcbHandleMouseMove(event) {
 }
 
 function pcbHandleMouseUp(event) {
+    if (pcbState.mode === PCB_MODE.DRAW_OUTLINE) {
+        // Double-click to finalize outline
+        if (event.detail === 2 && pcbState.outlinePoints.length >= 2) {
+            pcbFinalizeOutline();
+        }
+        return;
+    }
     if (pcbState.mode === PCB_MODE.PANNING) {
         pcbSetMode(PCB_MODE.IDLE);
         pcbEditor.requestSettledRefresh(20);
@@ -462,7 +585,6 @@ function pcbHandleMouseUp(event) {
             pcbEditor.pushHistory('move component', before, after);
         }).catch((error) => {
             pcbState.boardModel = before;
-            pcbEditor.markDirty('footprint', 'trace', 'overlay');
             pcbEditor.refresh();
             dispatchBoardSync(false, { error: error.message, fallback_saved: false });
         });
@@ -493,7 +615,6 @@ function pcbHandleMouseUp(event) {
             pcbEditor.pushHistory('move via', before, after);
         }).catch((error) => {
             pcbState.boardModel = before;
-            pcbEditor.markDirty('trace', 'overlay');
             pcbEditor.refresh();
             dispatchBoardSync(false, { error: error.message, fallback_saved: false });
         });
@@ -508,17 +629,499 @@ function pcbHandleMouseUp(event) {
     pcbState.pointerDragMoved = false;
 }
 
-function pcbRefreshRatsnest() {
+function pcbFetchRatsnest() {
     pcbEditor.fetchRatsnest().catch(() => {});
 }
 
+function pcbShowViaModal(screenX, screenY) {
+    // Remove existing modal if any
+    const existing = document.getElementById('pcbViaModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'pcbViaModal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 10001;
+        background: #1a1d23;
+        border: 1px solid #3c3c3c;
+        border-radius: 12px;
+        padding: 20px;
+        min-width: 240px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        font-family: var(--font-ui);
+    `;
+
+    modal.innerHTML = `
+        <div style="text-align:center;margin-bottom:16px;">
+            <h3 style="margin:0;color:#e0f0ed;font-size:14px;">Place Via & Switch Layer</h3>
+            <p style="margin:8px 0 0;color:#666;font-size:12px;">Select target layer for trace</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <button id="viaFcBtn" style="
+                padding:12px 16px;
+                background:#1e2a3a;
+                border:2px solid #ff4444;
+                border-radius:8px;
+                color:#ff4444;
+                font-weight:bold;
+                cursor:pointer;
+                transition:all 0.2s;
+            ">F.Cu (Front)</button>
+            <button id="viaBcBtn" style="
+                padding:12px 16px;
+                background:#1e2a3a;
+                border:2px solid #4488ff;
+                border-radius:8px;
+                color:#4488ff;
+                font-weight:bold;
+                cursor:pointer;
+                transition:all 0.2s;
+            ">B.Cu (Back)</button>
+            <button id="viaCancelBtn" style="
+                padding:8px 16px;
+                background:transparent;
+                border:1px solid #3c3c3c;
+                border-radius:6px;
+                color:#666;
+                cursor:pointer;
+                margin-top:8px;
+            ">Cancel</button>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Add hover effects
+    const fcBtn = document.getElementById('viaFcBtn');
+    const bcBtn = document.getElementById('viaBcBtn');
+
+    fcBtn.addEventListener('mouseenter', () => {
+        fcBtn.style.background = 'rgba(255, 68, 68, 0.2)';
+    });
+    fcBtn.addEventListener('mouseleave', () => {
+        fcBtn.style.background = '#1e2a3a';
+    });
+
+    bcBtn.addEventListener('mouseenter', () => {
+        bcBtn.style.background = 'rgba(68, 136, 255, 0.2)';
+    });
+    bcBtn.addEventListener('mouseleave', () => {
+        bcBtn.style.background = '#1e2a3a';
+    });
+
+    // Click handlers
+    fcBtn.addEventListener('click', () => {
+        modal.remove();
+        pcbPlaceViaAndSwitchLayer('F.Cu');
+    });
+
+    bcBtn.addEventListener('click', () => {
+        modal.remove();
+        pcbPlaceViaAndSwitchLayer('B.Cu');
+    });
+
+    document.getElementById('viaCancelBtn').addEventListener('click', () => {
+        modal.remove();
+    });
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+function pcbPlaceViaAndSwitchLayer(targetLayer) {
+    if (!pcbState.routeCursor) return;
+
+    // Place via at cursor
+    const via = {
+        x: pcbState.routeCursor.x,
+        y: pcbState.routeCursor.y,
+        drill: 0.3,
+        diameter: 0.7,
+        layers: ['F.Cu', 'B.Cu'],
+        net: pcbState.routeNetName || '',
+    };
+    pcbState.routeVias.push(via);
+
+    // Append cursor to route points
+    pcbState.routePoints = appendRoutePoint(pcbState.routePoints, pcbState.routeCursor);
+
+    // Switch to target layer
+    pcbState.routeLayer = targetLayer;
+
+    // Update UI
+    dispatchPcbInteractionUpdated();
+    pcbEditor.refresh();
+
+    // Show toast
+    if (typeof showToast === 'function') {
+        showToast(`Switched to ${targetLayer}`, 'info');
+    }
+}
+
+function pcbShowContextMenu(screenX, screenY, compHit) {
+    pcbHideContextMenu();
+    const menu = document.createElement('div');
+    menu.id = 'pcbContextMenu';
+    menu.style.cssText = `position:fixed;left:${screenX}px;top:${screenY}px;z-index:10000;background:#1a1d23;border:1px solid #3c3c3c;border-radius:6px;padding:4px 0;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.5);font-family:var(--font-ui);font-size:12px;`;
+    const items = [];
+    if (compHit) {
+        items.push({ label: 'Rotate 90°', action: () => { pcbState.selectedComponentRef = compHit.ref; pcbRotateSelectedComponent(); }});
+        items.push({ label: 'Delete', action: () => { pcbState.selectedComponentRef = compHit.ref; pcbDeleteSelectedComponent(); }});
+        items.push({ type: 'separator' });
+        items.push({ label: `Ref: ${compHit.ref}`, disabled: true });
+    }
+    items.push({ label: 'Zoom to Fit', action: () => pcbResetView() });
+    items.push({ label: 'Select Tool (S)', action: () => pcbSetTool(PCB_TOOL.SELECT) });
+    items.push({ label: 'Route Tool (R)', action: () => pcbSetTool(PCB_TOOL.ROUTE) });
+    for (const item of items) {
+        if (item.type === 'separator') {
+            const sep = document.createElement('div');
+            sep.style.cssText = 'height:1px;background:#3c3c3c;margin:4px 0;';
+            menu.appendChild(sep);
+            continue;
+        }
+        const btn = document.createElement('div');
+        btn.style.cssText = `padding:6px 14px;cursor:${item.disabled ? 'default' : 'pointer'};color:${item.disabled ? '#666' : '#ccc'};transition:background 0.1s;`;
+        btn.textContent = item.label;
+        if (!item.disabled) {
+            btn.addEventListener('mouseenter', () => btn.style.background = 'rgba(77,241,194,0.1)');
+            btn.addEventListener('mouseleave', () => btn.style.background = 'transparent');
+            btn.addEventListener('click', () => { pcbHideContextMenu(); item.action(); });
+        }
+        menu.appendChild(btn);
+    }
+    document.body.appendChild(menu);
+
+    // Boundary detection - keep menu within viewport
+    const rect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    if (screenX + rect.width > viewportWidth) {
+        menu.style.left = `${viewportWidth - rect.width - 10}px`;
+    }
+    if (screenY + rect.height > viewportHeight) {
+        menu.style.top = `${viewportHeight - rect.height - 10}px`;
+    }
+
+    // Close on next click
+    setTimeout(() => {
+        document.addEventListener('click', pcbHideContextMenu, { once: true });
+        document.addEventListener('contextmenu', pcbHideContextMenu, { once: true });
+    }, 0);
+}
+
+function pcbHideContextMenu() {
+    const menu = document.getElementById('pcbContextMenu');
+    if (menu) menu.remove();
+}
+
+// ── Copy/Paste ──────────────────────────────────────────────────────────────
+
+function pcbCopySelected() {
+    if (!pcbState.boardModel || !pcbState.selectedComponentRef) return;
+    const comp = pcbState.boardModel.components.find(c => c.ref === pcbState.selectedComponentRef);
+    if (!comp) return;
+    pcbState.clipboard = deepClone(comp);
+    showToast('Copied ' + comp.ref, 'info', 1500);
+}
+
+async function pcbPasteClipboard() {
+    if (!pcbState.boardModel || !pcbState.clipboard) return;
+    const before = deepClone(pcbState.boardModel);
+    const orig = pcbState.clipboard;
+    // Find next available ref
+    const existingRefs = new Set(pcbState.boardModel.components.map(c => c.ref));
+    let baseRef = orig.ref.replace(/\d+$/, '');
+    let num = parseInt(orig.ref.replace(/\D/g, '')) || 1;
+    while (existingRefs.has(baseRef + num)) num++;
+    const newRef = baseRef + num;
+    const offset = 2; // 2mm offset from original
+    const newComp = deepClone(orig);
+    newComp.ref = newRef;
+    newComp.x = orig.x + offset;
+    newComp.y = orig.y + offset;
+    pcbState.boardModel.components.push(newComp);
+    pcbState.selectedComponentRef = newRef;
+    pcbEditor.refresh();
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('paste component', before, deepClone(pcbState.boardModel));
+        showToast('Pasted as ' + newRef, 'info', 1500);
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
+// ── Net Highlighting ────────────────────────────────────────────────────────
+
+function pcbHighlightNet(netName) {
+    pcbState.highlightedNet = netName;
+    pcbEditor.requestOverlayRefresh();
+}
+
+function pcbClearNetHighlight() {
+    pcbState.highlightedNet = null;
+    pcbEditor.requestOverlayRefresh();
+}
+
+// ── Layer Solo ──────────────────────────────────────────────────────────────
+
+function pcbToggleSoloLayer(layerName) {
+    if (pcbState.soloLayer === layerName) {
+        pcbState.soloLayer = null;
+        // Restore all layers to their previous visibility
+        for (const key in pcbState.visibleLayers) {
+            pcbState.visibleLayers[key] = true;
+        }
+    } else {
+        pcbState.soloLayer = layerName;
+        // Hide all layers except the soloed one
+        for (const key in pcbState.visibleLayers) {
+            pcbState.visibleLayers[key] = (key === layerName);
+        }
+    }
+    dispatchPcbLayerVisibilityUpdated();
+    pcbEditor.requestOverlayRefresh();
+}
+
+// ── Trace Measurement ──────────────────────────────────────────────────────
+
+function pcbMeasureDistance() {
+    if (!pcbState.boardModel || !pcbState.lastPointerWorld) return null;
+    // Find nearest pad to cursor
+    const world = pcbState.lastPointerWorld;
+    let nearest = null;
+    let minDist = Infinity;
+    for (const comp of pcbState.boardModel.components || []) {
+        for (const pad of comp.pads || []) {
+            const center = getComponentPadPosition(comp, pad);
+            const d = Math.hypot(world.x - center.x, world.y - center.y);
+            if (d < minDist && d < 2) { // within 2mm
+                minDist = d;
+                nearest = { x: center.x, y: center.y, ref: comp.ref, pad: pad.number };
+            }
+        }
+    }
+    return nearest;
+}
+
+// ── Board Dimensions ──────────────────────────────────────────────────────
+
+function pcbGetBoardDimensions() {
+    if (!pcbState.boardModel) return null;
+    const model = pcbState.boardModel;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    // Include components
+    for (const comp of model.components || []) {
+        const bounds = getComponentBounds(comp);
+        minX = Math.min(minX, bounds.minX);
+        minY = Math.min(minY, bounds.minY);
+        maxX = Math.max(maxX, bounds.maxX);
+        maxY = Math.max(maxY, bounds.maxY);
+    }
+    // Include outline segments
+    for (const seg of model.outline_segments || []) {
+        for (const pt of seg.points || []) {
+            minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y);
+            maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y);
+        }
+        for (const key of ['start', 'end', 'center', 'mid']) {
+            if (seg[key]) {
+                minX = Math.min(minX, seg[key].x); minY = Math.min(minY, seg[key].y);
+                maxX = Math.max(maxX, seg[key].x); maxY = Math.max(maxY, seg[key].y);
+            }
+        }
+    }
+    if (!Number.isFinite(minX)) return null;
+    return { width: maxX - minX, height: maxY - minY, x: minX, y: minY };
+}
+
+function pcbToggleUndoHistory() {
+    let overlay = document.getElementById('pcbUndoOverlay');
+    if (overlay) { overlay.remove(); return; }
+    overlay = document.createElement('div');
+    overlay.id = 'pcbUndoOverlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const history = pcbEditor._history || [];
+    const redoStack = pcbEditor._redoStack || [];
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#1a1d23;border:1px solid #3c3c3c;border-radius:8px;padding:24px;max-width:420px;width:90%;max-height:70vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="margin:0;color:#e0f0ed;font-size:15px;font-family:var(--font-ui);">Undo History</h3>
+        <button onclick="this.closest('#pcbUndoOverlay').remove()" style="background:none;border:none;color:#889;font-size:18px;cursor:pointer;padding:4px 8px;">&times;</button>
+    </div>`;
+    if (history.length === 0 && redoStack.length === 0) {
+        html += '<div style="color:#666;text-align:center;padding:20px;">No actions yet</div>';
+    } else {
+        html += '<div style="display:grid;gap:4px;">';
+        for (let i = history.length - 1; i >= 0; i--) {
+            html += `<div style="padding:6px 10px;background:#252830;border-radius:4px;font-size:12px;color:#ccc;font-family:var(--font-mono);">
+                <span style="color:#4df1c2;">${i + 1}</span> ${history[i].name}
+            </div>`;
+        }
+        for (let i = redoStack.length - 1; i >= 0; i--) {
+            html += `<div style="padding:6px 10px;background:#252830;border-radius:4px;font-size:12px;color:#666;font-family:var(--font-mono);text-decoration:line-through;">
+                redo: ${redoStack[i].name}
+            </div>`;
+        }
+        html += '</div>';
+    }
+    card.innerHTML = html;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+}
+
+function pcbToggleShortcutHelp() {
+    let overlay = document.getElementById('pcbShortcutOverlay');
+    if (overlay) {
+        overlay.remove();
+        return;
+    }
+    overlay = document.createElement('div');
+    overlay.id = 'pcbShortcutOverlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const shortcuts = [
+        ['H', 'Pan tool'],
+        ['S', 'Select tool'],
+        ['X', 'Route tool'],
+        ['V', 'Via tool (or place via while routing)'],
+        ['O', 'Outline tool'],
+        ['Del', 'Delete selected component/via/trace'],
+        ['R', 'Rotate selected component 90°'],
+        ['Ctrl+C', 'Copy selected component'],
+        ['Ctrl+V', 'Paste component'],
+        ['Ctrl+Z', 'Undo'],
+        ['Ctrl+Shift+Z', 'Redo'],
+        ['Shift+F', 'Fit view to board'],
+        ['N', 'Highlight net (hover a pad first)'],
+        ['D', 'Show board dimensions'],
+        ['M', 'Measure distance to nearest pad'],
+        ['U', 'Show undo history'],
+        ['Esc', 'Cancel / clear highlights'],
+        ['?', 'Toggle this help overlay'],
+    ];
+
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#1a1d23;border:1px solid #3c3c3c;border-radius:8px;padding:24px;max-width:420;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+    card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;color:#e0f0ed;font-size:15px;font-family:var(--font-ui);">Keyboard Shortcuts</h3>
+            <button onclick="this.closest('#pcbShortcutOverlay').remove()" style="background:none;border:none;color:#889;font-size:18px;cursor:pointer;padding:4px 8px;">&times;</button>
+        </div>
+        <div style="display:grid;gap:6px;">
+            ${shortcuts.map(([key, desc]) => `
+                <div style="display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid #2a2b30;">
+                    <kbd style="background:#252830;border:1px solid #3c3c3c;border-radius:4px;padding:2px 8px;font-family:var(--font-mono);font-size:12px;color:#e0f0ed;min-width:90px;text-align:center;white-space:nowrap;">${key}</kbd>
+                    <span style="color:#9aa6b2;font-size:13px;font-family:var(--font-ui);">${desc}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+}
+
+async function pcbDeleteSelectedComponent() {
+    if (!pcbState.boardModel || !pcbState.selectedComponentRef) return;
+    const before = deepClone(pcbState.boardModel);
+    const ref = pcbState.selectedComponentRef;
+    pcbState.boardModel.components = (pcbState.boardModel.components || []).filter(c => c.ref !== ref);
+    pcbState.selectedComponentRef = null;
+    pcbEditor.refreshAirwires();
+    pcbEditor.refresh();
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('delete component', before, deepClone(pcbState.boardModel));
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
+async function pcbDeleteHoveredVia() {
+    if (!pcbState.boardModel || pcbState.hoveredViaIndex == null) return;
+    const before = deepClone(pcbState.boardModel);
+    const idx = pcbState.hoveredViaIndex;
+    pcbState.boardModel.vias.splice(idx, 1);
+    pcbState.hoveredViaIndex = null;
+    pcbEditor.refreshAirwires();
+    pcbEditor.refresh();
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('delete via', before, deepClone(pcbState.boardModel));
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
+async function pcbDeleteHoveredTrace() {
+    if (!pcbState.boardModel || pcbState.hoveredTraceIndex == null) return;
+    const before = deepClone(pcbState.boardModel);
+    const idx = pcbState.hoveredTraceIndex;
+    pcbState.boardModel.traces.splice(idx, 1);
+    pcbState.hoveredTraceIndex = null;
+    pcbEditor.refreshAirwires();
+    pcbEditor.refresh();
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('delete trace', before, deepClone(pcbState.boardModel));
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
+async function pcbRotateSelectedComponent() {
+    if (!pcbState.boardModel || !pcbState.selectedComponentRef) return;
+    const before = deepClone(pcbState.boardModel);
+    const comp = pcbState.boardModel.components.find(c => c.ref === pcbState.selectedComponentRef);
+    if (!comp) return;
+    comp.rotation = ((comp.rotation || 0) + 90) % 360;
+    pcbEditor.refresh();
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('rotate component', before, deepClone(pcbState.boardModel));
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
 function pcbHandleKeyDown(event) {
+    // Don't intercept keyboard shortcuts when typing in input fields
+    if (event.target.tagName === 'TEXTAREA' || event.target.tagName === 'INPUT') {
+        // Show hint when user tries to use shortcuts while typing
+        const pcbShortcuts = ['h','s','r','v','o','n','d','m','u','?'];
+        if (pcbShortcuts.includes(event.key.toLowerCase())) {
+            if (typeof showToast === 'function') {
+                showToast('Keyboard shortcuts disabled while typing. Press Escape first.', 'info');
+            }
+        }
+        return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
         pcbEditor.saveBoardModel()
             .then(() => {
                 dispatchBoardSync(true, { saved: true });
-                window.location.href = '/api/export_pcb';
             })
             .catch((error) => {
                 dispatchBoardSync(false, { error: error.message, fallback_saved: false });
@@ -526,7 +1129,84 @@ function pcbHandleKeyDown(event) {
         return;
     }
     if (event.key === 'Escape') {
+        pcbClearNetHighlight();
         pcbCancelDraw();
+        return;
+    }
+    // Delete: remove selected component, hovered via, or hovered trace
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (!pcbState.boardModel) return;
+        event.preventDefault();
+        if (pcbState.selectedComponentRef) {
+            pcbDeleteSelectedComponent();
+        } else if (pcbState.hoveredViaIndex != null) {
+            pcbDeleteHoveredVia();
+        } else if (pcbState.hoveredTraceIndex != null) {
+            pcbDeleteHoveredTrace();
+        }
+        return;
+    }
+    // R: rotate selected component by 90° (when component selected)
+    if (event.key.toLowerCase() === 'r' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (!pcbState.boardModel || !pcbState.selectedComponentRef) return;
+        event.preventDefault();
+        pcbRotateSelectedComponent();
+        return;
+    }
+    // Ctrl+C: copy selected component
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        if (!pcbState.boardModel || !pcbState.selectedComponentRef) return;
+        event.preventDefault();
+        pcbCopySelected();
+        return;
+    }
+    // Ctrl+V: paste component
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && pcbState.mode !== PCB_MODE.ROUTE) {
+        if (!pcbState.boardModel || !pcbState.clipboard) return;
+        event.preventDefault();
+        pcbPasteClipboard();
+        return;
+    }
+    // N: highlight net of hovered pad
+    if (event.key.toLowerCase() === 'n' && !event.ctrlKey && !event.metaKey) {
+        if (pcbState.hoveredPadKey) {
+            const [ref, padNum] = pcbState.hoveredPadKey.split(':');
+            const netName = pcbState.boardModel ? getNetNameForPad(pcbState.boardModel, ref, padNum) : '';
+            if (netName && netName !== '_manual') {
+                pcbHighlightNet(netName);
+            }
+        } else {
+            pcbClearNetHighlight();
+        }
+        return;
+    }
+    // D: show board dimensions
+    if (event.key.toLowerCase() === 'd' && !event.ctrlKey && !event.metaKey) {
+        const dims = pcbGetBoardDimensions();
+        if (dims) {
+            showToast(`Board: ${dims.width.toFixed(1)}mm × ${dims.height.toFixed(1)}mm`, 'info', 3000);
+        }
+        return;
+    }
+    // M: measure distance from nearest pad to cursor
+    if (event.key.toLowerCase() === 'm' && !event.ctrlKey && !event.metaKey) {
+        const nearest = pcbMeasureDistance();
+        if (nearest && pcbState.lastPointerWorld) {
+            const d = Math.hypot(nearest.x - pcbState.lastPointerWorld.x, nearest.y - pcbState.lastPointerWorld.y);
+            showToast(`${nearest.ref}:${nearest.pad} → cursor: ${d.toFixed(2)}mm`, 'info', 3000);
+        }
+        return;
+    }
+    // U: show undo history
+    if (event.key.toLowerCase() === 'u' && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        pcbToggleUndoHistory();
+        return;
+    }
+    // ?: show keyboard shortcut help overlay
+    if (event.key === '?' || (event.shiftKey && event.key === '/')) {
+        event.preventDefault();
+        pcbToggleShortcutHelp();
         return;
     }
     if (event.shiftKey && event.key.toLowerCase() === 'f') {
@@ -542,12 +1222,16 @@ function pcbHandleKeyDown(event) {
         pcbSetTool(PCB_TOOL.SELECT);
         return;
     }
-    if (event.key.toLowerCase() === 'r') {
+    if (event.key.toLowerCase() === 'x') {
         pcbSetTool(PCB_TOOL.ROUTE);
         return;
     }
     if (event.key.toLowerCase() === 'v' && !event.ctrlKey && !event.metaKey && pcbState.mode !== PCB_MODE.ROUTE) {
         pcbSetTool(PCB_TOOL.VIA);
+        return;
+    }
+    if (event.key.toLowerCase() === 'o' && !event.ctrlKey && !event.metaKey) {
+        pcbSetTool(PCB_TOOL.OUTLINE);
         return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && event.shiftKey) {
@@ -596,26 +1280,8 @@ window.pcbHandleMouseMove = pcbHandleMouseMove;
 window.pcbHandleMouseUp = pcbHandleMouseUp;
 window.pcbHandleKeyDown = pcbHandleKeyDown;
 window.pcbCancelDraw = pcbCancelDraw;
-window.pcbRefreshRatsnest = pcbRefreshRatsnest;
-window.pcbFetchRatsnest = pcbRefreshRatsnest;
+window.pcbFetchRatsnest = pcbFetchRatsnest;
+window.pcbDeleteHoveredTrace = pcbDeleteHoveredTrace;
 window.pcbState = pcbState;
 window.PCB_MODE = PCB_MODE;
 window.PCB_TOOL = PCB_TOOL;
-window.__PCB_TEST__ = {
-    snapToGrid,
-    normalizePoint,
-    normalizeBoardModel,
-    toFiniteNumber,
-    compactFootprintName,
-    modelBounds,
-    rotatePoint,
-    routePoint,
-    appendRoutePoint,
-    dedupePath,
-    getComponentPadPosition,
-    getComponentBounds,
-    arcPoints,
-    pcbGetViewBounds,
-    pcbSetViewBounds,
-    PCB_TOOL,
-};

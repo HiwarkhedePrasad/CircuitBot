@@ -11,11 +11,15 @@ def _run_agent(prompt: str, sid: str):
     approval_result = {"approved": False}
     validation_help_event = threading.Event()
     validation_help_result = {"action": "terminate"}
+    board_config_event = threading.Event()
+    board_config_result = {"layer_count": 2}
     _agent_events[sid] = {
         "event": approval_event,
         "result": approval_result,
         "validation_help_event": validation_help_event,
         "validation_help_result": validation_help_result,
+        "board_config_event": board_config_event,
+        "board_config_result": board_config_result,
     }
 
     try:
@@ -33,6 +37,8 @@ def _run_agent(prompt: str, sid: str):
                 "approval_result": approval_result,
                 "validation_help_event": validation_help_event,
                 "validation_help_result": validation_help_result,
+                "board_config_event": board_config_event,
+                "board_config_result": board_config_result,
             }
         }
         socketio.emit("agent:log", {"message": f"Run {run_id} started"}, room=sid)

@@ -60,7 +60,11 @@ function expandPadLayers(layers) {
 
 function normalizeBoardModel(boardModel) {
     const model = deepClone(boardModel || {});
-    model.components = Array.isArray(model.components) ? model.components : [];
+    model.components = (Array.isArray(model.components) ? model.components : [])
+        .filter(c => {
+            const isOrigin = Math.abs(toFiniteNumber(c.x)) < 0.1 && Math.abs(toFiniteNumber(c.y)) < 0.1;
+            return !isOrigin;
+        });
     model.traces = Array.isArray(model.traces) ? model.traces : [];
     model.vias = Array.isArray(model.vias) ? model.vias : [];
     model.nets = Array.isArray(model.nets) ? model.nets : [];
@@ -120,13 +124,8 @@ function snapToGrid(value, grid = 0.254) {
 }
 
 function rotatePoint(x, y, angleDeg) {
-    const angle = (angleDeg || 0) * Math.PI / 180;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return {
-        x: x * cos + y * sin,
-        y: -x * sin + y * cos,
-    };
+    const angle = new KiCMath.Angle(KiCMath.Angle.deg_to_rad(angleDeg || 0));
+    return angle.rotate_point({ x, y }, { x: 0, y: 0 });
 }
 
 function routePoint(point) {
@@ -150,6 +149,24 @@ function appendRoutePoint(path, target) {
     return out;
 }
 
+function findNearbyPad(screenX, screenY, radiusMm) {
+    if (!pcbState.boardModel) return null;
+    const world = pcbEditor.screenToWorld(screenX, screenY);
+    let best = null;
+    let bestDist = radiusMm;
+    for (const comp of pcbState.boardModel.components || []) {
+        for (const pad of comp.pads || []) {
+            const center = getComponentPadPosition(comp, pad);
+            const dist = Math.hypot(world.x - center.x, world.y - center.y);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = { pad, component: comp, key: `${comp.ref}:${pad.number}`, x: center.x, y: center.y };
+            }
+        }
+    }
+    return best;
+}
+
 function dedupePath(path) {
     const out = [];
     for (const point of path || []) {
@@ -165,7 +182,7 @@ function dedupePath(path) {
 }
 
 function getComponentPadPosition(component, pad) {
-    const rotated = rotatePoint(pad.x || 0, pad.y || 0, component.rotation || 0);
+    const rotated = rotatePoint(pad.x || 0, pad.y || 0, -(component.rotation || 0));
     return {
         x: component.x + rotated.x,
         y: component.y + rotated.y,
@@ -447,7 +464,7 @@ function getComponentBounds(component) {
         if (item.mid) points.push(item.mid);
         for (const pt of item.points || []) points.push(pt);
         for (const pt of points) {
-            const rotated = rotatePoint(pt.x || 0, pt.y || 0, component.rotation || 0);
+            const rotated = rotatePoint(pt.x || 0, pt.y || 0, -(component.rotation || 0));
             const wx = component.x + rotated.x;
             const wy = component.y + rotated.y;
             if (!Number.isFinite(wx) || !Number.isFinite(wy)) continue;
@@ -476,39 +493,8 @@ function outlineSegments(model) {
 }
 
 function arcPoints(start, mid, end, segments) {
-    const x1 = start.x;
-    const y1 = start.y;
-    const x2 = mid.x;
-    const y2 = mid.y;
-    const x3 = end.x;
-    const y3 = end.y;
-    const determinant = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2));
-    if (Math.abs(determinant) < 1e-6) {
-        return [start, end];
-    }
-    const cx = (((x1 * x1 + y1 * y1) * (y2 - y3)) + ((x2 * x2 + y2 * y2) * (y3 - y1)) + ((x3 * x3 + y3 * y3) * (y1 - y2))) / determinant;
-    const cy = (((x1 * x1 + y1 * y1) * (x3 - x2)) + ((x2 * x2 + y2 * y2) * (x1 - x3)) + ((x3 * x3 + y3 * y3) * (x2 - x1))) / determinant;
-    const radius = Math.hypot(x1 - cx, y1 - cy);
-    const startAngle = Math.atan2(y1 - cy, x1 - cx);
-    const midAngle = Math.atan2(y2 - cy, x2 - cx);
-    let endAngle = Math.atan2(y3 - cy, x3 - cx);
-    let sweep = endAngle - startAngle;
-    while (sweep <= -Math.PI) sweep += Math.PI * 2;
-    while (sweep > Math.PI) sweep -= Math.PI * 2;
-    const midDelta = midAngle - startAngle;
-    const normalizedMid = ((midDelta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    const normalizedSweep = ((sweep % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    if ((sweep > 0 && normalizedMid > normalizedSweep) || (sweep < 0 && normalizedMid < normalizedSweep)) {
-        endAngle -= sweep > 0 ? Math.PI * 2 : -Math.PI * 2;
-        sweep = endAngle - startAngle;
-    }
-    const points = [];
-    for (let index = 0; index <= segments; index += 1) {
-        const t = index / segments;
-        const angle = startAngle + sweep * t;
-        points.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
-    }
-    return points;
+    const arc = KiCMath.MathArc.from_three_points(start, mid, end, 1);
+    return arc.to_polyline(segments || 32);
 }
 
 function getRoundRectPoints(w, h, r, steps = 6) {

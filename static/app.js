@@ -17,8 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentBtn = document.getElementById('agentBtn');
     const agentPrompt = document.getElementById('agentPrompt');
     const agentConversation = document.getElementById('agentConversation');
-    const agentPulse = document.getElementById('agentPulse');
-    const agentDot = document.getElementById('agentDot');
     const agentStatus = document.getElementById('agentStatus');
     const coordDisplay = document.getElementById('coordDisplay');
     const zoomLevelDisplay = document.getElementById('zoomLevel');
@@ -27,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const pcbSelectToolBtn = document.getElementById('pcbSelectToolBtn');
     const pcbRouteToolBtn = document.getElementById('pcbRouteToolBtn');
     const pcbViaToolBtn = document.getElementById('pcbViaToolBtn');
+    const pcbOutlineToolBtn = document.getElementById('pcbOutlineToolBtn');
+    const pcbHelpBtn = document.getElementById('pcbHelpBtn');
     const pcbLayerSelect = document.getElementById('pcbLayerSelect');
     const pcbWidthSelect = document.getElementById('pcbWidthSelect');
     const pcbLayersPanel = document.getElementById('pcbLayersPanel');
@@ -136,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
             [pcbSelectToolBtn, window.PCB_TOOL ? window.PCB_TOOL.SELECT : 'select'],
             [pcbRouteToolBtn, window.PCB_TOOL ? window.PCB_TOOL.ROUTE : 'route'],
             [pcbViaToolBtn, window.PCB_TOOL ? window.PCB_TOOL.VIA : 'via'],
+            [pcbOutlineToolBtn, window.PCB_TOOL ? window.PCB_TOOL.OUTLINE : 'outline'],
         ];
         tools.forEach(([button, tool]) => {
             if (!button) return;
@@ -191,7 +192,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 setActiveTab('viewPCBBtn');
                 showViewport('pcb');
                 setPcbToolbarVisibility(true);
-                document.getElementById('routePrompt').classList.add('hidden');
+                const routePromptContainer = document.getElementById('routePrompt')?.closest('.floating-route-input');
+                if (routePromptContainer) routePromptContainer.classList.add('hidden');
+                pcbSetupCanvas();
                 showPcbUploadOverlay();
             }
         });
@@ -201,6 +204,20 @@ document.addEventListener('DOMContentLoaded', () => {
         pcbUploadArea.classList.remove('hidden');
         const tsc = document.getElementById('tscircuit-container');
         if (tsc) tsc.style.display = 'none';
+
+        // Update overlay content with helpful guidance
+        const content = pcbUploadArea.querySelector('.pcb-upload-content');
+        if (content) {
+            content.innerHTML = `
+                <div class="pcb-upload-icon">📤</div>
+                <h3>Load a PCB Design</h3>
+                <p>Upload a <code>.kicad_pcb</code> file to start editing your board</p>
+                <div class="pcb-upload-drag-hint">
+                    Drag & drop a file here, or click to browse
+                </div>
+                <p class="pcb-upload-sub">You can also ask the AI to design a circuit first</p>
+            `;
+        }
     }
 
     function ensurePcbBoardReady() {
@@ -219,7 +236,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setActiveTab('viewPCBBtn');
         showViewport('pcb');
         setPcbToolbarVisibility(true);
-        document.getElementById('routePrompt').classList.add('hidden');
+        const routePromptContainer = document.getElementById('routePrompt')?.closest('.floating-route-input');
+        if (routePromptContainer) routePromptContainer.classList.add('hidden');
         pcbUploadArea.classList.add('hidden');
         ensurePcbBoardReady();
         pcbSetupCanvas();
@@ -241,6 +259,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (pcbViaToolBtn) {
         pcbViaToolBtn.addEventListener('click', () => pcbSetTool(PCB_TOOL.VIA));
+    }
+    if (pcbOutlineToolBtn) {
+        pcbOutlineToolBtn.addEventListener('click', () => pcbSetTool(PCB_TOOL.OUTLINE));
+    }
+    if (pcbHelpBtn) {
+        pcbHelpBtn.addEventListener('click', () => pcbToggleShortcutHelp());
     }
     if (pcbLayerSelect) {
         pcbLayerSelect.addEventListener('change', () => pcbSetRouteStyle({ layer: pcbLayerSelect.value }));
@@ -435,11 +459,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function refreshPcbGeometryFromBackend() {
         if (!window.pcbState || !pcbState.boardModel) return;
+        // Don't fetch if board model already has real components
+        const model = pcbState.boardModel;
+        if (model.components && model.components.length > 0) return;
         const res = await fetch('/api/pcb_enriched_board_model');
-        if (!res.ok) throw new Error(`pcb_enriched_board_model failed (${res.status})`);
+        if (!res.ok) return; // Silently handle 404/errors
         const data = await res.json();
         if (!data || !data.board_model) return;
-        pcbLoadBoard(data.board_model, { fetchRatsnest: false });
+        // Only load if the server has actual components
+        const serverModel = data.board_model;
+        if (serverModel.components && serverModel.components.length > 0) {
+            pcbLoadBoard(serverModel, { fetchRatsnest: false });
+        }
     }
 
     function setViewportSurfaceState(element, visible, display = 'block') {
@@ -646,14 +677,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         socket = io();
         window.socket = socket;
+        // Set initial connection status
+        const initStatus = document.getElementById('connectionStatus');
+        if (initStatus) initStatus.className = 'connection-status connected';
         socket.on('connect', () => {
             addLogEntry('Connected to agent backend.', 'system');
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) { statusEl.className = 'connection-status connected'; statusEl.title = 'Connected to backend'; }
             if (!chatHydrated && window.circuitbotChatSessionId) {
                 socket.emit('chat:resume', { session_id: window.circuitbotChatSessionId });
             }
         });
         socket.on('disconnect', () => {
             addLogEntry('Disconnected from agent backend.', 'system');
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) { statusEl.className = 'connection-status disconnected'; statusEl.title = 'Disconnected from backend'; }
+            showToast('Disconnected from backend', 'error', 5000);
         });
         socket.on('agent:thinking', (data) => {
             showAgentStatus(data.message || 'Thinking...', 'thinking');
@@ -671,6 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
             agentBusy = false;
             updateAgentButton();
             showAgentStatus('Design complete', 'completed');
+            showToast('Design complete', 'success');
             addConversationMessage('system', data.message || 'Design complete.');
             updateComponentListUI();
             updateSchematicButtons();
@@ -689,10 +729,46 @@ document.addEventListener('DOMContentLoaded', () => {
             existingButtons.forEach(node => node.remove());
             const btnDiv = document.createElement('div');
             btnDiv.className = 'conv-approval-buttons';
-            btnDiv.innerHTML = `
-                <button class="btn-approve" onclick="socket.emit('agent:pcb_approve', {approved: true})">Proceed to PCB</button>
-                <button class="btn-skip" onclick="socket.emit('agent:pcb_approve', {approved: false})">Skip PCB</button>
-            `;
+            const approveBtn = document.createElement('button');
+            approveBtn.className = 'btn-approve';
+            approveBtn.textContent = 'Proceed to PCB';
+            approveBtn.addEventListener('click', () => window.socket.emit('agent:pcb_approve', { approved: true }));
+            const skipBtn = document.createElement('button');
+            skipBtn.className = 'btn-skip';
+            skipBtn.textContent = 'Skip PCB';
+            skipBtn.addEventListener('click', () => window.socket.emit('agent:pcb_approve', { approved: false }));
+            btnDiv.appendChild(approveBtn);
+            btnDiv.appendChild(skipBtn);
+            agentConversation.appendChild(btnDiv);
+            while (agentConversation.querySelectorAll('.conv-approval-buttons').length > MAX_APPROVAL_BUTTONS) {
+                agentConversation.querySelector('.conv-approval-buttons')?.remove();
+            }
+            agentConversation.scrollTop = agentConversation.scrollHeight;
+        });
+        socket.on('agent:board_config', (data) => {
+            addConversationMessage('assistant', data.message || 'How many PCB layers do you need?');
+            const options = data.options || [
+                { layers: 2, label: '2-Layer', description: 'F.Cu + B.Cu (Standard)' },
+                { layers: 4, label: '4-Layer', description: 'F.Cu + In1 + In2 + B.Cu (Recommended)' },
+                { layers: 6, label: '6-Layer', description: 'F.Cu + In1-In4 + B.Cu (High-speed)' },
+                { layers: 8, label: '8-Layer', description: 'F.Cu + In1-In6 + B.Cu (Advanced)' },
+            ];
+            const existingButtons = agentConversation.querySelectorAll('.conv-approval-buttons');
+            existingButtons.forEach(node => node.remove());
+            const btnDiv = document.createElement('div');
+            btnDiv.className = 'conv-approval-buttons';
+            btnDiv.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;';
+            btnDiv.innerHTML = options.map(opt =>
+                `<div style="display:flex;flex-direction:column;align-items:center;">
+                    <button class="btn-approve" data-layer-count="${opt.layers}" style="min-width:70px;margin-bottom:4px;">${opt.label}</button>
+                    <span style="font-size:10px;color:#6b7280;text-align:center;max-width:80px;line-height:1.2;">${opt.description}</span>
+                </div>`
+            ).join('');
+            btnDiv.querySelectorAll('button').forEach((btn, i) => {
+                btn.addEventListener('click', () => {
+                    window.socket.emit('agent:board_config', { layer_count: options[i].layers });
+                });
+            });
             agentConversation.appendChild(btnDiv);
             while (agentConversation.querySelectorAll('.conv-approval-buttons').length > MAX_APPROVAL_BUTTONS) {
                 agentConversation.querySelector('.conv-approval-buttons')?.remove();
@@ -707,12 +783,19 @@ document.addEventListener('DOMContentLoaded', () => {
             existingButtons.forEach(node => node.remove());
             const btnDiv = document.createElement('div');
             btnDiv.className = 'conv-approval-buttons';
-            btnDiv.innerHTML = `
-                <button class="btn-approve" onclick="socket.emit('agent:validation_help_response', {action: 'retry'})">Retry</button>
-                <button class="btn-approve" onclick="socket.emit('agent:validation_help_response', {action: 'skip'})">Skip & Continue</button>
-                <button class="btn-approve" onclick="socket.emit('agent:validation_help_response', {action: 'force'})">Force Continue</button>
-                <button class="btn-skip" onclick="socket.emit('agent:validation_help_response', {action: 'terminate'})">Terminate</button>
-            `;
+            const actions = [
+                { label: 'Retry', cls: 'btn-approve', action: 'retry' },
+                { label: 'Skip & Continue', cls: 'btn-approve', action: 'skip' },
+                { label: 'Force Continue', cls: 'btn-approve', action: 'force' },
+                { label: 'Terminate', cls: 'btn-skip', action: 'terminate' },
+            ];
+            for (const a of actions) {
+                const btn = document.createElement('button');
+                btn.className = a.cls;
+                btn.textContent = a.label;
+                btn.addEventListener('click', () => window.socket.emit('agent:validation_help_response', { action: a.action }));
+                btnDiv.appendChild(btn);
+            }
             agentConversation.appendChild(btnDiv);
             while (agentConversation.querySelectorAll('.conv-approval-buttons').length > MAX_APPROVAL_BUTTONS) {
                 agentConversation.querySelector('.conv-approval-buttons')?.remove();
@@ -743,23 +826,53 @@ document.addEventListener('DOMContentLoaded', () => {
             updateAgentButton();
             showAgentStatus('Error: ' + (data.message || 'Unknown error'), 'error');
             addLogEntry('Error: ' + (data.message || 'Unknown error'), 'error');
+            showToast('Error: ' + (data.message || 'Unknown error'), 'error', 5000);
         });
         socket.on('agent:conversation', (data) => {
             handleConversationEvent(data);
         });
     }
 
+    function _renderMarkdown(text) {
+        // Lightweight markdown: bold, italic, code, bullet lists
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        // Bold: **text**
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // Italic: *text*
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        // Inline code: `text`
+        html = html.replace(/`(.+?)`/g, '<code style="background:#252830;padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>');
+        // Bullet lines: lines starting with - or *
+        html = html.replace(/^[\-\*] (.+)$/gm, '<div style="padding-left:12px;">• $1</div>');
+        // Line breaks
+        html = html.replace(/\n/g, '<br>');
+        return html;
+    }
+
     function addLogEntry(text, type) {
         addConversationMessage(type || 'log', text);
     }
 
+    function _timeStamp() {
+        const d = new Date();
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     function addConversationMessage(type, text) {
-        const empty = agentConversation.querySelector('.conv-empty');
-        if (empty) empty.remove();
+        // Only remove empty state for user messages and agent responses,
+        // not for system/log messages (so suggestion chips stay visible)
+        if (type !== 'log' && type !== 'system') {
+            const empty = agentConversation.querySelector('.conv-empty');
+            if (empty) empty.remove();
+        }
         const entry = document.createElement('div');
         const isDetail = typeof text === 'string' && (text.startsWith('  ') || text.includes('='));
         if (type === 'error') {
             entry.className = 'conv-error-msg';
+            entry.innerHTML = '<span class="conv-error-icon">⚠</span> ' + _escapeHtml(text);
         } else if (isDetail) {
             entry.className = 'conv-detail';
             entry.textContent = text.trimStart();
@@ -767,9 +880,30 @@ document.addEventListener('DOMContentLoaded', () => {
             entry.className = 'conv-milestone';
             entry.textContent = text;
         }
+        const ts = document.createElement('span');
+        ts.className = 'conv-timestamp';
+        ts.textContent = _timeStamp();
+        entry.appendChild(ts);
         agentConversation.appendChild(entry);
         trimConversationDom();
         agentConversation.scrollTop = agentConversation.scrollHeight;
+    }
+
+    function _escapeHtml(text) {
+        return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function showToast(message, type = 'info', duration = 3000) {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('fade-out');
+            setTimeout(() => toast.remove(), 300);
+        }, duration);
     }
 
     function trimConversationDom() {
@@ -818,7 +952,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'running') {
                 const p = document.createElement('div');
                 p.className = 'conv-progress';
-                p.textContent = (data.title || 'Working') + '...';
+                const label = document.createTextNode((data.title || 'Working') + '... ');
+                p.appendChild(label);
+                const dots = document.createElement('span');
+                dots.className = 'typing-dots';
+                dots.innerHTML = '<span></span><span></span><span></span>';
+                p.appendChild(dots);
                 p.dataset.toolCardId = tcId;
                 agentConversation.appendChild(p);
             } else if (data.status === 'completed' || data.status === 'failed') {
@@ -842,6 +981,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearConversation() {
         conversation.length = 0;
         agentConversation.innerHTML = '';
+    }
+
+    function exportConversation() {
+        const messages = agentConversation.querySelectorAll('.conv-milestone, .conv-user-msg, .conv-error-msg, .conv-detail');
+        let text = '# CircuitBot Conversation Export\n\n';
+        for (const msg of messages) {
+            const ts = msg.querySelector('.conv-timestamp');
+            const time = ts ? ts.textContent : '';
+            const content = msg.textContent.replace(ts ? ts.textContent : '', '').trim();
+            const role = msg.classList.contains('conv-user-msg') ? 'User' : 'Agent';
+            text += `[${time}] ${role}: ${content}\n\n`;
+        }
+        const blob = new Blob([text], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `circuitbot-chat-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Conversation exported', 'success');
     }
 
     if (searchResults) {
@@ -1277,7 +1436,13 @@ document.addEventListener('DOMContentLoaded', () => {
         header.textContent = 'AI Proposal';
         const body = document.createElement('div');
         body.className = 'proposal-body';
-        body.textContent = `Add: ${data.component.name}`;
+        const comp = data.component || {};
+        let bodyHtml = `<strong>${comp.name || 'Component'}</strong>`;
+        if (comp.footprint) bodyHtml += `<br><span style="font-size:11px;color:var(--agent-text-dim);">Footprint: ${comp.footprint}</span>`;
+        const pinCount = (comp.pins || []).length;
+        if (pinCount) bodyHtml += `<br><span style="font-size:11px;color:var(--agent-text-dim);">Pins: ${pinCount}</span>`;
+        if (comp.symbol_id) bodyHtml += `<br><span style="font-size:11px;color:var(--agent-text-dim);">Symbol: ${comp.symbol_id}</span>`;
+        body.innerHTML = bodyHtml;
         const actions = document.createElement('div');
         actions.className = 'proposal-actions';
         const approveBtn = document.createElement('button');
@@ -1302,10 +1467,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function hydrateChatState(data) {
         if (chatHydrated) return;
         chatHydrated = true;
+
+        const history = Array.isArray(data.history) ? data.history : [];
+        const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+
+        // If no history and no proposals, keep the suggestion chips
+        if (!history.length && !proposals.length) {
+            return; // Don't clear the empty state with chips
+        }
+
+        // Has real content — clear and rebuild
         clearConversation();
         Object.keys(activeProposals).forEach((key) => delete activeProposals[key]);
 
-        const history = Array.isArray(data.history) ? data.history : [];
         for (const message of history) {
             if (message.role === 'user') {
                 const userMsg = document.createElement('div');
@@ -1322,14 +1496,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        const proposals = Array.isArray(data.proposals) ? data.proposals : [];
         for (const proposal of proposals) {
             renderProposalCard(proposal);
         }
 
-        if (!history.length && !proposals.length) {
-            agentConversation.innerHTML = "<div class=\"conv-empty\">Describe a circuit and I'll design it for you.</div>";
-        } else {
+        if (history.length || proposals.length) {
             trimConversationDom();
             agentConversation.scrollTop = agentConversation.scrollHeight;
         }
@@ -1343,12 +1514,17 @@ document.addEventListener('DOMContentLoaded', () => {
     agentBtn.addEventListener('click', () => {
         const text = agentPrompt.value.trim();
         if (!text || agentBusy) return;
-        
+
         agentBusy = true;
         updateAgentButton();
-        
+
         agentPrompt.value = '';
-        
+        agentPrompt.style.height = 'auto';
+
+        // Remove suggestion chips when user sends first message
+        const empty = agentConversation.querySelector('.conv-empty');
+        if (empty) empty.remove();
+
         const userMsg = document.createElement('div');
         userMsg.className = 'conv-user-msg';
         userMsg.textContent = text;
@@ -1366,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const msgDiv = document.createElement('div');
         msgDiv.className = 'conv-agent-msg';
-        msgDiv.textContent = data.text;
+        msgDiv.innerHTML = _renderMarkdown(data.text || '');
         agentConversation.appendChild(msgDiv);
         agentConversation.scrollTop = agentConversation.scrollHeight;
     });
@@ -1401,7 +1577,12 @@ document.addEventListener('DOMContentLoaded', () => {
             agentBtn.click();
         }
     });
-    agentPrompt.addEventListener('input', updateAgentButton);
+    agentPrompt.addEventListener('input', () => {
+        updateAgentButton();
+        // Auto-resize textarea to fit content
+        agentPrompt.style.height = 'auto';
+        agentPrompt.style.height = Math.min(agentPrompt.scrollHeight, 120) + 'px';
+    });
 
     // ── Agent Prompt Suggestions ─────────────────────────────────────────────
 
@@ -1417,6 +1598,24 @@ document.addEventListener('DOMContentLoaded', () => {
             agentPrompt.placeholder = suggestions[Math.floor(Math.random() * suggestions.length)];
         }
     });
+
+    // Suggestion chips — click to fill prompt and send
+    document.addEventListener('click', (e) => {
+        const chip = e.target.closest('.suggestion-chip');
+        if (chip) {
+            const prompt = chip.dataset.prompt;
+            if (prompt) {
+                agentPrompt.value = prompt;
+                agentPrompt.style.height = 'auto';
+                agentPrompt.style.height = Math.min(agentPrompt.scrollHeight, 120) + 'px';
+                updateAgentButton();
+                agentBtn.click();
+            }
+        }
+    });
+    // Hide suggestion chips when conversation gets messages
+    const _origAppendChild = agentConversation.appendChild.bind(agentConversation);
+    let _chipsHidden = false;
 
     // ── Zoom & UI ─────────────────────────────────────────────────────────────
 

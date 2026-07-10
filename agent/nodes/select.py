@@ -398,6 +398,8 @@ def select_node(state, config):
                 "datasheet_text": "",
                 "subsystem": sub.get("subsystem", ""),
                 "user_locked": is_user_part,
+                "footprint": best.get("footprint", ""),
+                "pads": best.get("pads", []),
             })
             _emit(config, "agent:log", {
                 "message": f"  Selected {best['id_str']} (score={best_score}) for '{sub.get('subsystem', '')}'"
@@ -666,6 +668,9 @@ def select_node(state, config):
                 "footprint": r.get("footprint") or "",
                 "pads": r.get("pads") or [],
             }
+    import logging
+    logger = logging.getLogger(__name__)
+
     for s in selected:
         entry = fp_lookup.get(s["id_str"], {})
         if not s.get("footprint"):
@@ -678,8 +683,16 @@ def select_node(state, config):
                 if info:
                     s["footprint"] = info.get("footprint", "")
                     s["pads"] = info.get("pads", [])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to fetch footprint for {s['id_str']}: {e}")
+        if not s.get("footprint"):
+            try:
+                from kicad_rag.store import resolve_footprint_from_filters
+                resolved = resolve_footprint_from_filters(s["id_str"])
+                if resolved:
+                    s["footprint"] = resolved
+            except Exception as e:
+                logger.warning(f"Failed to resolve footprint from filters for {s['id_str']}: {e}")
         if not s.get("footprint"):
             _cat, _, _name = s.get("id_str", "").partition(":")
             if _cat == "Device":
@@ -699,6 +712,11 @@ def select_node(state, config):
                 s["footprint"] = "Button_Switch_SMD:SW_SPST_B3U-1000P"
             elif _cat in ("Transistor_BJT", "Transistor_FET"):
                 s["footprint"] = "Package_TO_SOT_SMD:SOT-23"
+        if not s.get("footprint"):
+            logger.warning(
+                f"Could not resolve footprint for {s['id_str']}. "
+                f"Component will have empty footprint in PCB layout."
+            )
 
     _emit(config, "agent:log", {
         "message": f"Selected {len(selected)} components: " +

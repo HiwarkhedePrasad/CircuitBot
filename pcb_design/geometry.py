@@ -102,3 +102,90 @@ def board_outline_polygon(components: list[dict],
     xmin, ymin, xmax, ymax = board_bounds(components)
     return shapely_box(xmin - margin, ymin - margin,
                        xmax + margin, ymax + margin)
+
+
+def board_outline_segments(components: list[dict],
+                           margin: float = 5.0,
+                           corner_radius: float = 2.0) -> list[dict]:
+    """Create a rounded-rectangle board outline as KiCad Edge.Cuts segments.
+
+    Returns a list of gr_line and gr_arc dicts in the same format as
+    ``_parse_outline_segment()`` in ``pcb_design/pcb_import.py``.
+    """
+    import math
+
+    xmin, ymin, xmax, ymax = board_bounds(components)
+    # Apply margin
+    xmin -= margin
+    ymin -= margin
+    xmax += margin
+    ymax += margin
+
+    r = min(corner_radius, (xmax - xmin) / 4, (ymax - ymin) / 4)
+    if r < 0.1:
+        # No room for rounded corners — emit 4 straight lines
+        return [
+            {"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+             "start": {"x": xmin, "y": ymin}, "end": {"x": xmax, "y": ymin}},
+            {"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+             "start": {"x": xmax, "y": ymin}, "end": {"x": xmax, "y": ymax}},
+            {"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+             "start": {"x": xmax, "y": ymax}, "end": {"x": xmin, "y": ymax}},
+            {"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+             "start": {"x": xmin, "y": ymax}, "end": {"x": xmin, "y": ymin}},
+        ]
+
+    segments: list[dict] = []
+
+    def _pt(cx, cy, angle_deg):
+        rad = math.radians(angle_deg)
+        return {"x": round(cx + r * math.cos(rad), 4),
+                "y": round(cy + r * math.sin(rad), 4)}
+
+    # Bottom-left corner arc center
+    bl_cx, bl_cy = xmin + r, ymin + r
+    # Bottom-right corner arc center
+    br_cx, br_cy = xmax - r, ymin + r
+    # Top-right corner arc center
+    tr_cx, tr_cy = xmax - r, ymax - r
+    # Top-left corner arc center
+    tl_cx, tl_cy = xmin + r, ymax - r
+
+    # Bottom edge: line from BL corner end to BR corner start
+    segments.append({"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(bl_cx, bl_cy, 270),
+                     "end": _pt(br_cx, br_cy, 270)})
+    # Bottom-right corner arc
+    segments.append({"kind": "gr_arc", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(br_cx, br_cy, 270),
+                     "mid": _pt(br_cx, br_cy, 315),
+                     "end": _pt(br_cx, br_cy, 0)})
+    # Right edge: line from BR corner end to TR corner start
+    segments.append({"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(br_cx, br_cy, 0),
+                     "end": _pt(tr_cx, tr_cy, 0)})
+    # Top-right corner arc
+    segments.append({"kind": "gr_arc", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(tr_cx, tr_cy, 0),
+                     "mid": _pt(tr_cx, tr_cy, 45),
+                     "end": _pt(tr_cx, tr_cy, 90)})
+    # Top edge: line from TR corner end to TL corner start
+    segments.append({"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(tr_cx, tr_cy, 90),
+                     "end": _pt(tl_cx, tl_cy, 90)})
+    # Top-left corner arc
+    segments.append({"kind": "gr_arc", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(tl_cx, tl_cy, 90),
+                     "mid": _pt(tl_cx, tl_cy, 135),
+                     "end": _pt(tl_cx, tl_cy, 180)})
+    # Left edge: line from TL corner end to BL corner start
+    segments.append({"kind": "gr_line", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(tl_cx, tl_cy, 180),
+                     "end": _pt(bl_cx, bl_cy, 180)})
+    # Bottom-left corner arc
+    segments.append({"kind": "gr_arc", "layer": "Edge.Cuts", "width": 0.1,
+                     "start": _pt(bl_cx, bl_cy, 180),
+                     "mid": _pt(bl_cx, bl_cy, 225),
+                     "end": _pt(bl_cx, bl_cy, 270)})
+
+    return segments

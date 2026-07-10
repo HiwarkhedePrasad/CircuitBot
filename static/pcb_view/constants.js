@@ -1,34 +1,34 @@
 const PCB_COLORS = {
-    background: 0x0b1116,
-    gridMinor: 0x151f25,
-    gridMajor: 0x253540,
-    boardFill: 0x10251f,
-    outline: 0x19d7b0,
-    outlineShadow: 0x063b32,
+    background: 0x000000,        // Pure black
+    gridMinor: 0x0a0a0a,        // Very subtle grid
+    gridMajor: 0x1a1a1a,        // Visible grid
+    boardFill: 0x080808,        // Dark board fill
+    outline: 0x00ffcc,          // Bright cyan outline
+    outlineShadow: 0x004433,
     airwire: 0xffffff,
-    airwireDim: 0xaab8c8,
-    topCopper: 0xff563d,
-    bottomCopper: 0x356cff,
-    copperEdge: 0xffb199,
-    viaCopper: 0xdce8ef,
-    viaDrill: 0x071019,
-    smdTop: 0xf27a6a,
-    smdBottom: 0x5b93ff,
-    throughPad: 0xf2c8b8,
-    exposedPad: 0xf2b8d0,
-    maskPad: 0x12392f,
-    silkscreen: 0xe0f0ed,
-    silkscreenFill: 0xc8e6e0,
-    fab: 0x8eb0aa,
-    fabFill: 0x3a6860,
-    courtyard: 0x3d7570,
-    text: 0xe9f7f4,
-    textDim: 0x91aaa4,
-    selection: 0x4df1c2,
-    routeGhost: 0xfff1a8,
-    hoverFill: 0x0d1716,
-    hole: 0x0b1116,
-    pin1Marker: 0x4df1c2,
+    airwireDim: 0x8899aa,       // KiCad-style muted blue-gray
+    topCopper: 0xff4444,        // Bright red for F.Cu
+    bottomCopper: 0x4488ff,     // Bright blue for B.Cu
+    copperEdge: 0xffaa77,       // Bright copper edge
+    viaCopper: 0xffcc88,        // Bright via copper
+    viaDrill: 0x000000,         // Black drill hole
+    smdTop: 0xff6655,           // Bright red SMD pads
+    smdBottom: 0x5599ff,        // Bright blue SMD pads
+    throughPad: 0xffcc88,       // Golden through-hole pads
+    exposedPad: 0xffbb99,       // Bright exposed pads
+    maskPad: 0x0a2a22,          // Dark mask
+    silkscreen: 0xffffff,       // Pure white silkscreen
+    silkscreenFill: 0xffffff,   // White fill
+    fab: 0x88ccaa,
+    fabFill: 0x2a5548,
+    courtyard: 0x2a6655,
+    text: 0xffffff,             // Pure white text
+    textDim: 0x888888,
+    selection: 0x00ffcc,        // Bright cyan selection
+    routeGhost: 0xffff00,       // Bright yellow route ghost
+    hoverFill: 0x0a0a0a,
+    hole: 0x000000,             // Black holes
+    pin1Marker: 0x00ffcc,       // Bright cyan pin marker
     padNumber: 0xffffff,
     padNumberShadow: 0x000000,
 };
@@ -44,6 +44,7 @@ const PCB_MODE = {
     DRAG_COMPONENT: 'drag_component',
     ROUTE: 'route',
     GHOST_PLACEMENT: 'ghost_placement',
+    DRAW_OUTLINE: 'draw_outline',
 };
 
 const PCB_TOOL = {
@@ -51,6 +52,7 @@ const PCB_TOOL = {
     SELECT: 'select',
     ROUTE: 'route',
     VIA: 'via',
+    OUTLINE: 'outline',
 };
 
 const PCB_POINTER_DRAG_THRESHOLD_PX = 4;

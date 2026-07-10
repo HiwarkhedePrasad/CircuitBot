@@ -8,7 +8,7 @@
     --bg-main: #100F0F;
     --bg-panel: #100F0F;
     --bg-header: #100F0F;
-    --bg-canvas: #100F0F; /* KiCad default dark blue */
+    --bg-canvas: #000000; /* Pure black background */
     
     --border: #3c3c3c;
     --border-bright: #444444;
@@ -37,6 +37,18 @@
     --sidebar-width: 300px;
     --header-height: 80px;
     --status-height: 25px;
+
+    /* Spacing tokens */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 24px;
+
+    /* Radius tokens */
+    --radius-sm: 3px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
 
     /* Agent workspace tokens */
     --agent-bg: #141517;
@@ -99,6 +111,13 @@ body {
     color: var(--text-bright);
     letter-spacing: 0.5px;
 }
+.connection-status {
+    font-size: 10px;
+    margin-left: 4px;
+    transition: color 0.3s;
+}
+.connection-status.connected { color: #4df1c2; }
+.connection-status.disconnected { color: #ff563d; }
 
 .version {
     font-size: 10px;
@@ -144,6 +163,13 @@ body {
 .tool-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+.tool-btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+.tool-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 .tool-btn.highlight {
@@ -238,6 +264,13 @@ body {
 .icon-btn:hover {
     background: var(--accent-dim);
     color: var(--text-main);
+}
+.icon-btn:active {
+    transform: scale(0.95);
+}
+.icon-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 /* Netlist Display */
@@ -464,6 +497,18 @@ body {
     height: 100%;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    transition: background 0.15s, color 0.15s;
+}
+.tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-main);
+}
+.tab:active {
+    transform: scale(0.98);
+}
+.tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
 }
 
 .tab.active {
@@ -478,7 +523,10 @@ body {
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-    padding: 4px 0;
+    padding: 6px 0;
+    background: rgba(20, 20, 30, 0.5);
+    border-radius: 8px;
+    padding: 8px 12px;
 }
 
 .pcb-tool-group {
@@ -489,7 +537,7 @@ body {
 
 .pcb-tool-chip {
     min-width: 58px;
-    height: 28px;
+    height: 32px;
     padding: 0 12px;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -497,17 +545,48 @@ body {
     color: var(--text-main);
     font: 600 12px var(--font-ui);
     cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
 }
 
 .pcb-tool-chip:hover {
     border-color: var(--border-bright);
     background: #212121;
+    transform: translateY(-1px);
 }
 
 .pcb-tool-chip.active {
-    border-color: rgba(0, 122, 204, 0.9);
-    background: rgba(0, 122, 204, 0.18);
+    border-color: #C40000;
+    background: rgba(196, 0, 0, 0.15);
     color: var(--text-bright);
+    box-shadow: 0 0 8px rgba(196, 0, 0, 0.3);
+}
+.pcb-tool-chip:active {
+    transform: scale(0.96);
+}
+.pcb-tool-chip::after {
+    content: attr(data-shortcut);
+    position: absolute;
+
+#pcbHelpBtn {
+    background: #252830;
+    border-color: #4a4a6e;
+    font-weight: bold;
+    min-width: 32px;
+}
+#pcbHelpBtn:hover {
+    background: #3a3a5e;
+    border-color: #6a6a8e;
+}
+    bottom: -2px;
+    right: 4px;
+    font-size: 9px;
+    color: #666;
+    font-weight: normal;
+}
+.pcb-tool-chip:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 .pcb-tool-field {
@@ -569,8 +648,6 @@ canvas {
     inset: 0;
     width: 100%;
     height: 100%;
-    visibility: hidden;
-    pointer-events: none;
 }
 
 #symbolCanvas {
@@ -583,8 +660,6 @@ canvas {
 
 #pcbOverlayCanvas {
     z-index: 3;
-    display: none;
-    visibility: hidden;
     pointer-events: none;
 }
 
@@ -647,60 +722,55 @@ canvas {
 /* Status Bar */
 .eda-status-bar {
     height: var(--status-height);
-    background-color: var(--accent);
-    color: white;
+    background-color: #1a1d23;
+    color: var(--text-dim);
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0 10px;
     font-size: 11px;
+    border-top: 1px solid var(--border);
 }
 
 .status-item {
     margin-right: 20px;
 }
 
-/* Property Inspector */
-.properties-view {
-    padding: 10px;
+/* Zoom controls */
+.zoom-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.zoom-group button {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 3px;
+    color: white;
+    font-size: 12px;
     font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-main);
-    overflow-y: auto;
-}
-
-.prop-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.prop-row {
-    display: flex;
-    justify-content: space-between;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    padding-bottom: 4px;
-}
-
-.prop-key {
-    color: var(--text-dim);
-    font-weight: bold;
-    flex-shrink: 0;
-    margin-right: 12px;
-}
-
-.prop-val {
-    color: var(--kicad-teal);
-    text-align: right;
-    word-break: break-all;
-}
-
-.empty-state {
-    color: var(--text-dim);
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    min-width: 28px;
     text-align: center;
-    margin-top: 20px;
-    font-style: italic;
 }
+.zoom-group button:hover {
+    background: rgba(255,255,255,0.2);
+}
+.zoom-group button:active {
+    background: rgba(255,255,255,0.25);
+    transform: scale(0.96);
+}
+#zoomLevel {
+    color: white;
+    font-size: 11px;
+    min-width: 40px;
+    text-align: center;
+}
+
+/* Property Inspector */
+
 
 /* ── Agent Workspace (chat-style) ─────────────────────────────────────────── */
 
@@ -774,6 +844,40 @@ canvas {
     line-height: 1.5;
     font-family: var(--font-ui);
 }
+.conv-timestamp {
+    font-size: 10px;
+    color: var(--agent-text-dim);
+    opacity: 0.5;
+    margin-left: 6px;
+    font-family: var(--font-mono);
+}
+.suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 12px;
+}
+.suggestion-chip {
+    background: rgba(77, 241, 194, 0.08);
+    border: 1px solid rgba(77, 241, 194, 0.2);
+    border-radius: 16px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-family: var(--font-ui);
+    color: #4df1c2;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.suggestion-chip:hover {
+    background: rgba(77, 241, 194, 0.15);
+    border-color: rgba(77, 241, 194, 0.4);
+    transform: translateY(-1px);
+}
+.suggestion-chip:active {
+    transform: translateY(0);
+}
 
 /* Agent message — left-aligned, clean text */
 .conv-agent-msg {
@@ -820,11 +924,17 @@ canvas {
     line-height: 1.5;
     color: var(--agent-red);
     font-family: var(--font-ui);
-    padding: 2px 0;
+    padding: 6px 10px;
     word-wrap: break-word;
     overflow-wrap: break-word;
     white-space: pre-wrap;
     max-width: 95%;
+    background: rgba(248, 81, 73, 0.08);
+    border-left: 3px solid var(--agent-red);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.conv-error-icon {
+    margin-right: 4px;
 }
 
 /* User message — right-aligned pill bubble */
@@ -851,21 +961,27 @@ canvas {
     font-family: var(--font-ui);
     font-style: italic;
     padding: 1px 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
 }
-.conv-progress::after {
-    content: '';
-    display: inline-block;
-    width: 12px;
+.typing-dots {
+    display: inline-flex;
+    gap: 2px;
     margin-left: 4px;
-    text-align: left;
-    animation: typing-dots 1.4s steps(4) infinite;
 }
-@keyframes typing-dots {
-    0%   { content: ''; }
-    25%  { content: '.'; }
-    50%  { content: '..'; }
-    75%  { content: '...'; }
-    100% { content: ''; }
+.typing-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--agent-accent, #4df1c2);
+    animation: dotPulse 1.4s ease-in-out infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotPulse {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
 }
 
 /* AI Proposal Card */
@@ -984,6 +1100,13 @@ canvas {
     opacity: 0.35;
     cursor: not-allowed;
 }
+.btn-send:active:not(:disabled) {
+    transform: scale(0.97);
+}
+.btn-send:focus-visible {
+    outline: 2px solid var(--agent-accent);
+    outline-offset: 2px;
+}
 .btn-send.running {
     background: transparent;
     color: var(--agent-accent);
@@ -1033,26 +1156,109 @@ canvas {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(10, 10, 20, 0.85);
+    background: rgba(10, 10, 20, 0.92);
     z-index: 10;
     cursor: pointer;
-    border: 2px dashed #2A2A3E;
-    border-radius: 4px;
-    transition: border-color 0.2s;
+    border: 3px dashed #3A3A5E;
+    border-radius: 8px;
+    transition: all 0.3s ease;
 }
-.pcb-upload-overlay:hover { border-color: #C40000; }
+.pcb-upload-overlay:hover {
+    border-color: #C40000;
+    background: rgba(10, 10, 20, 0.95);
+}
 .pcb-upload-content {
     text-align: center;
-    color: #C0C0C0;
+    color: #E0E0E0;
     pointer-events: none;
+    max-width: 400px;
+    padding: 20px;
 }
-.pcb-upload-icon { font-size: 48px; margin-bottom: 12px; }
-.pcb-upload-content p { margin: 4px 0; font-size: 14px; }
-.pcb-upload-sub { font-size: 12px !important; color: #666; }
-.pcb-upload-content code { background: #1A1A2E; padding: 2px 6px; border-radius: 3px; }
+.pcb-upload-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    opacity: 0.8;
+}
+.pcb-upload-content h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    color: #FFFFFF;
+}
+.pcb-upload-content p {
+    margin: 6px 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #A0A0A0;
+}
+.pcb-upload-sub {
+    font-size: 12px !important;
+    color: #666;
+    margin-top: 12px !important;
+}
+.pcb-upload-content code {
+    background: #1A1A2E;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+}
+.pcb-upload-drag-hint {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px dashed #4A4A6E;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.03);
+    font-size: 13px;
+    color: #888;
+}
+.pcb-upload-overlay.dragover {
+    border-color: #00CC66;
+    background: rgba(0, 204, 102, 0.1);
+}
+.pcb-upload-overlay.dragover .pcb-upload-icon {
+    opacity: 1;
+    transform: scale(1.1);
+}
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-main); }
 ::-webkit-scrollbar-thumb { background: var(--border); }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
+
+/* Toast notifications */
+.toast-container {
+    position: fixed;
+    bottom: 40px;
+    right: 16px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.toast {
+    background: #1a1d23;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 16px;
+    font-size: 12px;
+    font-family: var(--font-ui);
+    color: var(--text-main);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    animation: toastIn 0.25s ease-out;
+    pointer-events: auto;
+    max-width: 320px;
+}
+.toast.success { border-left: 3px solid #4df1c2; }
+.toast.error { border-left: 3px solid var(--agent-red); color: var(--agent-red); }
+.toast.info { border-left: 3px solid var(--accent); }
+.toast.fade-out { animation: toastOut 0.3s ease-in forwards; }
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toastOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(12px); }
+}

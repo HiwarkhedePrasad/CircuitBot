@@ -71,7 +71,7 @@ const center = JSON.parse(JSON.stringify(
         { x: 1, y: 0, rotation: 0 }
     )
 ));
-assert.deepStrictEqual(center, { x: 10, y: 19 });
+assert.deepStrictEqual(center, { x: 10, y: 21 });
 
 const centerWithPadRotation = JSON.parse(JSON.stringify(
     helpers.getComponentPadPosition(
@@ -79,7 +79,7 @@ const centerWithPadRotation = JSON.parse(JSON.stringify(
         { x: 1, y: 0, rotation: 90 }
     )
 ));
-assert.deepStrictEqual(centerWithPadRotation, { x: 10, y: 19 });
+assert.deepStrictEqual(centerWithPadRotation, { x: 10, y: 21 });
 
 const padFromPinKey = JSON.parse(JSON.stringify(
     helpers.getPadPositionByPinKey({
@@ -92,7 +92,7 @@ const padFromPinKey = JSON.parse(JSON.stringify(
         }],
     }, 'U1:1')
 ));
-assert.deepStrictEqual(padFromPinKey, { x: 10, y: 19 });
+assert.deepStrictEqual(padFromPinKey, { x: 10, y: 21 });
 
 const bounds = JSON.parse(JSON.stringify(
     helpers.getComponentBounds({

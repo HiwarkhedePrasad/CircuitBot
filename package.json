@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tscircuit/runframe": "^0.0.2141",
+    "@xiaomi-mimo/cli": "^0.3.0-alpha.0",
     "opencode-llm-proxy": "^1.7.1"
   }
 }

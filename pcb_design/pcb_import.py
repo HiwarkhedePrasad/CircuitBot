@@ -6,6 +6,7 @@ and returns a BoardModel (the shared internal geometry model).
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -173,6 +174,9 @@ def _parse_fp_graphic(node: list) -> Optional[dict]:
             width_node = _find_one(child, "width")
             if width_node:
                 item["width"] = _get_float(width_node, 1, 0.15)
+            type_node = _find_one(child, "type")
+            if type_node:
+                item["line_style"] = _get_str(type_node, 1, "solid")
         elif key == "width":
             item["width"] = _get_float(child, 1, 0.15)
         elif key == "fill":
@@ -390,6 +394,20 @@ def _parse_outline_segment(node: list) -> Optional[dict]:
             item["layer"] = _normalize_layer_name(_get_str(child, 1, "Edge.Cuts"), "Edge.Cuts")
     if item.get("layer") != "Edge.Cuts":
         return None
+    # Convert KiCad gr_arc format (start=center) to frontend format (three points on arc)
+    if node[0] == "gr_arc" and "start" in item and "mid" in item and "end" in item:
+        center = item.pop("start")  # KiCad start = center of arc
+        mid = item["mid"]
+        end = item["end"]
+        angle_mid = math.atan2(mid["y"] - center["y"], mid["x"] - center["x"])
+        angle_end = math.atan2(end["y"] - center["y"], end["x"] - center["x"])
+        radius = math.hypot(end["x"] - center["x"], end["y"] - center["y"])
+        angle_start = angle_end + 2 * (angle_mid - angle_end)
+        item["start"] = {
+            "x": round(center["x"] + radius * math.cos(angle_start), 4),
+            "y": round(center["y"] + radius * math.sin(angle_start), 4),
+        }
+        item["center"] = center
     if points:
         item["points"] = points
     return item

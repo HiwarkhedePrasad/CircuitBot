@@ -14,6 +14,7 @@ from agent.nodes import (
     connectivity_validate_node, connectivity_repair_node,
     validate_repair_node,
     ask_validation_help_node,
+    ask_board_config_node,
 )
 from agent.utils import _route_after_validate, _route_after_validation_help, _route_after_pcb_approval, _route_after_erc
 
@@ -53,6 +54,7 @@ def build_graph() -> StateGraph:
     builder.add_node("schematic_audit", schematic_audit_node)
     builder.add_node("schematic_repair", schematic_repair_node)
     builder.add_node("ask_pcb_approval", ask_pcb_approval_node)
+    builder.add_node("ask_board_config", ask_board_config_node)
     builder.add_node("pcb_layout", pcb_layout_node)
     builder.add_node("validate_repair", validate_repair_node)
     builder.add_node("ask_validation_help", ask_validation_help_node)
@@ -91,9 +93,10 @@ def build_graph() -> StateGraph:
     })
     builder.add_edge("schematic_repair", "routing")
     builder.add_conditional_edges("ask_pcb_approval", _route_after_pcb_approval, {
-        "pcb_layout": "pcb_layout",
+        "pcb_layout": "ask_board_config",
         "end": END,
     })
+    builder.add_edge("ask_board_config", "pcb_layout")
     builder.add_edge("pcb_layout", END)
     builder.add_edge("error_end", END)
 

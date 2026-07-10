@@ -16,7 +16,7 @@ from pcb_design.board_model import (
     BoardModel, BoardComponent, PadDef,
 )
 from pcb_design.placement import place_components
-from pcb_design.geometry import board_outline_polygon, HAS_SHAPELY
+from pcb_design.geometry import board_outline_polygon, board_outline_segments, HAS_SHAPELY
 
 
 def _pad_from_dict(pd: dict) -> PadDef:
@@ -91,6 +91,9 @@ def _load_footprint_component(comp: dict) -> BoardComponent | None:
 
 def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], str]:
     """Return pads, footprint graphics, and footprint name for a selected component."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     hydrated = dict(comp)
     if (not hydrated.get("footprint") or not hydrated.get("pads")) and hydrated.get("id_str"):
         try:
@@ -100,12 +103,16 @@ def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], st
                 hydrated["footprint"] = hydrated.get("footprint") or info.get("footprint", "")
                 hydrated["pads"] = hydrated.get("pads") or info.get("pads", [])
         except Exception as e:
-            # Log instead of silently swallowing -- if fetch_footprint fails for a
-            # component, that component will end up with no pads and no footprint,
-            # which is the same "bare pads / missing silkscreen" symptom.
-            import traceback
-            print(f"[pcb_layout] WARNING  fetch_footprint({hydrated.get('id_str')!r}) raised: {e!r}", flush=True)
-            traceback.print_exc()
+            logger.warning(f"fetch_footprint({hydrated.get('id_str')!r}) failed: {e!r}")
+
+    if not hydrated.get("footprint"):
+        try:
+            from kicad_rag.store import resolve_footprint_from_filters
+            resolved = resolve_footprint_from_filters(hydrated["id_str"])
+            if resolved:
+                hydrated["footprint"] = resolved
+        except Exception as e:
+            logger.warning(f"resolve_footprint_from_filters({hydrated.get('id_str')!r}) failed: {e!r}")
 
     if not hydrated.get("footprint"):
         cat, _, name = hydrated.get("id_str", "").partition(":")
@@ -127,6 +134,11 @@ def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], st
                 hydrated["footprint"] = "Button_Switch_SMD:SW_SPST_B3U-1000P"
         elif cat in ("Transistor_BJT", "Transistor_FET"):
             hydrated["footprint"] = "Package_TO_SOT_SMD:SOT-23"
+    if not hydrated.get("footprint"):
+        logger.warning(
+            f"Could not resolve footprint for {hydrated.get('id_str')}. "
+            f"Component will have empty footprint in PCB layout."
+        )
 
     parsed_fp = _load_footprint_component(hydrated)
     if parsed_fp and parsed_fp.pads:
@@ -186,11 +198,14 @@ def pcb_layout_node(state, config):
     pcb_pos = {p["ref_des"]: (p["x"], p["y"], p.get("rotation", 0)) for p in pcb_placements}
 
     # ── 3. Build BoardModel ────────────────────────────────────────
+    layer_count = state.get("layer_count", 2)
     model = BoardModel(
         nets=nets,
         power_pins=power_pins,
         power_labels=power_labels,
+        layer_count=layer_count,
     )
+    model.apply_layer_count(layer_count)
 
     missing_footprints = []
     missing_pads = []
@@ -223,10 +238,10 @@ def pcb_layout_node(state, config):
         })
 
     if HAS_SHAPELY:
-        model.outline = board_outline_polygon(
-            [{"x": c.x, "y": c.y, "pads": [{"x": p.x, "y": p.y} for p in c.pads]}
-             for c in model.components]
-        )
+        comp_data = [{"x": c.x, "y": c.y, "pads": [{"x": p.x, "y": p.y} for p in c.pads]}
+                     for c in model.components]
+        model.outline = board_outline_polygon(comp_data)
+        model.outline_segments = board_outline_segments(comp_data)
 
     emit_tool_event(config, "PCB Layout", "running",
                     f"Placed {len(model.components)} components (graph-driven)")

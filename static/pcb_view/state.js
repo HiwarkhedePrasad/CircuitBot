@@ -1,5 +1,15 @@
+let _boardModel = null;
 let pcbState = {
-    boardModel: null,
+    get boardModel() {
+        return _boardModel;
+    },
+    set boardModel(val) {
+        if (typeof normalizeBoardModel === 'function') {
+            _boardModel = val ? normalizeBoardModel(val) : null;
+        } else {
+            _boardModel = val;
+        }
+    },
     renderMode: 'full',
     mode: PCB_MODE.IDLE,
     activeTool: PCB_TOOL.PAN,
@@ -18,6 +28,7 @@ let pcbState = {
     hoveredPadKey: null,
     hoveredComponentRef: null,
     hoveredViaIndex: null,
+    hoveredTraceIndex: null,
     dragComponentRef: null,
     dragViaIndex: null,
     dragOrigin: null,
@@ -36,6 +47,11 @@ let pcbState = {
     undoStack: [],
     redoStack: [],
     visibleLayers: {},
+    outlinePoints: [],
+    outlineDraft: null,
+    clipboard: null,
+    highlightedNet: null,
+    soloLayer: null,
 };
 
 function dispatchPcbViewChanged() {
