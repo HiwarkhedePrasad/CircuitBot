@@ -434,6 +434,24 @@ function pcbHandleMouseDown(event) {
         pcbShowContextMenu(event.clientX, event.clientY, compHit);
         return;
     }
+    // Ctrl+Click: multi-select traces
+    if ((event.ctrlKey || event.metaKey) && event.button === 0 && traceHit) {
+        const idx = traceHit.traceIndex;
+        const sel = pcbState.selectedTraceIndices;
+        const pos = sel.indexOf(idx);
+        if (pos >= 0) {
+            sel.splice(pos, 1);
+        } else {
+            sel.push(idx);
+        }
+        pcbEditor.requestOverlayRefresh();
+        return;
+    }
+    // Click on trace without Ctrl: clear selection
+    if (event.button === 0 && traceHit && !(event.ctrlKey || event.metaKey)) {
+        pcbState.selectedTraceIndices = [];
+        pcbEditor.requestOverlayRefresh();
+    }
     if (pcbState.activeTool === PCB_TOOL.SELECT && event.button === 0 && compHit) {
         pcbState.selectedComponentRef = compHit.ref;
         pcbState.dragComponentRef = compHit.ref;
@@ -471,7 +489,8 @@ function pcbHandleMouseMove(event) {
     pcbState.hoveredViaIndex = pcbState.activeTool === PCB_TOOL.VIA && viaHit ? viaHit.index : null;
     // Track hovered trace for deletion (when not routing or using other tools)
     const traceHit = pcbEditor.hitTestTrace(event.clientX, event.clientY);
-    pcbState.hoveredTraceIndex = traceHit ? pcbState.boardModel.traces.indexOf(traceHit.trace) : null;
+    pcbState.hoveredTraceIndex = traceHit ? traceHit.traceIndex : null;
+    pcbState.hoveredSegmentIndex = traceHit ? traceHit.segmentIndex : null;
     const prevHoveredComp = pcbState.hoveredComponentRef;
     pcbState.hoveredComponentRef = compHit ? compHit.ref : null;
     if (!pcbState.pointerDragMoved && hasPointerExceededThreshold(event)) {
@@ -1088,6 +1107,65 @@ async function pcbDeleteHoveredTrace() {
     }
 }
 
+async function pcbDeleteHoveredSegment() {
+    if (!pcbState.boardModel || pcbState.hoveredTraceIndex == null) return;
+    const before = deepClone(pcbState.boardModel);
+    const ti = pcbState.hoveredTraceIndex;
+    const si = pcbState.hoveredSegmentIndex;
+    const trace = pcbState.boardModel.traces[ti];
+    if (!trace || si == null) return;
+    const path = trace.path || [];
+    if (path.length < 2) {
+        // Single segment trace — remove entirely
+        pcbState.boardModel.traces.splice(ti, 1);
+    } else if (si === 0) {
+        // First segment — remove from front
+        trace.path = path.slice(1);
+    } else if (si >= path.length - 2) {
+        // Last segment — remove from end
+        trace.path = path.slice(0, -1);
+    } else {
+        // Middle segment — split into two traces
+        const pathA = path.slice(0, si + 1);
+        const pathB = path.slice(si + 1);
+        const traceA = { ...trace, path: pathA };
+        const traceB = { ...trace, path: pathB };
+        pcbState.boardModel.traces.splice(ti, 1, traceA, traceB);
+    }
+    pcbState.hoveredTraceIndex = null;
+    pcbState.hoveredSegmentIndex = null;
+    pcbEditor.refreshAirwires();
+    pcbEditor.refresh();
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('delete segment', before, deepClone(pcbState.boardModel));
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
+async function pcbDeleteSelectedTraces() {
+    if (!pcbState.boardModel || pcbState.selectedTraceIndices.length === 0) return;
+    const before = deepClone(pcbState.boardModel);
+    const indices = [...pcbState.selectedTraceIndices].sort((a, b) => b - a);
+    for (const idx of indices) {
+        pcbState.boardModel.traces.splice(idx, 1);
+    }
+    pcbState.selectedTraceIndices = [];
+    pcbEditor.refreshAirwires();
+    pcbEditor.refresh();
+    try {
+        await pcbEditor.saveBoardModel();
+        pcbEditor.pushHistory('delete traces', before, deepClone(pcbState.boardModel));
+    } catch (error) {
+        pcbState.boardModel = before;
+        pcbEditor.refresh();
+        dispatchBoardSync(false, { error: error.message, fallback_saved: false });
+    }
+}
+
 async function pcbRotateSelectedComponent() {
     if (!pcbState.boardModel || !pcbState.selectedComponentRef) return;
     const before = deepClone(pcbState.boardModel);
@@ -1129,20 +1207,24 @@ function pcbHandleKeyDown(event) {
         return;
     }
     if (event.key === 'Escape') {
+        pcbState.selectedTraceIndices = [];
         pcbClearNetHighlight();
         pcbCancelDraw();
+        pcbEditor.requestOverlayRefresh();
         return;
     }
-    // Delete: remove selected component, hovered via, or hovered trace
+    // Delete: remove selected traces, hovered segment, selected component, or hovered via
     if (event.key === 'Delete' || event.key === 'Backspace') {
         if (!pcbState.boardModel) return;
         event.preventDefault();
-        if (pcbState.selectedComponentRef) {
+        if (pcbState.selectedTraceIndices.length > 0) {
+            pcbDeleteSelectedTraces();
+        } else if (pcbState.selectedComponentRef) {
             pcbDeleteSelectedComponent();
         } else if (pcbState.hoveredViaIndex != null) {
             pcbDeleteHoveredVia();
         } else if (pcbState.hoveredTraceIndex != null) {
-            pcbDeleteHoveredTrace();
+            pcbDeleteHoveredSegment();
         }
         return;
     }

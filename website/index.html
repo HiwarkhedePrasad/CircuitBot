@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="CircuitBot turns pcb.json exports into precise, inspectable footprint previews for hardware teams.">
+<title>CircuitBot - PCB footprint import preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #070a0b;
+    --panel: #101716;
+    --panel-2: #14201d;
+    --copper: #d98443;
+    --copper-soft: #f0ae69;
+    --mask: #2f755d;
+    --trace: #9ccbb3;
+    --silk: #e8f0dc;
+    --ink: #f2f0e8;
+    --muted: #9ba89d;
+    --muted-2: #637168;
+    --danger: #f0745d;
+    --line: rgba(232, 240, 220, 0.14);
+    --shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+    --display: 'Chakra Petch', sans-serif;
+    --body: 'Space Grotesk', sans-serif;
+    --mono: 'Space Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    min-width: 320px;
+    background:
+      radial-gradient(circle at 80% 8%, rgba(217, 132, 67, 0.16), transparent 34rem),
+      radial-gradient(circle at 8% 72%, rgba(47, 117, 93, 0.22), transparent 32rem),
+      linear-gradient(135deg, #060908 0%, #0a0f0d 48%, #070a0b 100%);
+    color: var(--ink);
+    font-family: var(--body);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    opacity: 0.28;
+    background-image:
+      linear-gradient(rgba(232, 240, 220, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232, 240, 220, 0.045) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(circle at 50% 25%, black, transparent 78%);
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.09;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+  }
+
+  a { color: inherit; }
+  button, input { font: inherit; }
+
+  .skip-link {
+    position: fixed;
+    left: 1rem;
+    top: 1rem;
+    z-index: 20;
+    transform: translateY(-140%);
+    padding: 0.7rem 1rem;
+    color: var(--void);
+    background: var(--silk);
+    border-radius: 999px;
+    text-decoration: none;
+    transition: transform 180ms ease;
+  }
+
+  .skip-link:focus { transform: translateY(0); }
+
+  .hero {
+    position: relative;
+    min-height: 100dvh;
+    padding: 1.25rem;
+    overflow: hidden;
+  }
+
+  .hero__shell {
+    position: relative;
+    max-width: 1480px;
+    min-height: calc(100dvh - 2.5rem);
+    margin: 0 auto;
+    border: 1px solid var(--line);
+    border-radius: 34px;
+    overflow: hidden;
+    background:
+      linear-gradient(120deg, rgba(16, 23, 22, 0.9), rgba(8, 12, 11, 0.74)),
+      radial-gradient(circle at 70% 35%, rgba(47, 117, 93, 0.18), transparent 28rem);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .hero__shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(217,132,67,0.16) 0 1px, transparent 1px 100%),
+      linear-gradient(rgba(232,240,220,0.055) 0 1px, transparent 1px 100%);
+    background-size: 7.5rem 7.5rem;
+    opacity: 0.18;
+  }
+
+  .nav {
+    position: relative;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.35rem clamp(1rem, 3vw, 2rem);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(18px);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    color: var(--ink);
+    text-decoration: none;
+    font-family: var(--display);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .brand__mark {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid rgba(217,132,67,0.75);
+    border-radius: 0.55rem;
+    background:
+      radial-gradient(circle at 65% 35%, var(--copper) 0 0.18rem, transparent 0.2rem),
+      linear-gradient(135deg, rgba(217,132,67,0.25), rgba(47,117,93,0.18));
+    box-shadow: 0 0 28px rgba(217,132,67,0.18), inset 0 0 0 4px rgba(7,10,11,0.72);
+  }
+
+  .nav__links {
+    display: flex;
+    gap: clamp(0.8rem, 2.8vw, 2rem);
+    align-items: center;
+  }
+
+  .nav__links a {
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 180ms ease;
+  }
+
+  .nav__links a:hover,
+  .nav__links a:focus-visible { color: var(--silk); }
+
+  .hero__grid {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 0.78fr) minmax(420px, 1.22fr);
+    gap: clamp(1rem, 3vw, 3rem);
+    align-items: center;
+    padding: clamp(1rem, 4vw, 3.2rem);
+  }
+
+  .copy {
+    max-width: 44rem;
+    padding-block: clamp(2rem, 6vw, 5rem);
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0 0 1.15rem;
+    color: var(--copper-soft);
+    font-family: var(--mono);
+    font-size: 0.77rem;
+    letter-spacing: 0.08em;
+  }
+
+  .eyebrow::before {
+    content: '';
+    width: 0.58rem;
+    height: 0.58rem;
+    border-radius: 50%;
+    background: var(--copper);
+    box-shadow: 0 0 22px var(--copper);
+  }
+
+  h1 {
+    margin: 0;
+    max-width: 11ch;
+    font-family: var(--display);
+    font-size: clamp(3.3rem, 8.7vw, 8.8rem);
+    line-height: 0.86;
+    letter-spacing: -0.065em;
+    text-wrap: balance;
+  }
+
+  .copy__lead {
+    max-width: 39rem;
+    margin: 1.65rem 0 0;
+    color: #c6d1c6;
+    font-size: clamp(1.03rem, 1.45vw, 1.28rem);
+    line-height: 1.65;
+    text-wrap: pretty;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    align-items: center;
+    margin-top: 2rem;
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 3.1rem;
+    padding: 0.85rem 1.15rem;
+    border: 1px solid rgba(240,174,105,0.55);
+    border-radius: 0.9rem;
+    color: #190d06;
+    background: linear-gradient(135deg, var(--copper-soft), var(--copper));
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 16px 42px rgba(217,132,67,0.24);
+    transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+  }
+
+  .button:hover,
+  .button:focus-visible { transform: translateY(-2px); filter: brightness(1.06); }
+  .button:active { transform: translateY(0) scale(0.98); }
+
+  .button--ghost {
+    color: var(--silk);
+    background: rgba(232,240,220,0.055);
+    border-color: var(--line);
+    box-shadow: none;
+  }
+
+  .button--ghost:hover,
+  .button--ghost:focus-visible { background: rgba(232,240,220,0.09); }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin-top: 2.1rem;
+  }
+
+  .metric {
+    padding: 0.9rem;
+    border-left: 1px solid rgba(217,132,67,0.45);
+    background: linear-gradient(90deg, rgba(217,132,67,0.08), transparent);
+  }
+
+  .metric strong {
+    display: block;
+    font-family: var(--mono);
+    font-size: clamp(1.2rem, 2vw, 1.55rem);
+    color: var(--silk);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric span {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  .viewer-card {
+    position: relative;
+    min-height: clamp(35rem, 69vh, 51rem);
+    border: 1px solid rgba(232,240,220,0.16);
+    border-radius: 28px;
+    overflow: hidden;
+    background:
+      linear-gradient(160deg, rgba(20,32,29,0.88), rgba(6,10,9,0.88)),
+      radial-gradient(circle at 35% 32%, rgba(217,132,67,0.2), transparent 19rem);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.34), inset 0 0 0 1px rgba(255,255,255,0.035);
+    transform: rotate(-1.2deg);
+    isolation: isolate;
+  }
+
+  .viewer-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(circle at var(--mx, 62%) var(--my, 38%), rgba(240,174,105,0.22), transparent 18rem),
+      linear-gradient(transparent 0 49%, rgba(232,240,220,0.07) 49% 51%, transparent 51% 100%);
+    opacity: 0.85;
+  }
+
+  .viewer-card::after {
+    content: '';
+    position: absolute;
+    inset: 4.6rem 1rem 1rem;
+    border: 1px dashed rgba(232,240,220,0.11);
+    border-radius: 20px;
+    pointer-events: none;
+  }
+
+  .viewer-toolbar {
+    position: relative;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid rgba(232,240,220,0.12);
+    background: rgba(7,10,11,0.42);
+    backdrop-filter: blur(16px);
+  }
+
+  .status {
+    min-width: 0;
+  }
+
+  .status__label {
+    margin: 0 0 0.22rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+  }
+
+  .status__file {
+    margin: 0;
+    overflow: hidden;
+    color: var(--silk);
+    font-family: var(--display);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-control { position: relative; }
+  .file-control input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .file-control span {
+    display: inline-flex;
+    min-height: 2.55rem;
+    align-items: center;
+    padding: 0.68rem 0.9rem;
+    border: 1px solid rgba(217,132,67,0.55);
+    border-radius: 0.75rem;
+    color: var(--copper-soft);
+    background: rgba(217,132,67,0.08);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 180ms ease, color 180ms ease;
+  }
+
+  .file-control:focus-within span,
+  .file-control:hover span { color: var(--void); background: var(--copper-soft); }
+
+  .canvas-wrap {
+    position: absolute;
+    inset: 4.65rem 0 0;
+    overflow: hidden;
+  }
+
+  #circuitCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .board-glass {
+    position: absolute;
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 4;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: end;
+    padding: 1rem;
+    border: 1px solid rgba(232,240,220,0.14);
+    border-radius: 18px;
+    background: rgba(7,10,11,0.55);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    backdrop-filter: blur(18px);
+  }
+
+  .board-glass h2 {
+    margin: 0;
+    font-family: var(--display);
+    font-size: clamp(1.25rem, 2.4vw, 2rem);
+    letter-spacing: -0.03em;
+  }
+
+  .board-glass p {
+    margin: 0.45rem 0 0;
+    max-width: 32rem;
+    color: var(--muted);
+    line-height: 1.5;
+    font-size: 0.92rem;
+  }
+
+  .layers {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .layer-chip {
+    padding: 0.42rem 0.52rem;
+    border: 1px solid rgba(232,240,220,0.13);
+    border-radius: 0.55rem;
+    color: var(--muted);
+    background: rgba(255,255,255,0.035);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+  }
+
+  .layer-chip--active { color: var(--void); background: var(--trace); }
+  .layer-chip--copper { color: var(--void); background: var(--copper-soft); }
+
+  .drop-hint {
+    position: absolute;
+    inset: 4.65rem 0 0;
+    z-index: 5;
+    display: none;
+    place-items: center;
+    color: var(--silk);
+    background: rgba(7,10,11,0.68);
+    backdrop-filter: blur(8px);
+    font-family: var(--display);
+    font-size: clamp(1.4rem, 4vw, 3rem);
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .viewer-card.is-dragging .drop-hint { display: grid; }
+
+  .error {
+    display: none;
+    margin-top: 1rem;
+    color: var(--danger);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+  }
+
+  .error.is-visible { display: block; }
+
+  .hero__rail {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem clamp(1rem, 4vw, 3.2rem) 1.25rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+  }
+
+  .rail__signal {
+    display: flex;
+    gap: 0.45rem;
+    align-items: center;
+  }
+
+  .rail__signal i {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--mask);
+    box-shadow: 0 0 18px rgba(156,203,179,0.68);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--copper-soft);
+    outline-offset: 4px;
+  }
+
+  @media (max-width: 1100px) {
+    .hero__grid { grid-template-columns: 1fr; }
+    .copy { padding-block: 2.5rem 0; }
+    h1 { max-width: 12ch; }
+    .viewer-card { transform: none; min-height: 38rem; }
+  }
+
+  @media (max-width: 720px) {
+    .hero { padding: 0; }
+    .hero__shell { min-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
+    .nav__links { display: none; }
+    .hero__grid { padding: 1rem; }
+    .metrics { grid-template-columns: 1fr; }
+    .viewer-toolbar, .board-glass, .hero__rail { grid-template-columns: 1fr; }
+    .viewer-card { min-height: 32rem; border-radius: 20px; }
+    .layers { justify-content: flex-start; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .copy, .viewer-card { animation: enter 760ms cubic-bezier(.2,.8,.2,1) both; }
+    .viewer-card { animation-delay: 120ms; }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(18px) rotate(-1.2deg); }
+      to { opacity: 1; transform: translateY(0) rotate(-1.2deg); }
+    }
+    @media (max-width: 1100px) {
+      @keyframes enter { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+    }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to viewer</a>
+<section class="hero" id="main">
+  <div class="hero__shell">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="#main"><span class="brand__mark" aria-hidden="true"></span><span>CircuitBot</span></a>
+      <div class="nav__links">
+        <a href="#viewer">Live import</a>
+        <a href="PARSER_PROMPT.md">Parser notes</a>
+        <a href="pcb.json">Sample JSON</a>
+      </div>
+    </nav>
+
+    <div class="hero__grid">
+      <div class="copy">
+        <p class="eyebrow">pcb.json footprint intelligence</p>
+        <h1>Show the board before the pitch.</h1>
+        <p class="copy__lead">Drop in a parsed KiCad `pcb.json` and CircuitBot renders the real footprint field: pads, vias, copper layers, zones, board outline, and component references. No fake product screenshots. The hero is the importer.</p>
+        <div class="actions">
+          <a class="button" href="#viewer">Inspect sample board</a>
+          <label class="button button--ghost" for="pcbFileTop">Import your pcb.json</label>
+          <input id="pcbFileTop" type="file" accept="application/json,.json" hidden>
+        </div>
+        <p class="error" id="errorText" role="status"></p>
+        <div class="metrics" aria-label="Current board metrics">
+          <div class="metric"><strong id="metricComponents">--</strong><span>components mapped</span></div>
+          <div class="metric"><strong id="metricNets">--</strong><span>nets resolved</span></div>
+          <div class="metric"><strong id="metricSize">--</strong><span>board envelope</span></div>
+        </div>
+      </div>
+
+      <article class="viewer-card" id="viewer" aria-label="PCB footprint preview">
+        <div class="viewer-toolbar">
+          <div class="status">
+            <p class="status__label">active import</p>
+            <p class="status__file" id="activeFile">Loading pcb.json</p>
+          </div>
+          <label class="file-control">
+            <input id="pcbFile" type="file" accept="application/json,.json">
+            <span>Replace JSON</span>
+          </label>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="circuitCanvas" aria-label="Rendered PCB footprint canvas"></canvas>
+        </div>
+        <div class="drop-hint">Drop pcb.json to redraw the board</div>
+        <div class="board-glass">
+          <div>
+            <h2 id="boardName">Footprint preview</h2>
+            <p id="boardSummary">Rendering the board outline, copper, vias, and component pads from the imported JSON file.</p>
+          </div>
+          <div class="layers" aria-label="Rendered layers">
+            <span class="layer-chip layer-chip--copper">F.Cu</span>
+            <span class="layer-chip">B.Cu</span>
+            <span class="layer-chip layer-chip--active">pads</span>
+            <span class="layer-chip">vias</span>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="hero__rail">
+      <span>Import contract: meta + outline + traces + components + vias + zones</span>
+      <span class="rail__signal"><i aria-hidden="true"></i><span id="renderState">waiting for renderer</span></span>
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const canvas = document.getElementById('circuitCanvas');
+  const ctx = canvas.getContext('2d');
+  const viewer = document.getElementById('viewer');
+  const fileInput = document.getElementById('pcbFile');
+  const fileInputTop = document.getElementById('pcbFileTop');
+  const activeFile = document.getElementById('activeFile');
+  const renderState = document.getElementById('renderState');
+  const errorText = document.getElementById('errorText');
+  const boardName = document.getElementById('boardName');
+  const boardSummary = document.getElementById('boardSummary');
+  const metricComponents = document.getElementById('metricComponents');
+  const metricNets = document.getElementById('metricNets');
+  const metricSize = document.getElementById('metricSize');
+
+  let pcb = null;
+  let view = null;
+  let mouse = { x: 0.62, y: 0.38 };
+  let animationFrame = null;
+
+  const layerColors = {
+    'F.Cu': '#d98443',
+    'B.Cu': '#78a991',
+    'In1.Cu': '#5d8f7c',
+    'In2.Cu': '#3f695d'
+  };
+
+  function showError(message) {
+    errorText.textContent = message;
+    errorText.classList.add('is-visible');
+    renderState.textContent = 'import failed';
+  }
+
+  function clearError() {
+    errorText.textContent = '';
+    errorText.classList.remove('is-visible');
+  }
+
+  function validateBoard(data) {
+    if (!data || typeof data !== 'object') throw new Error('The file is not a JSON object.');
+    if (!data.meta || !Number.isFinite(data.meta.boardWidth_mm) || !Number.isFinite(data.meta.boardHeight_mm)) {
+      throw new Error('Missing `meta.boardWidth_mm` or `meta.boardHeight_mm`.');
+    }
+    if (!Array.isArray(data.outline)) throw new Error('Missing `outline` array.');
+    if (!Array.isArray(data.components)) throw new Error('Missing `components` array.');
+    data.traces = Array.isArray(data.traces) ? data.traces : [];
+    data.vias = Array.isArray(data.vias) ? data.vias : [];
+    data.zones = Array.isArray(data.zones) ? data.zones : [];
+    data.nets = Array.isArray(data.nets) ? data.nets : [];
+    return data;
+  }
+
+  function setBoard(data, sourceName) {
+    pcb = validateBoard(data);
+    clearError();
+    activeFile.textContent = sourceName;
+    renderState.textContent = 'rendered from JSON';
+    const width = pcb.meta.boardWidth_mm;
+    const height = pcb.meta.boardHeight_mm;
+    const source = pcb.meta.source || sourceName;
+    boardName.textContent = source.replace(/\.[^.]+$/, '');
+    boardSummary.textContent = `${pcb.components.length.toLocaleString()} components, ${pcb.traces.length.toLocaleString()} trace paths, and ${pcb.vias.length.toLocaleString()} vias rendered from ${sourceName}.`;
+    metricComponents.textContent = pcb.components.length.toLocaleString();
+    metricNets.textContent = (pcb.nets.length || countUniqueNets(pcb)).toLocaleString();
+    metricSize.textContent = `${cleanNum(width)} x ${cleanNum(height)} mm`;
+    resize();
+    startAnimation();
+  }
+
+  function countUniqueNets(data) {
+    const nets = new Set();
+    for (const trace of data.traces || []) if (trace.net !== undefined) nets.add(trace.net);
+    for (const comp of data.components || []) for (const pad of comp.pads || []) if (pad.net !== undefined) nets.add(pad.net);
+    return nets.size;
+  }
+
+  function cleanNum(value) {
+    return Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  }
+
+  async function loadDefault() {
+    try {
+      const response = await fetch('pcb.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Could not fetch pcb.json (${response.status}).`);
+      setBoard(await response.json(), 'pcb.json');
+    } catch (error) {
+      showError(error.message || 'Could not load pcb.json.');
+    }
+  }
+
+  function loadFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { setBoard(JSON.parse(reader.result), file.name); }
+      catch (error) { showError(error.message || 'The selected file is not valid pcb.json.'); }
+    };
+    reader.onerror = () => showError('The file could not be read.');
+    reader.readAsText(file);
+  }
+
+  function resize() {
+    if (!pcb) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const pad = Math.max(28, Math.min(rect.width, rect.height) * 0.11);
+    const minX = Number.isFinite(pcb.meta.originX) ? pcb.meta.originX : 0;
+    const minY = Number.isFinite(pcb.meta.originY) ? pcb.meta.originY : 0;
+    const boardW = pcb.meta.boardWidth_mm;
+    const boardH = pcb.meta.boardHeight_mm;
+    const scale = Math.min((rect.width - pad * 2) / boardW, (rect.height - pad * 2) / boardH);
+    view = {
+      width: rect.width,
+      height: rect.height,
+      minX,
+      minY,
+      maxX: minX + boardW,
+      maxY: minY + boardH,
+      scale,
+      offX: (rect.width - boardW * scale) / 2,
+      offY: (rect.height - boardH * scale) / 2
+    };
+    draw(performance.now());
+  }
+
+  function tx(x) { return (x - view.minX) * view.scale + view.offX; }
+  function ty(y) { return (y - view.minY) * view.scale + view.offY; }
+
+  function draw(now) {
+    if (!pcb || !view) return;
+    ctx.clearRect(0, 0, view.width, view.height);
+    drawBackdrop(now);
+    drawZones();
+    drawBoard();
+    drawTraces(now);
+    drawPads();
+    drawVias();
+    drawFootprintGraphics();
+    drawCallouts(now);
+  }
+
+  function drawBackdrop(now) {
+    const sweep = (now * 0.00004) % 1;
+    const gradient = ctx.createRadialGradient(view.width * mouse.x, view.height * mouse.y, 10, view.width * mouse.x, view.height * mouse.y, Math.max(view.width, view.height) * 0.62);
+    gradient.addColorStop(0, 'rgba(217,132,67,0.13)');
+    gradient.addColorStop(0.42, 'rgba(47,117,93,0.07)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, view.width, view.height);
+
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = '#9ccbb3';
+    ctx.lineWidth = 1;
+    for (let x = (sweep * 42) % 42; x < view.width; x += 42) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, view.height);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBoard() {
+    ctx.save();
+    drawBoardPath();
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = 35;
+    ctx.fillStyle = '#18382f';
+    ctx.fill();
+    ctx.clip();
+    const sheen = ctx.createLinearGradient(0, view.offY, view.width, view.offY + view.height);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.04)');
+    sheen.addColorStop(0.46, 'rgba(255,255,255,0)');
+    sheen.addColorStop(1, 'rgba(217,132,67,0.08)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, 0, view.width, view.height);
+    ctx.restore();
+
+    ctx.save();
+    drawBoardPath();
+    ctx.strokeStyle = 'rgba(232,240,220,0.54)';
+    ctx.lineWidth = 1.2;
+    ctx.shadowColor = 'rgba(240,174,105,0.28)';
+    ctx.shadowBlur = 18;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBoardPath() {
+    ctx.beginPath();
+    for (const seg of pcb.outline) {
+      if (seg.type === 'line') {
+        ctx.moveTo(tx(seg.x1), ty(seg.y1));
+        ctx.lineTo(tx(seg.x2), ty(seg.y2));
+      } else if (seg.type === 'arc') {
+        ctx.moveTo(tx(seg.startX), ty(seg.startY));
+        ctx.quadraticCurveTo(tx(seg.midX), ty(seg.midY), tx(seg.endX), ty(seg.endY));
+      }
+    }
+  }
+
+  function drawZones() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(156,203,179,0.055)';
+    for (const zone of pcb.zones) {
+      if (!Array.isArray(zone.outline) || zone.outline.length < 3) continue;
+      ctx.beginPath();
+      ctx.moveTo(tx(zone.outline[0].x), ty(zone.outline[0].y));
+      for (let i = 1; i < zone.outline.length; i++) ctx.lineTo(tx(zone.outline[i].x), ty(zone.outline[i].y));
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawTraces(now) {
+    const phase = (Math.sin(now * 0.0012) + 1) / 2;
+    for (const trace of pcb.traces) {
+      if (!Array.isArray(trace.path) || trace.path.length < 2) continue;
+      const color = layerColors[trace.layer] || '#8fb8a4';
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(tx(trace.path[0].x), ty(trace.path[0].y));
+      for (let i = 1; i < trace.path.length; i++) ctx.lineTo(tx(trace.path[i].x), ty(trace.path[i].y));
+      ctx.strokeStyle = rgba(color, trace.layer === 'F.Cu' ? 0.56 : 0.28);
+      ctx.lineWidth = Math.max(0.45, (trace.width || 0.18) * view.scale * (trace.layer === 'F.Cu' ? 1.15 : 0.86));
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.shadowColor = rgba(color, trace.layer === 'F.Cu' ? 0.28 + phase * 0.15 : 0.06);
+      ctx.shadowBlur = trace.layer === 'F.Cu' ? 8 : 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawPads() {
+    ctx.save();
+    for (const comp of pcb.components) {
+      for (const pad of comp.pads || []) {
+        if (!Number.isFinite(pad.x) || !Number.isFinite(pad.y)) continue;
+        const cx = tx(pad.x);
+        const cy = ty(pad.y);
+        const w = Math.max(1.4, (pad.width || 0.5) * view.scale);
+        const h = Math.max(1.4, (pad.height || pad.width || 0.5) * view.scale);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((pad.rotation || 0) * Math.PI / 180);
+        ctx.fillStyle = pad.type === 'thru_hole' || pad.type === 'np_thru_hole' ? 'rgba(240,174,105,0.72)' : 'rgba(217,132,67,0.78)';
+        ctx.strokeStyle = 'rgba(255,236,205,0.34)';
+        ctx.lineWidth = 0.6;
+        if (pad.shape === 'circle' || pad.type === 'thru_hole' || pad.type === 'np_thru_hole') {
+          ctx.beginPath();
+          ctx.arc(0, 0, Math.max(w, h) / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          if (pad.drill) {
+            ctx.beginPath();
+            ctx.arc(0, 0, Math.max(0.7, pad.drill * view.scale / 2), 0, Math.PI * 2);
+            ctx.fillStyle = '#0a0f0d';
+            ctx.fill();
+          }
+        } else {
+          roundedRect(-w / 2, -h / 2, w, h, Math.min(w, h) * 0.18);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawVias() {
+    ctx.save();
+    for (const via of pcb.vias) {
+      if (!Number.isFinite(via.x) || !Number.isFinite(via.y)) continue;
+      const r = Math.max(1.2, (via.diameter || 0.55) * view.scale / 2);
+      const drill = Math.max(0.6, (via.drill || 0.28) * view.scale / 2);
+      ctx.beginPath();
+      ctx.arc(tx(via.x), ty(via.y), r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(232,240,220,0.42)';
+      ctx.lineWidth = Math.max(0.7, r - drill);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(tx(via.x), ty(via.y), drill, 0, Math.PI * 2);
+      ctx.fillStyle = '#07100e';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawFootprintGraphics() {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(232,240,220,0.22)';
+    ctx.lineWidth = Math.max(0.45, view.scale * 0.08);
+    for (const comp of pcb.components) {
+      for (const graphic of comp.graphics || []) {
+        if (graphic.hidden || graphic.layer === 'B.SilkS') continue;
+        if (graphic.kind === 'line' && graphic.start && graphic.end) {
+          ctx.beginPath();
+          ctx.moveTo(tx(graphic.start.x), ty(graphic.start.y));
+          ctx.lineTo(tx(graphic.end.x), ty(graphic.end.y));
+          ctx.stroke();
+        } else if (graphic.kind === 'circle' && graphic.center && graphic.end) {
+          const radius = Math.hypot(graphic.end.x - graphic.center.x, graphic.end.y - graphic.center.y) * view.scale;
+          ctx.beginPath();
+          ctx.arc(tx(graphic.center.x), ty(graphic.center.y), radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawCallouts(now) {
+    const large = [...pcb.components]
+      .filter(c => c.ref && Number.isFinite(c.x) && Number.isFinite(c.y) && (c.pads || []).length >= 8)
+      .slice(0, 4);
+    ctx.save();
+    ctx.font = `${Math.max(9, Math.min(14, view.scale * 1.15))}px 'Space Mono', monospace`;
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < large.length; i++) {
+      const comp = large[i];
+      const x = tx(comp.x);
+      const y = ty(comp.y);
+      const lift = Math.sin(now * 0.001 + i) * 2;
+      ctx.strokeStyle = 'rgba(240,174,105,0.48)';
+      ctx.fillStyle = 'rgba(240,174,105,0.9)';
+      ctx.beginPath();
+      ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + 6, y - 6);
+      ctx.lineTo(x + 30, y - 24 + lift);
+      ctx.stroke();
+      const label = `${comp.ref} / ${(comp.footprint || comp.value || 'footprint').split(':').pop()}`;
+      ctx.fillStyle = 'rgba(232,240,220,0.78)';
+      ctx.fillText(label.slice(0, 30), x + 36, y - 24 + lift);
+    }
+    ctx.restore();
+  }
+
+  function roundedRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  function rgba(hex, alpha) {
+    const value = hex.replace('#', '');
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function startAnimation() {
+    if (animationFrame) return;
+    const tick = (now) => {
+      draw(now);
+      animationFrame = requestAnimationFrame(tick);
+    };
+    animationFrame = requestAnimationFrame(tick);
+  }
+
+  fileInput.addEventListener('change', (event) => loadFile(event.target.files[0]));
+  fileInputTop.addEventListener('change', (event) => loadFile(event.target.files[0]));
+  window.addEventListener('resize', resize);
+
+  viewer.addEventListener('pointermove', (event) => {
+    const rect = viewer.getBoundingClientRect();
+    mouse.x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    mouse.y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    viewer.style.setProperty('--mx', `${mouse.x * 100}%`);
+    viewer.style.setProperty('--my', `${mouse.y * 100}%`);
+  });
+
+  ['dragenter', 'dragover'].forEach(type => viewer.addEventListener(type, (event) => {
+    event.preventDefault();
+    viewer.classList.add('is-dragging');
+  }));
+
+  ['dragleave', 'drop'].forEach(type => viewer.addEventListener(type, (event) => {
+    event.preventDefault();
+    if (type === 'drop') loadFile(event.dataTransfer.files[0]);
+    viewer.classList.remove('is-dragging');
+  }));
+
+  loadDefault();
+})();
+</script>
+</body>
+</html>

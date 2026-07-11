@@ -29,6 +29,8 @@ let pcbState = {
     hoveredComponentRef: null,
     hoveredViaIndex: null,
     hoveredTraceIndex: null,
+    hoveredSegmentIndex: null,
+    selectedTraceIndices: [],
     dragComponentRef: null,
     dragViaIndex: null,
     dragOrigin: null,

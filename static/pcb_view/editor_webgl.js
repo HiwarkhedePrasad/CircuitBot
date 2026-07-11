@@ -818,14 +818,62 @@ class PcbEditorWebGL {
             }
         }
 
+        // Highlight hovered pad during routing — KiCad-style attraction glow
+        if (pcbState.hoveredPadKey && pcbState.activeTool === PCB_TOOL.ROUTE) {
+            const [ref, padNum] = pcbState.hoveredPadKey.split(':');
+            const comp = (model.components || []).find(c => c.ref === ref);
+            if (comp) {
+                const pad = (comp.pads || []).find(p => String(p.number) === String(padNum));
+                if (pad) {
+                    const center = getComponentPadPosition(comp, pad);
+                    const sp = this.worldToScreen(center.x, center.y);
+                    const r = this._worldRadiusToPixels(Math.max(pad.width, pad.height) / 2) + 6;
+                    // Outer glow ring
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 241, 168, 0.15)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff1a8';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    // Inner highlight dot
+                    ctx.beginPath();
+                    ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = '#fff1a8';
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+        }
+
         // Highlight Hovered Trace (for delete feedback)
         if (pcbState.hoveredTraceIndex != null && model.traces) {
             const trace = model.traces[pcbState.hoveredTraceIndex];
             if (trace && trace.path && trace.path.length >= 2) {
                 ctx.save();
                 this._strokeWorldPath(ctx, trace.path, (trace.width || 0.254) + 0.15, '#ff5555', 0.7);
+                // Highlight the specific hovered segment
+                if (pcbState.hoveredSegmentIndex != null) {
+                    const si = pcbState.hoveredSegmentIndex;
+                    if (si < trace.path.length - 1) {
+                        this._strokeWorldPath(ctx, [trace.path[si], trace.path[si + 1]], (trace.width || 0.254) + 0.2, '#ff5555', 0.95);
+                    }
+                }
                 ctx.restore();
             }
+        }
+
+        // Highlight selected traces (multi-select)
+        if (pcbState.selectedTraceIndices && pcbState.selectedTraceIndices.length > 0 && model.traces) {
+            ctx.save();
+            for (const idx of pcbState.selectedTraceIndices) {
+                const trace = model.traces[idx];
+                if (trace && trace.path && trace.path.length >= 2) {
+                    this._strokeWorldPath(ctx, trace.path, (trace.width || 0.254) + 0.2, '#00ff88', 0.6);
+                }
+            }
+            ctx.restore();
         }
 
         // Net highlighting — glow pads and traces belonging to the highlighted net
@@ -957,7 +1005,12 @@ class PcbEditorWebGL {
         const isRouting = pcbState.mode === PCB_MODE.ROUTE && pcbState.routeStartAnchor;
         const routeNet = isRouting ? pcbState.routeNetName : null;
         const routeSourceKey = isRouting ? pcbState.routeStartAnchor.key : null;
-        const routeCursor = isRouting ? pcbState.routeCursor : null;
+        // Use the live cursor position so the airwire follows the mouse, not just the last placed point
+        const routeEnd = isRouting && pcbState.routeCursor
+            ? pcbState.routeCursor
+            : isRouting && pcbState.routePoints && pcbState.routePoints.length > 0
+                ? pcbState.routePoints[pcbState.routePoints.length - 1]
+                : null;
 
         ctx.save();
         ctx.setLineDash([4, 4]); // KiCad-style thin dashed line
@@ -969,13 +1022,13 @@ class PcbEditorWebGL {
                 let end = this._resolveAirwireEndpoint(model, edge, 'to', 'x2', 'y2');
                 if (!start || !end) continue;
 
-                // Redirect airwire endpoints from the route source pad to the cursor
-                if (isRouting && netName === routeNet && routeCursor) {
+                // Redirect airwire endpoints from the route source pad to the last placed route point
+                if (isRouting && netName === routeNet && routeEnd) {
                     if (edge.from === routeSourceKey) {
-                        start = { x: routeCursor.x, y: routeCursor.y };
+                        start = { x: routeEnd.x, y: routeEnd.y };
                     }
                     if (edge.to === routeSourceKey) {
-                        end = { x: routeCursor.x, y: routeCursor.y };
+                        end = { x: routeEnd.x, y: routeEnd.y };
                     }
                 }
 
@@ -2020,15 +2073,15 @@ class PcbEditorWebGL {
         const world = this.screenToWorld(screenX, screenY);
         const model = pcbState.boardModel;
         if (!model) return null;
-        
-        for (const trace of model.traces || []) {
+
+        for (let ti = (model.traces || []).length - 1; ti >= 0; ti--) {
+            const trace = model.traces[ti];
             const path = trace.path || [];
             const w = Math.max(trace.width || 0.254, 0.2);
             for (let i = 0; i < path.length - 1; i++) {
                 const p1 = path[i];
                 const p2 = path[i+1];
-                
-                // Line segment distance logic
+
                 const l2 = (p2.x-p1.x)**2 + (p2.y-p1.y)**2;
                 let t = 0;
                 if (l2 > 0) {
@@ -2037,9 +2090,9 @@ class PcbEditorWebGL {
                 const projX = p1.x + t * (p2.x - p1.x);
                 const projY = p1.y + t * (p2.y - p1.y);
                 const dist = Math.hypot(world.x - projX, world.y - projY);
-                
+
                 if (dist <= w/2 + 0.1) {
-                    return { trace, x: projX, y: projY };
+                    return { trace, traceIndex: ti, segmentIndex: i, x: projX, y: projY };
                 }
             }
         }
@@ -2140,7 +2193,7 @@ class PcbEditorWebGL {
         const model = normalizeBoardModel(boardModel || { components: [], traces: [], vias: [], nets: [] });
         const result = {};
         const nets = Array.isArray(model.nets) ? model.nets : [];
-        const TOLERANCE = 0.1; // 0.1mm tolerance for matching trace endpoints to pad positions
+        const TOLERANCE = 0.2; // 0.2mm tolerance for matching trace endpoints to pad positions (must exceed half the grid step)
 
         for (const netEntry of nets) {
             const netName = netEntry.name || netEntry.net || '';

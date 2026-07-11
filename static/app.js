@@ -839,14 +839,17 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+        // Fenced code blocks: ```lang\ncode\n```
+        html = html.replace(/```(\w*)\n([\s\S]*?)```/g,
+            '<pre class="conv-code-block"><code>$2</code></pre>');
         // Bold: **text**
         html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         // Italic: *text*
         html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
         // Inline code: `text`
-        html = html.replace(/`(.+?)`/g, '<code style="background:#252830;padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>');
+        html = html.replace(/`(.+?)`/g, '<code class="conv-inline-code">$1</code>');
         // Bullet lines: lines starting with - or *
-        html = html.replace(/^[\-\*] (.+)$/gm, '<div style="padding-left:12px;">• $1</div>');
+        html = html.replace(/^[\-\*] (.+)$/gm, '<div class="conv-bullet">• $1</div>');
         // Line breaks
         html = html.replace(/\n/g, '<br>');
         return html;
@@ -868,6 +871,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const empty = agentConversation.querySelector('.conv-empty');
             if (empty) empty.remove();
         }
+
+        const row = document.createElement('div');
+        row.className = 'conv-msg-row';
+
+        // Add avatar for agent messages
+        if (type !== 'log' && type !== 'system' && type !== 'error') {
+            const avatar = document.createElement('div');
+            avatar.className = 'conv-avatar bot';
+            avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
+            row.appendChild(avatar);
+        }
+
         const entry = document.createElement('div');
         const isDetail = typeof text === 'string' && (text.startsWith('  ') || text.includes('='));
         if (type === 'error') {
@@ -884,7 +899,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ts.className = 'conv-timestamp';
         ts.textContent = _timeStamp();
         entry.appendChild(ts);
-        agentConversation.appendChild(entry);
+        row.appendChild(entry);
+        agentConversation.appendChild(row);
         trimConversationDom();
         agentConversation.scrollTop = agentConversation.scrollHeight;
     }
@@ -943,13 +959,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (empty) empty.remove();
 
         if (data.type === 'assistant') {
+            const row = document.createElement('div');
+            row.className = 'conv-msg-row';
+            const avatar = document.createElement('div');
+            avatar.className = 'conv-avatar bot';
+            avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
+            row.appendChild(avatar);
             const msg = document.createElement('div');
             msg.className = 'conv-agent-msg';
             msg.textContent = data.content || '';
-            agentConversation.appendChild(msg);
+            row.appendChild(msg);
+            agentConversation.appendChild(row);
         } else if (data.type === 'tool_card') {
             const tcId = data.id || `tc_${++_toolCardIdCounter}`;
             if (data.status === 'running') {
+                const row = document.createElement('div');
+                row.className = 'conv-msg-row';
+                const avatar = document.createElement('div');
+                avatar.className = 'conv-avatar bot';
+                avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
+                row.appendChild(avatar);
                 const p = document.createElement('div');
                 p.className = 'conv-progress';
                 const label = document.createTextNode((data.title || 'Working') + '... ');
@@ -959,17 +988,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 dots.innerHTML = '<span></span><span></span><span></span>';
                 p.appendChild(dots);
                 p.dataset.toolCardId = tcId;
-                agentConversation.appendChild(p);
+                row.appendChild(p);
+                agentConversation.appendChild(row);
             } else if (data.status === 'completed' || data.status === 'failed') {
                 const existing = agentConversation.querySelector(`[data-tool-card-id="${tcId}"]`);
                 if (existing) {
                     existing.className = 'conv-agent-msg';
                     existing.textContent = data.summary || data.title || '';
                 } else {
+                    const row = document.createElement('div');
+                    row.className = 'conv-msg-row';
+                    const avatar = document.createElement('div');
+                    avatar.className = 'conv-avatar bot';
+                    avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
+                    row.appendChild(avatar);
                     const msg = document.createElement('div');
                     msg.className = data.status === 'failed' ? 'conv-error-msg' : 'conv-agent-msg';
                     msg.textContent = data.summary || data.title || '';
-                    agentConversation.appendChild(msg);
+                    row.appendChild(msg);
+                    agentConversation.appendChild(row);
                 }
             }
         }
@@ -1482,15 +1519,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (const message of history) {
             if (message.role === 'user') {
+                const row = document.createElement('div');
+                row.className = 'conv-msg-row user';
+                const avatar = document.createElement('div');
+                avatar.className = 'conv-avatar user';
+                avatar.textContent = 'Y';
+                row.appendChild(avatar);
                 const userMsg = document.createElement('div');
                 userMsg.className = 'conv-user-msg';
                 userMsg.textContent = message.content || '';
-                agentConversation.appendChild(userMsg);
+                row.appendChild(userMsg);
+                agentConversation.appendChild(row);
             } else if (message.role === 'assistant') {
+                const row = document.createElement('div');
+                row.className = 'conv-msg-row';
+                const avatar = document.createElement('div');
+                avatar.className = 'conv-avatar bot';
+                avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
+                row.appendChild(avatar);
                 const agentMsg = document.createElement('div');
                 agentMsg.className = 'conv-agent-msg';
                 agentMsg.textContent = message.content || '';
-                agentConversation.appendChild(agentMsg);
+                row.appendChild(agentMsg);
+                agentConversation.appendChild(row);
             } else if (message.role === 'system') {
                 addConversationMessage('log', message.content || '');
             }
@@ -1525,10 +1576,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const empty = agentConversation.querySelector('.conv-empty');
         if (empty) empty.remove();
 
+        const row = document.createElement('div');
+        row.className = 'conv-msg-row user';
+        const avatar = document.createElement('div');
+        avatar.className = 'conv-avatar user';
+        avatar.textContent = 'Y';
+        row.appendChild(avatar);
         const userMsg = document.createElement('div');
         userMsg.className = 'conv-user-msg';
         userMsg.textContent = text;
-        agentConversation.appendChild(userMsg);
+        row.appendChild(userMsg);
+        agentConversation.appendChild(row);
         
         agentConversation.scrollTop = agentConversation.scrollHeight;
         showAgentStatus('Thinking...', 'thinking');
@@ -1540,10 +1598,17 @@ document.addEventListener('DOMContentLoaded', () => {
         updateAgentButton();
         showAgentStatus('Ready', 'ready');
         
+        const row = document.createElement('div');
+        row.className = 'conv-msg-row';
+        const avatar = document.createElement('div');
+        avatar.className = 'conv-avatar bot';
+        avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
+        row.appendChild(avatar);
         const msgDiv = document.createElement('div');
         msgDiv.className = 'conv-agent-msg';
         msgDiv.innerHTML = _renderMarkdown(data.text || '');
-        agentConversation.appendChild(msgDiv);
+        row.appendChild(msgDiv);
+        agentConversation.appendChild(row);
         agentConversation.scrollTop = agentConversation.scrollHeight;
     });
 
@@ -1662,6 +1727,105 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!res.ok) throw new Error(await res.text());
         return await res.text();
     }
+
+    // ── Resizable sidebars ──────────────────────────────────────────────
+    function setupResize(handleId, panelId, side) {
+        const handle = document.getElementById(handleId);
+        const panel = document.getElementById(panelId);
+        if (!handle || !panel) return;
+
+        let startX, startWidth;
+
+        handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startWidth = panel.offsetWidth;
+            handle.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+
+            const onMouseMove = (e) => {
+                const dx = side === 'left' ? e.clientX - startX : startX - e.clientX;
+                const newWidth = Math.min(Math.max(startWidth + dx, 180), 500);
+                panel.style.width = newWidth + 'px';
+                if (typeof pcbEditor !== 'undefined' && pcbEditor._applyCamera) {
+                    pcbEditor._applyCamera();
+                }
+            };
+
+            const onMouseUp = () => {
+                handle.classList.remove('active');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                if (typeof pcbEditor !== 'undefined' && pcbEditor.requestRefresh) {
+                    pcbEditor.requestRefresh();
+                }
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
+
+    setupResize('leftResize', 'leftPanel', 'left');
+    setupResize('rightResize', 'rightPanel', 'right');
+
+    // ── Sidebar collapse/expand ──────────────────────────────────────────
+    function setupCollapse(toggleId, panelId, expandId, resizeId, side) {
+        const toggle = document.getElementById(toggleId);
+        const panel = document.getElementById(panelId);
+        const expand = document.getElementById(expandId);
+        const resize = document.getElementById(resizeId);
+        if (!toggle || !panel || !expand || !resize) return;
+
+        let savedWidth = null;
+
+        function collapse() {
+            savedWidth = panel.offsetWidth;
+            panel.style.width = '0px';
+            panel.classList.add('collapsed');
+            resize.style.display = 'none';
+            expand.style.display = 'flex';
+            toggle.title = 'Expand panel';
+            toggle.innerHTML = side === 'left'
+                ? '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="4,2 8,6 4,10"/></svg>'
+                : '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="8,2 4,6 8,10"/></svg>';
+            if (typeof pcbEditor !== 'undefined' && pcbEditor.requestRefresh) {
+                pcbEditor.requestRefresh();
+            }
+        }
+
+        function expand_panel() {
+            panel.classList.remove('collapsed');
+            panel.style.width = (savedWidth || 300) + 'px';
+            resize.style.display = '';
+            expand.style.display = 'none';
+            toggle.title = 'Collapse panel';
+            toggle.innerHTML = side === 'left'
+                ? '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="8,2 4,6 8,10"/></svg>'
+                : '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="4,2 8,6 4,10"/></svg>';
+            if (typeof pcbEditor !== 'undefined' && pcbEditor.requestRefresh) {
+                pcbEditor.requestRefresh();
+            }
+        }
+
+        toggle.addEventListener('click', () => {
+            if (panel.classList.contains('collapsed')) {
+                expand_panel();
+            } else {
+                collapse();
+            }
+        });
+
+        expand.addEventListener('click', () => {
+            expand_panel();
+        });
+    }
+
+    setupCollapse('leftToggle', 'leftPanel', 'leftExpand', 'leftResize', 'left');
+    setupCollapse('rightToggle', 'rightPanel', 'rightExpand', 'rightResize', 'right');
 
     window.appContext = { fetchSExpr };
 });

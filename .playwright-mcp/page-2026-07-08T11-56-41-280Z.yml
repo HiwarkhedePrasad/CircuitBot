@@ -1,0 +1,159 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e3]:
+    - generic [ref=f1e4]:
+      - generic [ref=f1e5]: ⚡
+      - generic [ref=f1e6]: CircuitBot v0.8.2
+    - generic [ref=f1e7]:
+      - button "+ Add Component" [disabled] [ref=f1e8]:
+        - generic [ref=f1e9]: +
+        - text: Add Component
+      - button "⤓ Export .kicad_sch" [disabled] [ref=f1e11]:
+        - generic [ref=f1e12]: ⤓
+        - text: Export .kicad_sch
+      - button "⤓ Export .kicad_pcb" [disabled] [ref=f1e13]:
+        - generic [ref=f1e14]: ⤓
+        - text: Export .kicad_pcb
+      - button "📂 Import PCB" [ref=f1e15] [cursor=pointer]:
+        - generic [ref=f1e16]: 📂
+        - text: Import PCB
+  - generic [ref=f1e17]:
+    - complementary [ref=f1e18]:
+      - generic [ref=f1e19]:
+        - generic [ref=f1e20]:
+          - generic [ref=f1e21]: Netlist
+          - button "📋" [ref=f1e22] [cursor=pointer]
+          - generic [ref=f1e23]: "0"
+        - generic [ref=f1e25]: Waiting for agent to generate netlist...
+      - generic [ref=f1e26]:
+        - generic [ref=f1e27]:
+          - generic [ref=f1e28]: Placed Components
+          - generic [ref=f1e29]: "0"
+        - list [ref=f1e30]
+      - generic [ref=f1e62]:
+        - generic [ref=f1e64]: PCB Layers
+        - generic [ref=f1e65]:
+          - button "◉ TOP" [ref=f1e66] [cursor=pointer]:
+            - button "◉"
+            - generic "F.Cu" [ref=f1e68]: TOP
+          - button "◌ GND1" [ref=f1e69] [cursor=pointer]:
+            - button "◌"
+            - generic "In1.Cu" [ref=f1e71]: GND1
+          - button "◌ SIGNAL1-X" [ref=f1e72] [cursor=pointer]:
+            - button "◌"
+            - generic "In2.Cu" [ref=f1e74]: SIGNAL1-X
+          - button "◌ SIGNAL2-Y" [ref=f1e75] [cursor=pointer]:
+            - button "◌"
+            - generic "In3.Cu" [ref=f1e77]: SIGNAL2-Y
+          - button "◌ GND2" [ref=f1e78] [cursor=pointer]:
+            - button "◌"
+            - generic "In4.Cu" [ref=f1e80]: GND2
+          - button "◌ SIGNAL3-X" [ref=f1e81] [cursor=pointer]:
+            - button "◌"
+            - generic "In5.Cu" [ref=f1e83]: SIGNAL3-X
+          - button "◌ SIGNAL4-Y" [ref=f1e84] [cursor=pointer]:
+            - button "◌"
+            - generic "In6.Cu" [ref=f1e86]: SIGNAL4-Y
+          - button "◌ GND3" [ref=f1e87] [cursor=pointer]:
+            - button "◌"
+            - generic "In7.Cu" [ref=f1e89]: GND3
+          - button "◌ PWR" [ref=f1e90] [cursor=pointer]:
+            - button "◌"
+            - generic "In8.Cu" [ref=f1e92]: PWR
+          - button "◉ BOTTOM" [ref=f1e93] [cursor=pointer]:
+            - button "◉"
+            - generic "B.Cu" [ref=f1e95]: BOTTOM
+          - button "◌ F.Adhes" [ref=f1e96] [cursor=pointer]:
+            - button "◌"
+            - generic "F.Adhes" [ref=f1e98]
+          - button "◌ B.Adhes" [ref=f1e99] [cursor=pointer]:
+            - button "◌"
+            - generic "B.Adhes" [ref=f1e101]
+          - button "◌ F.Paste" [ref=f1e102] [cursor=pointer]:
+            - button "◌"
+            - generic "F.Paste" [ref=f1e104]
+          - button "◌ B.Paste" [ref=f1e105] [cursor=pointer]:
+            - button "◌"
+            - generic "B.Paste" [ref=f1e107]
+          - button "◉ F.SilkS" [ref=f1e108] [cursor=pointer]:
+            - button "◉"
+            - generic "F.SilkS" [ref=f1e110]
+          - button "◌ B.SilkS" [ref=f1e111] [cursor=pointer]:
+            - button "◌"
+            - generic "B.SilkS" [ref=f1e113]
+          - button "◌ F.Mask" [ref=f1e114] [cursor=pointer]:
+            - button "◌"
+            - generic "F.Mask" [ref=f1e116]
+          - button "◌ B.Mask" [ref=f1e117] [cursor=pointer]:
+            - button "◌"
+            - generic "B.Mask" [ref=f1e119]
+          - button "◌ Dwgs.User" [ref=f1e120] [cursor=pointer]:
+            - button "◌"
+            - generic "Dwgs.User" [ref=f1e122]
+          - button "◌ Cmts.User" [ref=f1e123] [cursor=pointer]:
+            - button "◌"
+            - generic "Cmts.User" [ref=f1e125]
+          - button "◌ Eco1.User" [ref=f1e126] [cursor=pointer]:
+            - button "◌"
+            - generic "Eco1.User" [ref=f1e128]
+          - button "◌ Eco2.User" [ref=f1e129] [cursor=pointer]:
+            - button "◌"
+            - generic "Eco2.User" [ref=f1e131]
+          - button "◉ Edge.Cuts" [ref=f1e132] [cursor=pointer]:
+            - button "◉"
+            - generic "Edge.Cuts" [ref=f1e134]
+          - button "◌ Margin" [ref=f1e135] [cursor=pointer]:
+            - button "◌"
+            - generic "Margin" [ref=f1e137]
+          - button "◌ F.Fab" [ref=f1e138] [cursor=pointer]:
+            - button "◌"
+            - generic "F.Fab" [ref=f1e140]
+          - button "◌ B.Fab" [ref=f1e141] [cursor=pointer]:
+            - button "◌"
+            - generic "B.Fab" [ref=f1e143]
+          - button "◌ F.CrtYd" [ref=f1e144] [cursor=pointer]:
+            - button "◌"
+            - generic "F.CrtYd" [ref=f1e146]
+          - button "◌ B.CrtYd" [ref=f1e147] [cursor=pointer]:
+            - button "◌"
+            - generic "B.CrtYd" [ref=f1e149]
+    - main [ref=f1e31]:
+      - generic [ref=f1e32]:
+        - generic [ref=f1e33]:
+          - button "Schematic Editor" [ref=f1e34] [cursor=pointer]
+          - button "PCB View" [active] [ref=f1e35] [cursor=pointer]
+          - button "Symbol Preview" [ref=f1e36] [cursor=pointer]
+        - generic "PCB tools" [ref=f1e150]:
+          - group "PCB interaction tools" [ref=f1e151]:
+            - button "Pan" [ref=f1e152] [cursor=pointer]
+            - button "Select" [ref=f1e153] [cursor=pointer]
+            - button "Route" [ref=f1e154] [cursor=pointer]
+            - button "Via" [ref=f1e155] [cursor=pointer]
+          - group "PCB routing settings" [ref=f1e156]:
+            - generic [ref=f1e157]:
+              - generic [ref=f1e158]: Layer
+              - combobox "Layer" [ref=f1e159]:
+                - option "F.Cu" [selected]
+                - option "B.Cu"
+            - generic [ref=f1e160]:
+              - generic [ref=f1e161]: Width
+              - combobox "Width" [ref=f1e162]:
+                - option "0.20 mm"
+                - option "0.254 mm" [selected]
+                - option "0.30 mm"
+                - option "0.50 mm"
+                - option "1.00 mm"
+        - generic [ref=f1e38]:
+          - button "-" [ref=f1e39]
+          - text: 100%
+          - button "+" [ref=f1e40]
+          - button "Fit" [ref=f1e41]
+      - generic [ref=f1e47]: "Grid: 1.27mm X: 0.00 Y: 0.00"
+    - complementary [ref=f1e48]:
+      - generic [ref=f1e49]:
+        - generic [ref=f1e51]: AI Design Co-Pilot
+        - generic [ref=f1e52]:
+          - generic [ref=f1e55]: Ready
+          - generic [ref=f1e61]: Describe a circuit and I'll design it for you.
+          - generic [ref=f1e58]:
+            - textbox "Describe a circuit..." [ref=f1e59]
+            - button "Build" [disabled] [ref=f1e60]

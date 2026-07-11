@@ -1,0 +1,53 @@
+- generic [ref=f2e2]:
+  - banner [ref=f2e3]:
+    - generic [ref=f2e4]:
+      - generic [ref=f2e5]: ⚡
+      - generic [ref=f2e6]: CircuitBot v0.8.2
+    - generic [ref=f2e7]:
+      - button "+ Add Component" [disabled] [ref=f2e8]:
+        - generic [ref=f2e9]: +
+        - text: Add Component
+      - button "⤓ Export .kicad_sch" [disabled] [ref=f2e11]:
+        - generic [ref=f2e12]: ⤓
+        - text: Export .kicad_sch
+      - button "⤓ Export .kicad_pcb" [disabled] [ref=f2e13]:
+        - generic [ref=f2e14]: ⤓
+        - text: Export .kicad_pcb
+      - button "📂 Import PCB" [ref=f2e15] [cursor=pointer]:
+        - generic [ref=f2e16]: 📂
+        - text: Import PCB
+  - generic [ref=f2e17]:
+    - complementary [ref=f2e18]:
+      - generic [ref=f2e19]:
+        - generic [ref=f2e20]:
+          - generic [ref=f2e21]: Netlist
+          - button "📋" [ref=f2e22] [cursor=pointer]
+          - generic [ref=f2e23]: "0"
+        - generic [ref=f2e25]: Waiting for agent to generate netlist...
+      - generic [ref=f2e26]:
+        - generic [ref=f2e27]:
+          - generic [ref=f2e28]: Placed Components
+          - generic [ref=f2e29]: "0"
+        - list [ref=f2e30]
+    - main [ref=f2e31]:
+      - generic [ref=f2e32]:
+        - generic [ref=f2e33]:
+          - button "Schematic Editor" [ref=f2e34] [cursor=pointer]
+          - button "PCB View" [ref=f2e35] [cursor=pointer]
+          - button "Symbol Preview" [ref=f2e36] [cursor=pointer]
+        - generic [ref=f2e38]:
+          - button "-" [ref=f2e39]
+          - text: 100%
+          - button "+" [ref=f2e40]
+          - button "Fit" [ref=f2e41]
+      - textbox "Routing constraints (e.g. 'connect VCC to 3.3V')..." [ref=f2e45]
+      - generic [ref=f2e47]: "Grid: 1.27mm X: 0.00 Y: 0.00"
+    - complementary [ref=f2e48]:
+      - generic [ref=f2e49]:
+        - generic [ref=f2e51]: AI Design Co-Pilot
+        - generic [ref=f2e52]:
+          - generic [ref=f2e55]: Ready
+          - generic [ref=f2e57]: Connected to agent backend.
+          - generic [ref=f2e58]:
+            - textbox "Describe a circuit..." [ref=f2e59]
+            - button "Build" [disabled] [ref=f2e60]
