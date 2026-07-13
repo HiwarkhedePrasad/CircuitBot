@@ -373,6 +373,7 @@ class SchematicRenderer {
         this._panStart = { x: 0, y: 0 };
         this._panOffsetStart = { x: 0, y: 0 };
         this._selectedComp = null;
+        this._selectedWire = null;
         this._pinHitTargets = [];
         this._netLabelHitTargets = [];
         this._wireDraft = null;
@@ -1012,10 +1013,12 @@ class SchematicRenderer {
         this._netLabelHitTargets = [];
         const g = new PIXI.Graphics();
         const LABEL_SIZE = 1.2;
+        const FLAG_WIDTH = 2.5; // Width of the flag background
+        const FLAG_HEIGHT = 1.5; // Height of the flag background
+        const STUB = 1.27;
 
         for (const lbl of this._schematic.netLabels) {
             const color = hexToPixi(netColor(lbl.net));
-            const STUB = 1.27;
 
             let sx = lbl.x, sy = lbl.y;
             if (lbl.pin) {
@@ -1035,41 +1038,96 @@ class SchematicRenderer {
             const ex = sx + dx * STUB;
             const ey = sy + dy * STUB;
 
+            // Draw stub line
             g.lineStyle(0.2, color, 1);
             g.moveTo(sx, sy);
             g.lineTo(ex, ey);
 
-            // Small diamond marker at label end
-            const m = 0.5;
-            g.lineStyle(0.15, color, 0.9);
-            g.moveTo(ex + dx * m, ey + dy * m);
-            g.lineTo(ex - dy * m, ey + dx * m);
-            g.lineTo(ex - dx * m, ey - dy * m);
-            g.lineTo(ex + dy * m, ey - dx * m);
-            g.lineTo(ex + dx * m, ey + dy * m);
+            // Draw flag-style net label (like KiCad/Flux)
+            // Flag is a small rectangle with the net name inside
+            const flagX = ex;
+            const flagY = ey;
+
+            // Calculate flag corners based on orientation
+            let corners;
+            if (lbl.orientation === 0) {
+                // Right-facing flag
+                corners = [
+                    { x: flagX, y: flagY - FLAG_HEIGHT / 2 },
+                    { x: flagX + FLAG_WIDTH, y: flagY - FLAG_HEIGHT / 2 },
+                    { x: flagX + FLAG_WIDTH, y: flagY + FLAG_HEIGHT / 2 },
+                    { x: flagX, y: flagY + FLAG_HEIGHT / 2 },
+                ];
+            } else if (lbl.orientation === 180) {
+                // Left-facing flag
+                corners = [
+                    { x: flagX, y: flagY - FLAG_HEIGHT / 2 },
+                    { x: flagX - FLAG_WIDTH, y: flagY - FLAG_HEIGHT / 2 },
+                    { x: flagX - FLAG_WIDTH, y: flagY + FLAG_HEIGHT / 2 },
+                    { x: flagX, y: flagY + FLAG_HEIGHT / 2 },
+                ];
+            } else if (lbl.orientation === 90) {
+                // Up-facing flag
+                corners = [
+                    { x: flagX - FLAG_HEIGHT / 2, y: flagY },
+                    { x: flagX + FLAG_HEIGHT / 2, y: flagY },
+                    { x: flagX + FLAG_HEIGHT / 2, y: flagY + FLAG_WIDTH },
+                    { x: flagX - FLAG_HEIGHT / 2, y: flagY + FLAG_WIDTH },
+                ];
+            } else {
+                // Down-facing flag (270 degrees)
+                corners = [
+                    { x: flagX - FLAG_HEIGHT / 2, y: flagY },
+                    { x: flagX + FLAG_HEIGHT / 2, y: flagY },
+                    { x: flagX + FLAG_HEIGHT / 2, y: flagY - FLAG_WIDTH },
+                    { x: flagX - FLAG_HEIGHT / 2, y: flagY - FLAG_WIDTH },
+                ];
+            }
+
+            // Draw flag background
+            g.lineStyle(0.15, color, 1);
+            g.beginFill(color, 0.15);
+            g.moveTo(corners[0].x, corners[0].y);
+            for (let i = 1; i < corners.length; i++) {
+                g.lineTo(corners[i].x, corners[i].y);
+            }
+            g.lineTo(corners[0].x, corners[0].y);
+            g.endFill();
+
+            // Draw connection dot at stub end
+            g.lineStyle(0, 0, 0);
+            g.beginFill(color, 1);
+            g.drawCircle(ex, ey, 0.25);
+            g.endFill();
 
             this._wireLayer.addChild(g);
 
-            // Net name text — positioned beyond the diamond
+            // Net name text inside the flag
             const FONT_RES = 24;
             const txt = new PIXI.Text(lbl.net, {
                 fontFamily: '"IBM Plex Mono", "JetBrains Mono", "Fira Code", monospace',
                 fontSize: FONT_RES,
-                fill: color,
+                fill: 0xffffff, // White text on colored background
+                fontWeight: 'bold',
             });
-            const scaleRatio = LABEL_SIZE / FONT_RES;
+            const scaleRatio = (LABEL_SIZE * 0.9) / FONT_RES;
             txt.scale.set(scaleRatio, -scaleRatio);
 
-            let anchorX = 0, anchorY = 0.5;
-            let tx = ex + dx * (m + 0.4);
-            let ty = ey + dy * (m + 0.4);
-            // For labels with left orientation, flip anchor
+            // Position text in center of flag
+            let anchorX = 0.5, anchorY = 0.5;
+            let tx = flagX + FLAG_WIDTH / 2;
+            let ty = flagY;
+
             if (lbl.orientation === 180) {
-                anchorX = 1;
-                tx = ex + dx * (m + 0.4);
-            }
-            if (lbl.orientation === 90 || lbl.orientation === 270) {
+                tx = flagX - FLAG_WIDTH / 2;
+            } else if (lbl.orientation === 90) {
+                tx = flagX;
+                ty = flagY + FLAG_WIDTH / 2;
                 txt.rotation = -Math.PI / 2;
+            } else if (lbl.orientation === 270) {
+                tx = flagX;
+                ty = flagY - FLAG_WIDTH / 2;
+                txt.rotation = Math.PI / 2;
             }
 
             txt.anchor.set(anchorX, anchorY);
@@ -1077,12 +1135,12 @@ class SchematicRenderer {
             txt.y = ty;
             this._textLayer.addChild(txt);
 
-            // Hit target (at the diamond center)
+            // Hit target (at the flag center)
             this._netLabelHitTargets.push({
                 id: lbl.id,
                 net: lbl.net,
-                x: ex,
-                y: ey,
+                x: flagX + FLAG_WIDTH / 2,
+                y: flagY,
                 label: lbl,
             });
         }
@@ -1178,6 +1236,11 @@ class SchematicRenderer {
 
     setActiveNetLabel(nl) {
         this._activeNetLabel = nl || null;
+        this._renderInteractionOverlay();
+    }
+
+    setSelectedWire(wire) {
+        this._selectedWire = wire || null;
         this._renderInteractionOverlay();
     }
 
@@ -1513,11 +1576,21 @@ class SchematicRenderer {
             return;
         }
 
+        // Check wire clicks
+        if (typeof this._callbacks.onWireClick === 'function') {
+            const wireResult = this._callbacks.onWireClick(world.x, world.y);
+            if (wireResult) return;
+        }
+
         const comp = this.hitTest(world.x, world.y);
         if (comp) {
             this.selectComponent(comp);
         } else {
             this.clearSelection();
+            // Deselect wire if clicking on empty space
+            if (typeof this._callbacks.onWireDeselect === 'function') {
+                this._callbacks.onWireDeselect();
+            }
         }
     }
 
@@ -1604,16 +1677,74 @@ class SchematicRenderer {
             ag.endFill();
             this._overlayLayer.addChild(ag);
         }
+        // Wire selection highlight
+        if (this._selectedWire && this._selectedWire.path && this._selectedWire.path.length > 1) {
+            const wg = new PIXI.Graphics();
+            // Draw selection highlight (thicker line with different color)
+            wg.lineStyle(0.45, 0xffd166, 0.9); // Golden color for selection
+            wg.moveTo(this._selectedWire.path[0].x, this._selectedWire.path[0].y);
+            for (let i = 1; i < this._selectedWire.path.length; i++) {
+                wg.lineTo(this._selectedWire.path[i].x, this._selectedWire.path[i].y);
+            }
+            // Draw selection handles at waypoints
+            wg.lineStyle(0.15, 0xffffff, 1);
+            wg.beginFill(0xffd166, 0.8);
+            for (const pt of this._selectedWire.path) {
+                wg.drawCircle(pt.x, pt.y, 0.35);
+            }
+            wg.endFill();
+            this._overlayLayer.addChild(wg);
+        }
         if (!this._wireDraft) return;
         const start = this._wireDraft.startPin;
         const end = this._wireDraft.worldPoint;
         const g = new PIXI.Graphics();
+
+        // Draw 90-degree constrained wire preview (L-shape)
+        // Snap to grid
+        const sx = Math.round(start.x / 1.27) * 1.27;
+        const sy = Math.round(start.y / 1.27) * 1.27;
+        const ex = Math.round(end.x / 1.27) * 1.27;
+        const ey = Math.round(end.y / 1.27) * 1.27;
+
+        // Draw L-shaped preview
         g.lineStyle(0.254, SCH_COLORS.wirePreview, 0.9);
-        g.moveTo(start.x, start.y);
-        g.lineTo(end.x, end.y);
+        g.moveTo(sx, sy);
+        g.lineTo(ex, sy); // Horizontal segment first
+        g.lineTo(ex, ey); // Then vertical segment
+
+        // Draw waypoints
         g.beginFill(SCH_COLORS.wirePreview, 1);
-        g.drawCircle(start.x, start.y, 0.5);
+        g.drawCircle(sx, sy, 0.5); // Start point
+        g.drawCircle(ex, sy, 0.3); // Corner point
+        g.drawCircle(ex, ey, 0.5); // End point
         g.endFill();
+
+        // Draw direction indicator
+        const dirX = ex - sx;
+        const dirY = ey - sy;
+        if (Math.abs(dirX) > 0.1 || Math.abs(dirY) > 0.1) {
+            // Draw small arrow at the corner
+            const arrowSize = 0.4;
+            const cornerX = ex;
+            const cornerY = sy;
+
+            g.lineStyle(0.15, SCH_COLORS.wirePreview, 0.7);
+            if (Math.abs(dirX) > 0.1) {
+                // Arrow pointing in X direction
+                const arrowDir = dirX > 0 ? 1 : -1;
+                g.moveTo(cornerX - arrowDir * arrowSize, cornerY - arrowSize);
+                g.lineTo(cornerX, cornerY);
+                g.lineTo(cornerX - arrowDir * arrowSize, cornerY + arrowSize);
+            } else {
+                // Arrow pointing in Y direction
+                const arrowDir = dirY > 0 ? 1 : -1;
+                g.moveTo(cornerX - arrowSize, cornerY - arrowDir * arrowSize);
+                g.lineTo(cornerX, cornerY);
+                g.lineTo(cornerX + arrowSize, cornerY - arrowDir * arrowSize);
+            }
+        }
+
         this._overlayLayer.addChild(g);
     }
 

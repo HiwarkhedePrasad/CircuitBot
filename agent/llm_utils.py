@@ -72,7 +72,7 @@ def _record_call() -> None:
         _LLM_CALL_HISTORY = _LLM_CALL_HISTORY[-_LLM_CALL_HISTORY_MAX:]
 
 
-_LLM_TOTAL_TIMEOUT = 180.0
+_LLM_TOTAL_TIMEOUT = 600.0  # 10 minutes for complex operations like netlist generation
 
 
 def _is_connection_error(e: Exception) -> bool:

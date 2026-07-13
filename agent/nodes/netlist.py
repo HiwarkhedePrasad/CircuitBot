@@ -189,10 +189,11 @@ def netlist_node(state, config):
         _emit(config, "agent:log", {"message": "  Pin matcher skipped (error)"})
 
     signal_keys = [k for k in pins if k not in assigned]
-    batches = _make_signal_batches(signal_keys, max_pins=len(signal_keys) if signal_keys else 1)
+    # Use default MAX_BATCH_PINS (24) to avoid overwhelming the LLM with too many pins at once
+    batches = _make_signal_batches(signal_keys)
     if signal_keys:
         _emit(config, "agent:log", {
-            "message": f"  Wiring {len(signal_keys)} signal pins in a single pass (deepseek 128k context)"
+            "message": f"  Wiring {len(signal_keys)} signal pins in {len(batches)} batch(es)"
         })
     trace_constraints: dict = {}
     explicit_signal_edges: list[dict] = []

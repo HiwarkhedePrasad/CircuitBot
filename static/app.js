@@ -299,6 +299,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 onNetLabelClick: (nl, world) => {
                     handleNetLabelClick(nl, world);
                 },
+                onWireClick: (worldX, worldY) => {
+                    return handleWireClick(worldX, worldY);
+                },
+                onWireDeselect: () => {
+                    deselectWire();
+                },
                 onCoordChange: (wx, wy) => {
                     if (coordDisplay) coordDisplay.textContent = `X: ${wx.toFixed(2)} Y: ${wy.toFixed(2)}`;
                 },
@@ -320,6 +326,229 @@ document.addEventListener('DOMContentLoaded', () => {
         return renderer;
     }
 
+    // ── Smart Wire Routing ─────────────────────────────────────────────────
+    // Enhanced wire routing with multi-bend support and component avoidance
+
+    /**
+     * Check if a point is inside a component's bounding box (with clearance)
+     */
+    function isPointInComponent(px, py, comp, clearance = 1.27) {
+        const bbox = comp.geomBBox;
+        const cx = comp.x + bbox.x - clearance;
+        const cy = comp.y + bbox.y - clearance;
+        const cw = bbox.w + clearance * 2;
+        const ch = bbox.h + clearance * 2;
+        return px >= cx && px <= cx + cw && py >= cy && py <= cy + ch;
+    }
+
+    /**
+     * Check if a wire segment intersects a component's bounding box
+     */
+    function segmentIntersectsComponent(x1, y1, x2, y2, comp, clearance = 1.27) {
+        const bbox = comp.geomBBox;
+        const cx = comp.x + bbox.x - clearance;
+        const cy = comp.y + bbox.y - clearance;
+        const cw = bbox.w + clearance * 2;
+        const ch = bbox.h + clearance * 2;
+
+        // Check if either endpoint is inside the box
+        if (isPointInComponent(x1, y1, comp, clearance) ||
+            isPointInComponent(x2, y2, comp, clearance)) {
+            return true;
+        }
+
+        // Check segment vs rectangle intersection
+        const left = cx, right = cx + cw, top = cy, bottom = cy + ch;
+
+        // Vertical segment
+        if (Math.abs(x1 - x2) < 0.001) {
+            if (x1 >= left && x1 <= right) {
+                const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+                return !(maxY < top || minY > bottom);
+            }
+            return false;
+        }
+
+        // Horizontal segment
+        if (Math.abs(y1 - y2) < 0.001) {
+            if (y1 >= top && y1 <= bottom) {
+                const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+                return !(maxX < left || minX > right);
+            }
+            return false;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a path intersects any component
+     */
+    function pathIntersectsComponent(path, comp, clearance = 1.27) {
+        for (let i = 0; i < path.length - 1; i++) {
+            if (segmentIntersectsComponent(
+                path[i].x, path[i].y,
+                path[i + 1].x, path[i + 1].y,
+                comp, clearance
+            )) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Find available routing points around a component
+     */
+    function getRoutingPointsAroundComponent(comp, clearance = 2.54) {
+        const bbox = comp.geomBBox;
+        const cx = comp.x + bbox.x;
+        const cy = comp.y + bbox.y;
+        const cw = bbox.w;
+        const ch = bbox.h;
+
+        return [
+            { x: cx - clearance, y: cy - clearance },           // Top-left
+            { x: cx + cw + clearance, y: cy - clearance },      // Top-right
+            { x: cx - clearance, y: cy + ch + clearance },      // Bottom-left
+            { x: cx + cw + clearance, y: cy + ch + clearance }, // Bottom-right
+            { x: cx + cw / 2, y: cy - clearance },              // Top-center
+            { x: cx + cw / 2, y: cy + ch + clearance },         // Bottom-center
+            { x: cx - clearance, y: cy + ch / 2 },              // Left-center
+            { x: cx + cw + clearance, y: cy + ch / 2 },         // Right-center
+        ];
+    }
+
+    /**
+     * Smart wire routing with multi-bend support and component avoidance
+     * Returns array of waypoints [{x, y}, ...]
+     */
+    function smartWireRoute(startPin, endPin, components = []) {
+        const sx = snapToGrid(startPin.x);
+        const sy = snapToGrid(startPin.y);
+        const ex = snapToGrid(endPin.x);
+        const ey = snapToGrid(endPin.y);
+
+        // Simple case: same X or same Y - direct orthogonal path
+        if (Math.abs(sx - ex) < 0.001 || Math.abs(sy - ey) < 0.001) {
+            return [
+                { x: sx, y: sy },
+                { x: ex, y: ey }
+            ].filter((pt, i, arr) => {
+                if (i === 0) return true;
+                return Math.abs(arr[i - 1].x - pt.x) > 0.001 || Math.abs(arr[i - 1].y - pt.y) > 0.001;
+            });
+        }
+
+        // Try simple L-path first
+        const lPath = [
+            { x: sx, y: sy },
+            { x: ex, y: sy },
+            { x: ex, y: ey }
+        ].filter((pt, i, arr) => {
+            if (i === 0) return true;
+            return Math.abs(arr[i - 1].x - pt.x) > 0.001 || Math.abs(arr[i - 1].y - pt.y) > 0.001;
+        });
+
+        // Check if L-path intersects any component
+        let pathBlocked = false;
+        for (const comp of components) {
+            if (pathIntersectsComponent(lPath, comp)) {
+                pathBlocked = true;
+                break;
+            }
+        }
+
+        // If no obstruction, use L-path
+        if (!pathBlocked) {
+            return lPath;
+        }
+
+        // Try alternative L-path
+        const altLPath = [
+            { x: sx, y: sy },
+            { x: sx, y: ey },
+            { x: ex, y: ey }
+        ].filter((pt, i, arr) => {
+            if (i === 0) return true;
+            return Math.abs(arr[i - 1].x - pt.x) > 0.001 || Math.abs(arr[i - 1].y - pt.y) > 0.001;
+        });
+
+        pathBlocked = false;
+        for (const comp of components) {
+            if (pathIntersectsComponent(altLPath, comp)) {
+                pathBlocked = true;
+                break;
+            }
+        }
+
+        if (!pathBlocked) {
+            return altLPath;
+        }
+
+        // Complex routing needed - find waypoints around obstacles
+        const waypoints = [];
+        waypoints.push({ x: sx, y: sy });
+
+        // Find nearest component blocking the path
+        let blockingComp = null;
+        let minDist = Infinity;
+        for (const comp of components) {
+            if (pathIntersectsComponent(lPath, comp)) {
+                const dx = (comp.x + comp.geomBBox.w / 2) - sx;
+                const dy = (comp.y + comp.geomBBox.h / 2) - sy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    blockingComp = comp;
+                }
+            }
+        }
+
+        if (blockingComp) {
+            // Route around the component
+            const bbox = blockingComp.geomBBox;
+            const compCx = blockingComp.x + bbox.w / 2;
+            const compCy = blockingComp.y + bbox.h / 2;
+            const clearance = 2.54;
+
+            // Determine routing direction
+            const goHorizontalFirst = Math.abs(ex - sx) > Math.abs(ey - sy);
+
+            if (goHorizontalFirst) {
+                // Go horizontal first, then vertical, then horizontal
+                const midY = sy < compCy ? blockingComp.y - clearance : blockingComp.y + bbox.h + clearance;
+                waypoints.push({ x: sx, y: midY });
+                waypoints.push({ x: ex, y: midY });
+            } else {
+                // Go vertical first, then horizontal, then vertical
+                const midX = sx < compCx ? blockingComp.x - clearance : blockingComp.x + bbox.w + clearance;
+                waypoints.push({ x: midX, y: sy });
+                waypoints.push({ x: midX, y: ey });
+            }
+        } else {
+            // Fallback: Z-path
+            const midX = snapToGrid((sx + ex) / 2);
+            waypoints.push({ x: midX, y: sy });
+            waypoints.push({ x: midX, y: ey });
+        }
+
+        waypoints.push({ x: ex, y: ey });
+
+        // Clean up path: remove collinear points
+        const cleanedPath = [waypoints[0]];
+        for (let i = 1; i < waypoints.length; i++) {
+            const prev = cleanedPath[cleanedPath.length - 1];
+            const curr = waypoints[i];
+            if (Math.abs(prev.x - curr.x) > 0.001 || Math.abs(prev.y - curr.y) > 0.001) {
+                cleanedPath.push(curr);
+            }
+        }
+
+        return cleanedPath;
+    }
+
+    // Legacy function kept for backward compatibility
     function orthogonalWirePath(a, b) {
         const midX = snapToGrid((a.x + b.x) / 2);
         return [
@@ -432,7 +661,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const start = schematicWireStart;
         const wireId = `schematic_wire_${Date.now()}`;
-        const path = orthogonalWirePath(start, pin);
+        // Use smart routing with component avoidance
+        const components = currentSchematic ? currentSchematic.components : [];
+        const path = smartWireRoute(start, pin, components);
         schematicWireStart = null;
         renderer.clearWireDraft();
         const optimisticWire = {
@@ -462,6 +693,232 @@ document.addEventListener('DOMContentLoaded', () => {
         applySchematicEditEvents([event]).then(ok => {
             addLogEntry(`Wired ${start.key} to ${pin.key}${ok ? '' : ' locally'}`, ok ? 'success' : 'log');
         });
+    }
+
+    // ── Wire Selection & Deletion ──────────────────────────────────────────
+    let _selectedWire = null;
+
+    /**
+     * Find the nearest wire to a world point
+     */
+    function findNearestWire(worldX, worldY, tolerance = 1.5) {
+        if (!currentSchematic || !currentSchematic.wirePaths) return null;
+
+        let bestWire = null;
+        let bestDist = Infinity;
+        let bestPoint = null;
+
+        for (const wire of currentSchematic.wirePaths) {
+            if (!wire.path || wire.path.length < 2) continue;
+
+            // Check each segment of the wire
+            for (let i = 0; i < wire.path.length - 1; i++) {
+                const p1 = wire.path[i];
+                const p2 = wire.path[i + 1];
+
+                // Calculate distance from point to segment
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const lenSq = dx * dx + dy * dy;
+
+                let t = 0;
+                if (lenSq > 0.0001) {
+                    t = Math.max(0, Math.min(1, ((worldX - p1.x) * dx + (worldY - p1.y) * dy) / lenSq));
+                }
+
+                const nearX = p1.x + t * dx;
+                const nearY = p1.y + t * dy;
+                const distX = worldX - nearX;
+                const distY = worldY - nearY;
+                const dist = Math.sqrt(distX * distX + distY * distY);
+
+                if (dist <= tolerance && dist < bestDist) {
+                    bestDist = dist;
+                    bestWire = wire;
+                    bestPoint = { x: nearX, y: nearY, segmentIndex: i, t };
+                }
+            }
+        }
+
+        return bestWire ? { wire: bestWire, point: bestPoint, distance: bestDist } : null;
+    }
+
+    /**
+     * Handle wire click for selection
+     */
+    function handleWireClick(worldX, worldY) {
+        const result = findNearestWire(worldX, worldY);
+        if (result) {
+            selectWire(result.wire);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Select a wire for editing
+     */
+    function selectWire(wire) {
+        _selectedWire = wire;
+        if (renderer) {
+            renderer.setSelectedWire(wire);
+        }
+        updateWireOperationButtons();
+        addLogEntry(`Selected wire: ${wire.wire_id}`, 'log');
+    }
+
+    /**
+     * Deselect the current wire
+     */
+    function deselectWire() {
+        _selectedWire = null;
+        if (renderer) {
+            renderer.setSelectedWire(null);
+        }
+        updateWireOperationButtons();
+    }
+
+    /**
+     * Delete the selected wire
+     */
+    function deleteSelectedWire() {
+        if (!_selectedWire || !currentSchematic) return;
+
+        const wireId = _selectedWire.wire_id;
+        const source = _selectedWire.source || '';
+        const target = _selectedWire.target || '';
+
+        // Remove from schematic
+        currentSchematic.wirePaths = currentSchematic.wirePaths.filter(w => w.wire_id !== wireId);
+
+        // Recompute junctions
+        if (typeof currentSchematic.recomputeJunctions === 'function') {
+            currentSchematic.recomputeJunctions();
+        }
+
+        // Clear selection
+        deselectWire();
+
+        // Refresh renderer
+        if (renderer) renderer.refresh();
+
+        // Update completeness badge
+        updateCompletenessBadge(currentSchematic.wirePaths, currentSchematic.netlist || []);
+
+        // Sync with backend
+        const event = {
+            edit_event_type: 'schematic_delete_wire',
+            wire_id: wireId,
+            source: source,
+            target: target,
+        };
+        applySchematicEditEvents([event]).then(ok => {
+            addLogEntry(`Deleted wire ${wireId}${ok ? '' : ' locally'}`, ok ? 'success' : 'log');
+        });
+    }
+
+    /**
+     * Handle wire joining at a point
+     */
+    function joinWiresAtPoint(worldX, worldY) {
+        if (!currentSchematic || !currentSchematic.wirePaths) return false;
+
+        const tolerance = 1.5;
+        const wiresAtPoint = [];
+
+        // Find all wires that have endpoints near this point
+        for (const wire of currentSchematic.wirePaths) {
+            if (!wire.path || wire.path.length < 2) continue;
+
+            const startPt = wire.path[0];
+            const endPt = wire.path[wire.path.length - 1];
+
+            const distStart = Math.sqrt(
+                Math.pow(worldX - startPt.x, 2) + Math.pow(worldY - startPt.y, 2)
+            );
+            const distEnd = Math.sqrt(
+                Math.pow(worldX - endPt.x, 2) + Math.pow(worldY - endPt.y, 2)
+            );
+
+            if (distStart <= tolerance) {
+                wiresAtPoint.push({ wire, endpoint: 'start', point: startPt });
+            } else if (distEnd <= tolerance) {
+                wiresAtPoint.push({ wire, endpoint: 'end', point: endPt });
+            }
+        }
+
+        // Need at least 2 wires to join
+        if (wiresAtPoint.length < 2) {
+            addLogEntry('Need at least 2 wires at a point to join', 'log');
+            return false;
+        }
+
+        // Join wires: connect the endpoints
+        const wire1 = wiresAtPoint[0];
+        const wire2 = wiresAtPoint[1];
+
+        // Create a new wire connecting the free endpoints
+        const newSource = wire1.endpoint === 'start' ? wire1.wire.source : wire1.wire.target;
+        const newTarget = wire2.endpoint === 'start' ? wire2.wire.source : wire2.wire.target;
+
+        // Get the free endpoints (the ones not at the join point)
+        const freeEnd1 = wire1.endpoint === 'start' ?
+            wire1.wire.path[wire1.wire.path.length - 1] : wire1.wire.path[0];
+        const freeEnd2 = wire2.endpoint === 'start' ?
+            wire2.wire.path[wire2.wire.path.length - 1] : wire2.wire.path[0];
+
+        // Create new wire path through the join point
+        const newPath = [
+            { x: freeEnd1.x, y: freeEnd1.y },
+            { x: snapToGrid(worldX), y: snapToGrid(worldY) },
+            { x: freeEnd2.x, y: freeEnd2.y }
+        ].filter((pt, i, arr) => {
+            if (i === 0) return true;
+            return Math.abs(arr[i - 1].x - pt.x) > 0.001 || Math.abs(arr[i - 1].y - pt.y) > 0.001;
+        });
+
+        const wireId = `schematic_wire_${Date.now()}`;
+        const newWire = {
+            wire_id: wireId,
+            source: newSource,
+            target: newTarget,
+            path: newPath,
+            manual: true,
+        };
+
+        // Remove the original wires
+        currentSchematic.wirePaths = currentSchematic.wirePaths.filter(w =>
+            w.wire_id !== wire1.wire.wire_id && w.wire_id !== wire2.wire.wire_id
+        );
+
+        // Add the new joined wire
+        currentSchematic.wirePaths.push(newWire);
+
+        // Recompute junctions
+        if (typeof currentSchematic.recomputeJunctions === 'function') {
+            currentSchematic.recomputeJunctions();
+        }
+
+        // Refresh renderer
+        if (renderer) renderer.refresh();
+
+        // Update completeness badge
+        updateCompletenessBadge(currentSchematic.wirePaths, currentSchematic.netlist || []);
+
+        // Sync with backend
+        const event = {
+            edit_event_type: 'schematic_join_wires',
+            wire_ids: [wire1.wire.wire_id, wire2.wire.wire_id],
+            new_wire_id: wireId,
+            path: newPath,
+            source: newSource,
+            target: newTarget,
+        };
+        applySchematicEditEvents([event]).then(ok => {
+            addLogEntry(`Joined wires at (${worldX.toFixed(2)}, ${worldY.toFixed(2)})${ok ? '' : ' locally'}`, ok ? 'success' : 'log');
+        });
+
+        return true;
     }
 
     // ── Net Label Interaction ──────────────────────────────────────────────
@@ -638,6 +1095,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ── Wire Operations Buttons ──────────────────────────────────────────
+    const deleteWireBtn = document.getElementById('deleteWireBtn');
+    const joinWiresBtn = document.getElementById('joinWiresBtn');
+
+    if (deleteWireBtn) {
+        deleteWireBtn.addEventListener('click', () => {
+            if (_selectedWire) {
+                deleteSelectedWire();
+            }
+        });
+    }
+
+    if (joinWiresBtn) {
+        joinWiresBtn.addEventListener('click', () => {
+            if (_selectedWire && renderer) {
+                // Join wires at the first endpoint of the selected wire
+                const startPt = _selectedWire.path[0];
+                joinWiresAtPoint(startPt.x, startPt.y);
+            }
+        });
+    }
+
+    // Update button states when wire selection changes
+    function updateWireOperationButtons() {
+        if (deleteWireBtn) {
+            deleteWireBtn.disabled = !_selectedWire;
+        }
+        if (joinWiresBtn) {
+            joinWiresBtn.disabled = !_selectedWire;
+        }
+    }
+
     // Keyboard shortcut: L toggles net label mode, W toggles wire mode
     document.addEventListener('keydown', (e) => {
         if (isPCBMode() || isSymbolPreviewMode()) return;
@@ -651,10 +1140,33 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             setSchematicEditorMode('wire');
         }
-        // Delete key removes active net label
-        if ((e.key === 'Delete' || e.key === 'Backspace') && renderer && renderer._activeNetLabel) {
-            e.preventDefault();
-            deleteNetLabel(renderer._activeNetLabel.id);
+        // Delete key removes active net label OR selected wire
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (renderer && renderer._activeNetLabel) {
+                e.preventDefault();
+                deleteNetLabel(renderer._activeNetLabel.id);
+            } else if (_selectedWire) {
+                e.preventDefault();
+                deleteSelectedWire();
+            }
+        }
+        // J key joins wires at a point (when two wire endpoints are near each other)
+        if (e.key === 'j' || e.key === 'J') {
+            if (renderer && _selectedWire) {
+                e.preventDefault();
+                // Find the nearest endpoint of the selected wire to join with another wire
+                const result = findNearestWire(renderer._selectedWire.path[0].x, renderer._selectedWire.path[0].y);
+                if (result && result.wire.wire_id !== _selectedWire.wire_id) {
+                    joinWiresAtPoint(renderer._selectedWire.path[0].x, renderer._selectedWire.path[0].y);
+                }
+            }
+        }
+        // Escape key deselects wire
+        if (e.key === 'Escape') {
+            if (_selectedWire) {
+                e.preventDefault();
+                deselectWire();
+            }
         }
     });
 
