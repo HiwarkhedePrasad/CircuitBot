@@ -14,6 +14,9 @@ _PROXY_READY_CACHE: float = 0.0
 _PROXY_CHECK_INTERVAL = 5.0
 _LLM_BASE_HOST = LLM_BASE_URL.rstrip("/").rsplit("/v1", 1)[0] if "/v1" in LLM_BASE_URL else LLM_BASE_URL.rstrip("/")
 
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_NODE_BIN = os.path.join(_PROJECT_ROOT, "node_modules", ".bin")
+
 
 def _proxy_ready() -> bool:
     try:
@@ -24,6 +27,19 @@ def _proxy_ready() -> bool:
         return False
 
 
+def _find_opencode() -> str:
+    """Find the opencode binary — check node_modules/.bin first, then PATH."""
+    # Check node_modules/.bin
+    if sys.platform == "win32":
+        candidate = os.path.join(_NODE_BIN, "opencode.cmd")
+    else:
+        candidate = os.path.join(_NODE_BIN, "opencode")
+    if os.path.isfile(candidate):
+        return candidate
+    # Fallback to PATH
+    return "opencode"
+
+
 def _start_opencode_proxy() -> bool:
     try:
         startupinfo = None
@@ -31,9 +47,10 @@ def _start_opencode_proxy() -> bool:
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         subprocess.Popen(
-            ["opencode", "serve", "--headless"],
+            [_find_opencode(), "serve", "--headless"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            cwd=_PROJECT_ROOT,
             startupinfo=startupinfo,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )

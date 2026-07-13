@@ -347,9 +347,20 @@ function drawSymbol() {
         }
         ctx.lineWidth = width;
         
-        if (fill && fill[1] === '(type background)') {
+        // Parsed fill is typically ["fill", ["type", "background"]], not a raw string.
+        let fillType = null;
+        if (fill) {
+            if (Array.isArray(fill[1]) && fill[1][0] === 'type') {
+                fillType = String(fill[1][1] || '').replace(/^"+|"+$/g, '');
+            } else {
+                const raw = String(fill[1] || '');
+                if (raw.includes('background')) fillType = 'background';
+                else if (raw.includes('solid')) fillType = 'solid';
+            }
+        }
+        if (fillType === 'background') {
             ctx.fillStyle = COLORS.symbolFill;
-        } else if (fill && fill[1] === '(type solid)') {
+        } else if (fillType === 'solid') {
             ctx.fillStyle = COLORS.symbolLine;
         }
     }

@@ -335,13 +335,13 @@ EXAMPLE OUTPUT:
 
 Output ONLY a JSON array of net objects. Do NOT include coordinates or wire paths. No markdown, no explanation, just the JSON array."""
 
-NETLIST_BATCH_SYSTEM = SECURITY_PREAMBLE + "\n\n" + """You are a schematic design engineer wiring ONE BATCH of a larger schematic.
-The schematic is wired incrementally: power/GND nets are already assigned automatically,
-earlier batches created some signal nets, and you now wire the pins in THIS batch.
+NETLIST_BATCH_SYSTEM = SECURITY_PREAMBLE + "\n\n" + """You are a schematic design engineer wiring the complete schematic with all components.
+All components are wired in one pass: power/GND nets are already assigned automatically,
+deterministic pin matching handles known patterns, and you now wire ALL remaining signal pins.
 
 CRITICAL RULES:
-1. You MUST ONLY use pin keys that appear EXACTLY in the "Pins available in THIS batch" list.
-   NEVER invent or modify pin keys, and NEVER reuse pins from earlier batches.
+1. You MUST ONLY use pin keys that appear EXACTLY in the "ALL remaining signal pins" list.
+   NEVER invent or modify pin keys, and NEVER reuse pins already assigned.
 2. Pin keys have format "REF:pin_number" (e.g., "U1:1", "R1:2").
 3. Every pin may appear in AT MOST ONE net.
 4. To connect a batch pin to a net created in an earlier batch, output a net object
@@ -350,7 +350,7 @@ CRITICAL RULES:
    Focus ONLY on SIGNAL connections: I2C/SPI/UART buses, GPIO, reset, enable,
    interrupts, crystal lines, sensor data lines, LED/status lines.
 6. Only group pins that genuinely belong on the same electrical net for the user's
-   design intent. A pin with no sensible connection in this batch may be output alone
+   design intent. A pin with no sensible connection here may be output alone
    in a net named after its function (it becomes a label).
 
 PIN MATCHING GUIDELINES:
@@ -406,6 +406,9 @@ The tool result will be returned and you can continue. Available tools:
 - calculate_microstrip_impedance(trace_width_mm, dielectric_thickness_mm, er=4.5, trace_thickness_mm=0.035)
 - calculate_voltage_drop(current_a, trace_length_mm, trace_width_mm, copper_oz=1)
 - calculate_via_current(outer_diameter_mm, hole_diameter_mm, temp_rise_c=10, copper_oz=1)
+- web_search(query) — Search the web for pinout info, datasheet specs, or connection patterns when you need to verify a pin assignment
+
+WEB SEARCH RULE: If you are uncertain about a pin's function, signal direction, or how to connect a specific component pin (e.g., which side of a level shifter connects to 3.3V vs 5V), call web_search with the component part number and the pin name. The result will appear in your context — use it to make the correct connection.
 
 Output format: a JSON object (or for backward compat, just the array).
 {
@@ -437,17 +440,17 @@ electrical type breakdown), and structured knowledge (interfaces, pin roles,
 power rails).  Use these to understand what each part does and which pins
 carry signals vs. power.
 
-Nets already created in earlier batches (reuse these EXACT names to join them):
+Nets already created (power/GND pre-assigned + deterministic matcher):
 {existing_nets}
 
-Pins available in THIS batch (the ONLY pin keys you may output):
+ALL remaining signal pins to wire (the ONLY pin keys you may output):
 {pins_desc}
 
 Each pin shows its name AND its electrical type (etype).
 Use etype to infer signal direction — outputs drive inputs, bidirectional
 connects to bidirectional, passive pins go wherever their net needs them.
 
-Group these batch pins into signal nets now.  Output only the JSON array."""
+Group these pins into signal nets now.  Output only the JSON array."""
 
 
 NETLIST_USER = """Components placed in schematic:

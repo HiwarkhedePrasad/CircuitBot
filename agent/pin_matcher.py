@@ -29,9 +29,7 @@ def _canonical(name: str) -> str:
         .replace("{", "")
         .replace("}", "")
         .replace("_", "")
-        .replace("-", "")
         .replace(" ", "")
-        .replace("+", "")
     )
 
 
@@ -269,6 +267,98 @@ def _match_decoupling_cap(
     return result
 
 
+# ── Rule 4: USB-C receptacle deterministic wiring ────────────────────────
+
+_USB_C_CONNECTOR_KEYWORDS = frozenset({"USB_C", "USB-C", "TYPEC", "TYPE_C", "USB_C_RECEPTACLE"})
+
+
+def _match_usb_c_receptacle(
+    components: list[dict],
+    pin_matrix: dict[str, dict],
+    existing_power_pins: list[dict[str, str]],
+    assigned: set[str],
+) -> MatchResult:
+    """Wire USB-C receptacle pins deterministically:
+    - VBUS → power rail (VBUS/VDD/VCC)
+    - GND/SHIELD → GND
+    - CC1/CC2 → GND (5.1kΩ pulldown for USB sink detection)
+    - SBU1/SBU2 → GND (unused in USB 2.0)
+    - D+/D- → left for LLM (connects to MCU or USB-UART bridge)
+    """
+    result = MatchResult()
+
+    usb_refs: list[str] = []
+    for c in components:
+        id_upper = c.get("id_str", "").upper()
+        if any(kw in id_upper for kw in _USB_C_CONNECTOR_KEYWORDS):
+            usb_refs.append(c["ref_des"])
+
+    if not usb_refs:
+        return result
+
+    # Discover available power rails
+    power_rails: dict[str, str] = {}
+    for pp in existing_power_pins:
+        rail = pp.get("net", "").upper()
+        if rail not in ("GND", "GROUND", "VSS") and rail not in power_rails:
+            power_rails[rail] = pp["pin"]
+
+    vbus_rail = None
+    for preferred in ("VBUS", "VDD", "VCC", "5V", "VIN"):
+        if preferred in power_rails:
+            vbus_rail = preferred
+            break
+    if not vbus_rail:
+        vbus_rail = "VBUS"
+
+    for ref in usb_refs:
+        usb_pins = {
+            _canonical(pin_matrix[k].get("name", "")): k
+            for k in pin_matrix
+            if k.split(":")[0] == ref and k not in assigned
+        }
+
+        # VBUS → power rail
+        for vbus_name in ("VBUS", "VBUS1", "VBUS2"):
+            if vbus_name in usb_pins and usb_pins[vbus_name] not in result.matched_pins:
+                pk = usb_pins[vbus_name]
+                result.new_nets.append({"net": vbus_rail, "pins": [pk]})
+                result.new_power_pins.append({"pin": pk, "net": vbus_rail})
+                result.matched_pins.add(pk)
+                break
+
+        # GND pins
+        for gnd_name in ("GND", "GND1", "GND2"):
+            if gnd_name in usb_pins and usb_pins[gnd_name] not in result.matched_pins:
+                pk = usb_pins[gnd_name]
+                result.new_nets.append({"net": "GND", "pins": [pk]})
+                result.new_power_pins.append({"pin": pk, "net": "GND"})
+                result.matched_pins.add(pk)
+
+        # SHIELD → GND
+        if "SHIELD" in usb_pins and usb_pins["SHIELD"] not in result.matched_pins:
+            pk = usb_pins["SHIELD"]
+            result.new_nets.append({"net": "GND", "pins": [pk]})
+            result.new_power_pins.append({"pin": pk, "net": "GND"})
+            result.matched_pins.add(pk)
+
+        # CC1/CC2 → GND (5.1kΩ pulldown for sink detection)
+        for cc_name in ("CC1", "CC2"):
+            if cc_name in usb_pins and usb_pins[cc_name] not in result.matched_pins:
+                pk = usb_pins[cc_name]
+                result.new_nets.append({"net": "GND", "pins": [pk]})
+                result.matched_pins.add(pk)
+
+        # SBU1/SBU2 → GND (unused in USB 2.0)
+        for sbu_name in ("SBU1", "SBU2"):
+            if sbu_name in usb_pins and usb_pins[sbu_name] not in result.matched_pins:
+                pk = usb_pins[sbu_name]
+                result.new_nets.append({"net": "GND", "pins": [pk]})
+                result.matched_pins.add(pk)
+
+    return result
+
+
 # ── Orchestrator ──────────────────────────────────────────────────────────
 
 
@@ -347,5 +437,6 @@ def match_pins(
     result.merge(_match_temp_sensor_to_adc(components, pin_matrix, assigned))
     result.merge(_match_power_terminal(components, pin_matrix, existing_power_pins, assigned))
     result.merge(_match_decoupling_cap(components, pin_matrix, existing_power_pins, assigned))
+    result.merge(_match_usb_c_receptacle(components, pin_matrix, existing_power_pins, assigned))
 
     return result.to_dict()

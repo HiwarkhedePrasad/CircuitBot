@@ -20,6 +20,8 @@ from agent.nodes.connectivity_repair import connectivity_repair_node
 from agent.nodes.validate_repair import validate_repair_node
 from agent.nodes.ask_validation_help import ask_validation_help_node
 from agent.nodes.ask_board_config import ask_board_config_node
+from agent.nodes.datasheet_search import datasheet_search_node
+from agent.nodes.connection_search import connection_search_node
 
 __all__ = [
     "analyze_node", "research_node", "select_node",
@@ -35,4 +37,6 @@ __all__ = [
     "validate_repair_node",
     "ask_validation_help_node",
     "ask_board_config_node",
+    "datasheet_search_node",
+    "connection_search_node",
 ]

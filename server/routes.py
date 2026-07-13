@@ -1,3 +1,4 @@
+import copy
 import json
 import tempfile
 import os
@@ -5,11 +6,29 @@ from pathlib import Path
 
 from flask import request, jsonify, send_from_directory, Response
 
-from server.state import app, socketio, rag, design_lock, LAST_DESIGN, _WIREBENDER_LAYOUT
+from server.state import app, socketio, rag, design_lock, session_manager
 from server.chat import (
     CHAT_SESSIONS, ChatSession, _get_or_create_chat_session, _create_empty_board_model,
     _build_component_proposal_from_query, _prune_legacy_mock_history, _load_real_footprint_geometry,
 )
+
+
+def _deep_copy_design(design: dict) -> dict:
+    """Create a deep copy of the design dict to prevent shared-state mutation."""
+    return copy.deepcopy(design)
+
+
+def _get_session_from_request():
+    """Get or create a DesignSession from the current HTTP request.
+
+    Tries session_id from: query param, header, or falls back to default.
+    """
+    session_id = (
+        request.args.get("session_id")
+        or request.headers.get("X-Session-ID")
+        or "default"
+    )
+    return session_manager.get_or_create(session_id)
 
 # ── Helper: netlist generation ──────────────────────────────────────────
 
@@ -107,7 +126,8 @@ def _no_cache(resp):
 
 @app.route('/')
 def index():
-    return send_from_directory('static', 'index.html')
+    from server.state import _PROJECT_ROOT
+    return send_from_directory(os.path.join(_PROJECT_ROOT, 'static'), 'index.html')
 
 
 @app.route('/static/<path:path>')
@@ -168,31 +188,34 @@ def api_generate_netlist():
 def api_save_layout():
     data = request.get_json(silent=True) or {}
     with design_lock:
-        has_design = LAST_DESIGN.get('selected_components') or LAST_DESIGN.get('component_ops') or data.get('wire_paths') or data.get('placements')
+        ds = _get_session_from_request()
+        has_design = ds.last_design.get('selected_components') or ds.last_design.get('component_ops') or data.get('wire_paths') or data.get('placements')
         if not has_design:
             return jsonify({'ok': False, 'error': 'No design to update'}), 404
-        _WIREBENDER_LAYOUT['component_placements'] = data.get('placements', _WIREBENDER_LAYOUT.get('component_placements', []))
-        _WIREBENDER_LAYOUT['wire_paths'] = data.get('wire_paths', _WIREBENDER_LAYOUT.get('wire_paths', []))
-        _WIREBENDER_LAYOUT['power_labels'] = data.get('power_labels', _WIREBENDER_LAYOUT.get('power_labels', []))
+        ds.wire_bender_layout['component_placements'] = data.get('placements', ds.wire_bender_layout.get('component_placements', []))
+        ds.wire_bender_layout['wire_paths'] = data.get('wire_paths', ds.wire_bender_layout.get('wire_paths', []))
+        ds.wire_bender_layout['power_labels'] = data.get('power_labels', ds.wire_bender_layout.get('power_labels', []))
         if 'board_model' in data and data['board_model'] is not None:
-            _WIREBENDER_LAYOUT['board_model'] = data['board_model']
+            ds.wire_bender_layout['board_model'] = data['board_model']
         if 'placements' in data:
-            LAST_DESIGN['component_placements'] = data['placements']
+            ds.last_design['component_placements'] = data['placements']
         if 'wire_paths' in data:
-            LAST_DESIGN['wire_paths'] = data['wire_paths']
+            ds.last_design['wire_paths'] = data['wire_paths']
         if 'power_labels' in data:
-            LAST_DESIGN['power_labels'] = data['power_labels']
+            ds.last_design['power_labels'] = data['power_labels']
         if 'board_model' in data and data['board_model'] is not None:
-            LAST_DESIGN['board_model'] = data['board_model']
+            ds.last_design['board_model'] = data['board_model']
     return jsonify({'ok': True})
 
 
 @app.route('/api/export_sch')
 def api_export_sch():
     with design_lock:
-        if not LAST_DESIGN.get('selected_components') and not LAST_DESIGN.get('board_model'):
-            return "No design generated yet. Run the AI agent first.", 404
-        design_copy = LAST_DESIGN.copy()
+        from agent.exceptions import ExportValidationError
+        ds = _get_session_from_request()
+        if not ds.last_design.get('selected_components') and not ds.last_design.get('board_model'):
+            return jsonify({"error": "No design generated yet. Run the AI agent first."}), 404
+        design_copy = _deep_copy_design(ds.last_design)
     _ensure_selected_components_from_board_model(design_copy)
     try:
         from agent.kicad_export import generate_kicad_sch
@@ -202,18 +225,23 @@ def api_export_sch():
             mimetype='application/octet-stream',
             headers={'Content-Disposition': 'attachment; filename=circuitbot.kicad_sch'},
         )
+    except ExportValidationError as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Export validation failed: {e}. Some wires could not be exported — try re-running the agent."}), 500
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return f"Export failed: {e}", 500
+        return jsonify({"error": f"Export failed: {e}"}), 500
 
 
 @app.route('/api/export_pcb')
 def api_export_pcb():
     with design_lock:
-        if not LAST_DESIGN.get('selected_components') and not LAST_DESIGN.get('board_model'):
-            return "No design generated yet. Run the AI agent first.", 404
-        design_copy = LAST_DESIGN.copy()
+        ds = _get_session_from_request()
+        if not ds.last_design.get('selected_components') and not ds.last_design.get('board_model'):
+            return jsonify({"error": "No design generated yet. Run the AI agent first."}), 404
+        design_copy = _deep_copy_design(ds.last_design)
     _ensure_selected_components_from_board_model(design_copy)
     try:
         from pcb_design.pcb_export import generate_kicad_pcb
@@ -226,15 +254,16 @@ def api_export_pcb():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return f"PCB export failed: {e}", 500
+        return jsonify({"error": f"PCB export failed: {e}"}), 500
 
 
 @app.route('/api/pcb_render_source')
 def api_pcb_render_source():
     with design_lock:
-        if not LAST_DESIGN.get('board_model') and not LAST_DESIGN.get('selected_components'):
+        ds = _get_session_from_request()
+        if not ds.last_design.get('board_model') and not ds.last_design.get('selected_components'):
             return "No PCB state available yet.", 404
-        design_copy = LAST_DESIGN.copy()
+        design_copy = _deep_copy_design(ds.last_design)
     try:
         from pcb_design.pcb_export import generate_kicad_pcb
         board_model = design_copy.get("board_model") or {}
@@ -258,14 +287,15 @@ def api_pcb_render_source():
 @app.route('/api/pcb_enriched_board_model')
 def api_pcb_enriched_board_model():
     with design_lock:
-        if not LAST_DESIGN.get('board_model') and not LAST_DESIGN.get('selected_components'):
+        ds = _get_session_from_request()
+        if not ds.last_design.get('board_model') and not ds.last_design.get('selected_components'):
             # Return empty board model instead of 404 so PCB view can load
             empty_model = {
                 "components": [], "traces": [], "vias": [], "nets": [],
                 "outline_segments": [], "layer_count": 2,
             }
             return jsonify({"board_model": empty_model})
-        design_copy = LAST_DESIGN.copy()
+        design_copy = _deep_copy_design(ds.last_design)
     try:
         from pcb_design.pcb_export import generate_kicad_pcb
         from pcb_design.pcb_import import import_board
@@ -331,7 +361,8 @@ def api_circuit_json():
         board_dict = data.get('board_model', data)
     else:
         with design_lock:
-            board_dict = LAST_DESIGN.get('board_model')
+            ds = _get_session_from_request()
+            board_dict = ds.last_design.get('board_model')
 
     if board_dict:
         model = BM.from_dict(board_dict)
@@ -350,6 +381,7 @@ def api_apply_edits():
     from pcb_design.board_model import BoardModel, BoardTrace
     from agent.routing.api import apply_schematic_edit
 
+    ds = _get_session_from_request()
     data = request.get_json(silent=True) or {}
     events = data.get("edit_events", [])
     if not events:
@@ -425,8 +457,9 @@ def api_apply_edits():
         return ""
 
     with design_lock:
-        board_dict = LAST_DESIGN.get("board_model")
-        has_schematic_state = bool(LAST_DESIGN.get("selected_components"))
+        ds = _get_session_from_request()
+        board_dict = ds.last_design.get("board_model")
+        has_schematic_state = bool(ds.last_design.get("selected_components"))
         if board_dict is None and not has_schematic_state:
             return jsonify({"ok": False, "error": "No board model or schematic design loaded"}), 400
         if board_dict is not None and has_board_events:
@@ -522,7 +555,7 @@ def api_apply_edits():
                 source = event.get("source") or event.get("source_pin")
                 target = event.get("target") or event.get("target_pin")
                 path = event.get("path", [])
-                pin_matrix = LAST_DESIGN.get("pin_matrix", {})
+                pin_matrix = ds.last_design.get("pin_matrix", {})
                 if not _pin_exists(pin_matrix, source) or not _pin_exists(pin_matrix, target):
                     errors.append({"index": i, "error": "schematic_add_wire source/target must be valid pin keys"})
                     ignored += 1
@@ -540,20 +573,20 @@ def api_apply_edits():
                     errors.append({"index": i, "error": "schematic_add_wire path needs >=2 points with x/y"})
                     ignored += 1
                     continue
-                wire_id = event.get("wire_id") or event.get("edit_event_id") or f"wire_{len(LAST_DESIGN.get('wire_paths', [])) + 1}"
-                net = event.get("net") or _schematic_net_for_pair(LAST_DESIGN.get("netlist", []), source, target)
+                wire_id = event.get("wire_id") or event.get("edit_event_id") or f"wire_{len(ds.last_design.get('wire_paths', [])) + 1}"
+                net = event.get("net") or _schematic_net_for_pair(ds.last_design.get("netlist", []), source, target)
                 edit_event = {
                     "edit_event_type": etype, "wire_id": wire_id,
                     "source": source, "target": target, "path": clean_path, "net": net,
                 }
-                LAST_DESIGN["wire_paths"] = apply_schematic_edit(
-                    LAST_DESIGN.get("wire_paths", []),
+                ds.last_design["wire_paths"] = apply_schematic_edit(
+                    ds.last_design.get("wire_paths", []),
                     edit_event,
-                    LAST_DESIGN.get("netlist", []),
-                    LAST_DESIGN.get("pin_matrix", {}),
-                    LAST_DESIGN.get("component_placements", []),
+                    ds.last_design.get("netlist", []),
+                    ds.last_design.get("pin_matrix", {}),
+                    ds.last_design.get("component_placements", []),
                 )
-                _WIREBENDER_LAYOUT["wire_paths"] = LAST_DESIGN["wire_paths"]
+                ds.wire_bender_layout["wire_paths"] = ds.last_design["wire_paths"]
                 applied += 1
                 had_wire_events = True
             elif etype in ("schematic_delete_wire", "delete_wire"):
@@ -568,15 +601,15 @@ def api_apply_edits():
                     "edit_event_type": etype, "wire_id": wire_id,
                     "source": source, "target": target,
                 }
-                before = list(LAST_DESIGN.get("wire_paths", []))
-                LAST_DESIGN["wire_paths"] = apply_schematic_edit(
+                before = list(ds.last_design.get("wire_paths", []))
+                ds.last_design["wire_paths"] = apply_schematic_edit(
                     before,
                     edit_event,
-                    LAST_DESIGN.get("netlist", []),
-                    LAST_DESIGN.get("pin_matrix", {}),
-                    LAST_DESIGN.get("component_placements", []),
+                    ds.last_design.get("netlist", []),
+                    ds.last_design.get("pin_matrix", {}),
+                    ds.last_design.get("component_placements", []),
                 )
-                _WIREBENDER_LAYOUT["wire_paths"] = LAST_DESIGN["wire_paths"]
+                ds.wire_bender_layout["wire_paths"] = ds.last_design["wire_paths"]
                 applied += 1
                 had_wire_events = True
             elif etype in ("schematic_move_component", "edit_schematic_component_location"):
@@ -590,7 +623,7 @@ def api_apply_edits():
                     errors.append({"index": i, "error": "schematic_move_component.new_center must have x and y"})
                     ignored += 1
                     continue
-                placements = list(LAST_DESIGN.get("component_placements", []))
+                placements = list(ds.last_design.get("component_placements", []))
                 found = False
                 for placement in placements:
                     if placement.get("ref_des") == ref_des:
@@ -602,16 +635,16 @@ def api_apply_edits():
                         break
                 if not found:
                     placements.append({"ref_des": ref_des, "x": new_center["x"], "y": new_center["y"]})
-                LAST_DESIGN["component_placements"] = placements
-                _WIREBENDER_LAYOUT["component_placements"] = placements
-                LAST_DESIGN["wire_paths"] = apply_schematic_edit(
-                    LAST_DESIGN.get("wire_paths", []),
+                ds.last_design["component_placements"] = placements
+                ds.wire_bender_layout["component_placements"] = placements
+                ds.last_design["wire_paths"] = apply_schematic_edit(
+                    ds.last_design.get("wire_paths", []),
                     {"edit_event_type": etype, "ref_des": ref_des},
-                    LAST_DESIGN.get("netlist", []),
-                    LAST_DESIGN.get("pin_matrix", {}),
+                    ds.last_design.get("netlist", []),
+                    ds.last_design.get("pin_matrix", {}),
                     placements,
                 )
-                _WIREBENDER_LAYOUT["wire_paths"] = LAST_DESIGN["wire_paths"]
+                ds.wire_bender_layout["wire_paths"] = ds.last_design["wire_paths"]
                 applied += 1
                 had_move_events = True
                 had_wire_events = True
@@ -627,16 +660,16 @@ def api_apply_edits():
             new_board = model.to_dict()
             new_board["_render_from_model"] = True
             new_board["ratsnest"] = compute_ratsnest(model)
-            LAST_DESIGN["board_model"] = new_board
-            _WIREBENDER_LAYOUT["board_model"] = new_board
+            ds.last_design["board_model"] = new_board
+            ds.wire_bender_layout["board_model"] = new_board
 
     resp: dict = {
         "ok": True, "applied": applied, "ignored": ignored,
     }
     if had_wire_events:
-        resp["wire_paths"] = LAST_DESIGN.get("wire_paths", [])
+        resp["wire_paths"] = ds.last_design.get("wire_paths", [])
     if had_move_events:
-        resp["component_placements"] = LAST_DESIGN.get("component_placements", [])
+        resp["component_placements"] = ds.last_design.get("component_placements", [])
     if new_board is not None:
         resp["board_model"] = new_board
     if errors:
@@ -656,8 +689,9 @@ def api_save_board_model():
         board_model["_render_from_model"] = True
 
     with design_lock:
-        LAST_DESIGN["board_model"] = board_model
-        _WIREBENDER_LAYOUT["board_model"] = board_model
+        ds = _get_session_from_request()
+        ds.set_design({"board_model": board_model})
+        ds.set_layout({"board_model": board_model})
 
     return jsonify({"ok": True})
 
@@ -678,8 +712,9 @@ def api_import_pcb():
         payload["_render_from_model"] = True
 
         with design_lock:
-            LAST_DESIGN["board_model"] = payload
-            _WIREBENDER_LAYOUT["board_model"] = payload
+            ds = _get_session_from_request()
+            ds.last_design["board_model"] = payload
+            ds.wire_bender_layout["board_model"] = payload
 
         return jsonify({'board_model': payload})
     except Exception as e:

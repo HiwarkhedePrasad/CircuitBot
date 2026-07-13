@@ -1,10 +1,13 @@
 import json
 import math
 import os
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from dotenv import load_dotenv
 from kicad_rag.client import KicadRAG
+
 
 dotenv_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path, override=True)
@@ -191,6 +194,7 @@ def _search_components_impl(query: str, k: int,
             "score": r.score,
             "pins": r.pins,
             "datasheet": r.datasheet,
+            "datasheet_snippet": (r.text or "")[:300],
             "footprint": r.footprint,
             "fp_filters": r.fp_filters,
             "pads": r.pads,
@@ -210,15 +214,18 @@ def fetch_pins(id_str: str) -> list[dict]:
 def fetch_footprint(id_str: str) -> dict | None:
     return rag.footprint(id_str)
 
-
-def llm_call(system: str, user: str) -> str:
+def llm_call(system: str, user: str, tools: list[dict] | None = None) -> str:
     import sys
     from pathlib import Path
     sys.path.append(str(Path(__file__).resolve().parent.parent))
     from config import get_llm_client
 
     client = get_llm_client(temperature=0.1, max_tokens=8192)
-    response = client.invoke([{"role": "system", "content": system}, {"role": "user", "content": user}])
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    if tools:
+        response = client.invoke(messages, tools=tools)
+    else:
+        response = client.invoke(messages)
     return response.content.strip()
 
 
@@ -254,3 +261,4 @@ def execute_tool(tool_name: str, **kwargs) -> dict:
         return result if isinstance(result, dict) else {"result": result}
     except Exception as e:
         return {"error": f"Tool '{tool_name}' failed: {e}"}
+

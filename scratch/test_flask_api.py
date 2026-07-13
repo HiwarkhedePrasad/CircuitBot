@@ -1,11 +1,11 @@
 import sys
 sys.path.append('.')
 
-from server import app, LAST_DESIGN
+from server import app, session_manager
 
-# Mock LAST_DESIGN
-LAST_DESIGN.clear()
-LAST_DESIGN.update({
+# Set up test design in session
+ds = session_manager.get_or_create("test")
+ds.set_design({
     "selected_components": [
         {
             "id": "J1",

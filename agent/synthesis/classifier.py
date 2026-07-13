@@ -62,7 +62,7 @@ def classify_component(comp: ComponentNode) -> str | None:
         for p in prefixes:
             if lib.startswith(p):
                 return cls_name
-            if f":{p}" in comp.id_str.upper():
+            if f":{p.upper()}" in comp.id_str.upper():
                 return cls_name
     return None
 

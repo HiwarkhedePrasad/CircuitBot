@@ -16,7 +16,8 @@ import re
 
 from agent.emit_utils import (
     _safe_print, _emit, emit_assistant_message, emit_tool_event,
-    _emit_activity, _clean_json, _sanitize_data,
+    emit_thought_stream, emit_thought, emit_tool_call, emit_tool_end, emit_step,
+    _clean_json, _sanitize_data,
 )
 from agent.llm_utils import (
     _rate_limit, _record_call, _is_connection_error,
@@ -87,7 +88,7 @@ def _ref_prefix_for(id_str: str, category: str) -> str:
     lib = id_str.partition(':')[0].upper()
     name = id_str.partition(':')[2].upper()
     cat = (category or '').upper()
-    if id_str.startswith('Device:'):
+    if id_str.upper().startswith('DEVICE:'):
         if name == 'R' or name.startswith('R_'):
             return 'R'
         if name == 'C' or name.startswith(('C_', 'CP')):
@@ -128,7 +129,7 @@ def _ref_prefix_for(id_str: str, category: str) -> str:
 
 PIN_ALIASES = {
     "SDA": {"SDA", "SDI", "SDIO", "I2C0_SDA", "I2C1_SDA", "I2C_DATA", "I2CDAT"},
-    "SCL": {"SCL", "SCK", "I2C0_SCL", "I2C1_SCL", "I2C_CLK", "I2CCLK"},
+    "SCL": {"SCL", "I2C0_SCL", "I2C1_SCL", "I2C_CLK", "I2CCLK"},
     "TX": {"TXD", "TX", "TXD0", "TXD1", "UART_TX", "UART0_TX", "UART1_TX", "TXD_0", "TXD_1", "TX0", "TX1"},
     "RX": {"RXD", "RX", "RXD0", "RXD1", "UART_RX", "UART0_RX", "UART1_RX", "RXD_0", "RXD_1", "RX0", "RX1"},
     "MOSI": {"MOSI", "SPI_MOSI", "SPI0_MOSI", "SPI1_MOSI", "SI", "SDO"},

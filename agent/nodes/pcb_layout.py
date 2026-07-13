@@ -10,7 +10,8 @@ Pipeline:
 
 from collections import defaultdict
 
-from agent.utils import _emit, emit_assistant_message, emit_tool_event
+from agent.utils import _emit, emit_assistant_message, emit_tool_event, emit_thought, emit_tool_call, emit_tool_end, emit_step
+from uuid import uuid4
 
 from pcb_design.board_model import (
     BoardModel, BoardComponent, PadDef,
@@ -176,7 +177,9 @@ def _build_nets_from_netlist(netlist: list[dict], pin_matrix: dict) -> list[dict
 
 
 def pcb_layout_node(state, config):
-    _emit(config, "agent:thinking", {"message": "Placing components on PCB..."})
+    pcb_id = uuid4().hex[:8]
+    emit_tool_call(config, pcb_id, "PCB Layout", "running")
+    emit_thought(config, "Placing components on PCB...")
     emit_assistant_message(config, "Laying out components on the PCB...")
     emit_tool_event(config, "PCB Layout", "running", "Graph-driven placement...")
 
@@ -191,13 +194,16 @@ def pcb_layout_node(state, config):
         return {}
 
     # ── 1. Build nets from netlist (single source of truth) ────────
+    emit_step(config, pcb_id, "Building net model...", "running")
     nets = _build_nets_from_netlist(netlist, pin_matrix)
 
     # ── 2. Graph-driven placement ──────────────────────────────────
+    emit_step(config, pcb_id, "Running graph-driven placement...", "running")
     pcb_placements = place_components(comps, netlist, pin_matrix=pin_matrix)
     pcb_pos = {p["ref_des"]: (p["x"], p["y"], p.get("rotation", 0)) for p in pcb_placements}
 
     # ── 3. Build BoardModel ────────────────────────────────────────
+    emit_step(config, pcb_id, "Building PCB model...", "running")
     layer_count = state.get("layer_count", 2)
     model = BoardModel(
         nets=nets,
@@ -247,6 +253,7 @@ def pcb_layout_node(state, config):
                     f"Placed {len(model.components)} components (graph-driven)")
 
     # ── 4. Compute ratsnest (airwire guide lines) ──────────────────
+    emit_step(config, pcb_id, "Computing ratsnest...", "running")
     board_dict = model.to_dict()
     board_dict["_render_from_model"] = True  # tells server to skip KiCad export round-trip
     try:
@@ -255,17 +262,17 @@ def pcb_layout_node(state, config):
     except Exception:
         board_dict["ratsnest"] = {}
 
-    # ── 5. Emit final events ───────────────────────────────────────
+    # ── 5. Emit preview event (early render, NOT completion) ──────
     _emit(config, "agent:pcb_ready", {"board_model": board_dict})
-    _emit(config, "agent:done", {
-        "message": (f"Design complete: {len(model.components)} components. "
-                    f"Ratsnest guide lines ready — route traces manually in the PCB viewer.")
-    })
+    # NOTE: agent:done is NOT emitted here — it fires from server/agent_runner.py
+    # after ds.set_design() persists the result, to avoid the race where
+    # the UI enables export before session state is committed.
     emit_tool_event(config, "PCB Layout", "completed",
                     f"{len(model.components)} components placed — manual routing required")
+    emit_tool_end(config, pcb_id, f"PCB layout complete — {len(model.components)} components placed")
     emit_assistant_message(config,
                            f"PCB complete — {len(model.components)} components placed. "
                            f"Use the PCB viewer to route traces manually.")
 
 
-    return model
+    return {"board_model": board_dict}

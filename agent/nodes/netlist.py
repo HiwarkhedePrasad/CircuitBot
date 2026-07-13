@@ -12,6 +12,52 @@ from agent.utils import (
 )
 
 
+def _pin_anchor_priority(pin_key: str, pin_matrix: dict, passive_refs: set[str]) -> tuple[int, str]:
+    ref = pin_key.split(":")[0] if ":" in pin_key else pin_key
+    etype = str(pin_matrix.get(pin_key, {}).get("etype", "") or "").lower()
+    if etype in ("output", "open_collector", "open_emitter"):
+        rank = 0
+    elif etype == "bidirectional":
+        rank = 1
+    elif etype in ("input", "tri_state"):
+        rank = 2
+    elif etype == "passive":
+        rank = 3
+    else:
+        rank = 4
+    if ref in passive_refs:
+        rank += 10
+    return (rank, pin_key)
+
+
+def _signal_edges_for_net(net_name: str, net_pins: list[str], pin_matrix: dict, passive_refs: set[str]) -> list[dict]:
+    unique_pins: list[str] = []
+    seen: set[str] = set()
+    for pin_key in net_pins:
+        if pin_key in seen:
+            continue
+        seen.add(pin_key)
+        unique_pins.append(pin_key)
+    if len(unique_pins) < 2:
+        return []
+    if len(unique_pins) == 2:
+        return [{"source": unique_pins[0], "target": unique_pins[1], "net": net_name}]
+
+    anchor = min(unique_pins, key=lambda p: _pin_anchor_priority(p, pin_matrix, passive_refs))
+    others = sorted((p for p in unique_pins if p != anchor), key=lambda p: _pin_anchor_priority(p, pin_matrix, passive_refs))
+    return [{"source": anchor, "target": pin_key, "net": net_name} for pin_key in others]
+
+
+def _flag_net_name(component: dict) -> str:
+    for field in ("description", "justification"):
+        text = str(component.get(field, "") or "")
+        if "Power flag for " in text:
+            return text.split("Power flag for ", 1)[1].split()[0].upper().lstrip("+")
+        if "PWR_FLAG: net " in text:
+            return text.split("PWR_FLAG: net ", 1)[1].split()[0].upper().lstrip("+")
+    return ""
+
+
 def _pin_summary_from_matrix(ref_des: str, pin_matrix: dict) -> str:
     """Generate a compact pin summary from pin_matrix data alone.
 
@@ -94,10 +140,21 @@ def netlist_node(state, config):
         f'  {c["ref_des"]}: {c["id_str"]} ({c["category"]})'
         for c in comps
     )
+    existing_flag_nets_by_ref = {
+        c.get("ref_des", ""): _flag_net_name(c)
+        for c in comps
+        if c.get("id_str") == "power:PWR_FLAG"
+    }
+    passive_refs = {
+        c.get("ref_des", "") for c in comps
+        if str(c.get("category", "") or "").upper() in ("DEVICE", "RESISTOR", "CAPACITOR", "INDUCTOR", "DIODE")
+        or str(c.get("id_str", "") or "").startswith("Device:")
+    }
     from agent.power_domains import classify as _classify_rail, is_gnd as _is_gnd, is_power as _is_power
     assigned = set()
     power_groups = {}
     for key, pin in pins.items():
+        ref = key.split(":")[0] if ":" in key else key
         pname = pin.get("name", "").strip().upper()
         if _is_gnd(pname):
             power_groups.setdefault("GND", []).append(key)
@@ -105,6 +162,9 @@ def netlist_node(state, config):
         elif _is_power(pname):
             canon = _classify_rail(pname) or pname.lstrip("+")
             power_groups.setdefault(canon, []).append(key)
+            assigned.add(key)
+        elif ref in existing_flag_nets_by_ref:
+            power_groups.setdefault(existing_flag_nets_by_ref[ref], []).append(key)
             assigned.add(key)
     nets = [{"net": n, "pins": p} for n, p in power_groups.items()]
     _emit(config, "agent:log", {
@@ -129,13 +189,15 @@ def netlist_node(state, config):
         _emit(config, "agent:log", {"message": "  Pin matcher skipped (error)"})
 
     signal_keys = [k for k in pins if k not in assigned]
-    batches = _make_signal_batches(signal_keys, max_pins=MAX_BATCH_PINS)
-    if len(batches) > 1:
+    batches = _make_signal_batches(signal_keys, max_pins=len(signal_keys) if signal_keys else 1)
+    if signal_keys:
         _emit(config, "agent:log", {
-            "message": f"  Wiring {len(signal_keys)} signal pins in {len(batches)} batches"
+            "message": f"  Wiring {len(signal_keys)} signal pins in a single pass (deepseek 128k context)"
         })
     trace_constraints: dict = {}
+    explicit_signal_edges: list[dict] = []
     for bi, batch_refs in enumerate(batches, 1):
+        batch_tc = {}
         batch_keys = sorted(
             k for k in signal_keys
             if k.split(":")[0] in batch_refs and k not in assigned
@@ -143,7 +205,7 @@ def netlist_node(state, config):
         if not batch_keys:
             continue
         _emit(config, "agent:thinking", {
-            "message": f"Planning pin connections (batch {bi}/{len(batches)})..."
+            "message": "Planning all pin connections..."
         })
         batch_refs_set = set(batch_refs)
         batch_comps_desc = "\n".join(
@@ -156,19 +218,21 @@ def netlist_node(state, config):
             for k in batch_keys
         )
         existing = ", ".join(n["net"] for n in nets) or "(none yet)"
-        text = _call_llm_with_tools(NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER.format(
-            prompt=state["prompt"],
-            components_desc=batch_comps_desc,
-            existing_nets=existing,
-            pins_desc=pins_desc,
-        ))
+        text = _call_llm_with_tools(
+            NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER.format(
+                prompt=state["prompt"],
+                components_desc=batch_comps_desc,
+                existing_nets=existing,
+                pins_desc=pins_desc,
+            ),
+            max_tool_rounds=4,
+        )
         text = _clean_json(text)
         try:
             batch_data = json.loads(text) if text else []
         except json.JSONDecodeError:
             print(f"Batch {bi}: failed to parse nets JSON: {text[:200]}")
             batch_data = []
-        batch_tc = {}
         if isinstance(batch_data, dict):
             batch_tc = batch_data.get("trace_constraints", {})
             batch_data = batch_data.get("nets", [])
@@ -216,6 +280,7 @@ def netlist_node(state, config):
                         n_dropped += 1
             if clean:
                 _merge_net(nets, name, clean)
+                explicit_signal_edges.extend(_signal_edges_for_net(name, clean, pins, passive_refs))
         total_unmatched = n_dropped + n_resolved
         if total_unmatched:
             _emit(config, "agent:log", {
@@ -268,6 +333,20 @@ def netlist_node(state, config):
             net["pins"] = keep
     power_pins = []
     netlist = []
+    seen_edges: set[tuple[str, str, str]] = set()
+
+    def _append_edge(edge: dict):
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        net_name = edge.get("net", "")
+        if not src or not tgt or not net_name or src == tgt:
+            return
+        edge_key = (net_name.upper(),) + tuple(sorted((src, tgt)))
+        if edge_key in seen_edges:
+            return
+        seen_edges.add(edge_key)
+        netlist.append({"source": src, "target": tgt, "net": net_name})
+
     n_power_nets = 0
     n_signal_nets = 0
     for net in valid_nets:
@@ -279,10 +358,10 @@ def netlist_node(state, config):
                 power_pins.append({"pin": p, "net": canonical})
         else:
             n_signal_nets += 1
-            ps = net["pins"]
-            if len(ps) >= 2:
-                for i in range(len(ps) - 1):
-                    netlist.append({"source": ps[i], "target": ps[i+1], "net": name})
+            for edge in _signal_edges_for_net(name, net["pins"], pins, passive_refs):
+                _append_edge(edge)
+    for edge in explicit_signal_edges:
+        _append_edge(edge)
     n_power_nets = len(power_groups)
     _emit(config, "agent:log", {
         "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "
@@ -321,6 +400,7 @@ def netlist_node(state, config):
                            for r, c in sgraph.components.items()},
             "nets": {n: {"name": n, "role": nr.role.value, "pins": sorted(nr.pins)}
                      for n, nr in sgraph.nets.items()},
+            "llm_nets": list(netlist),
             "constraints": [{"type": ct.type.value, "source_pin": ct.source_pin,
                               "target_pin": ct.target_pin, "metadata": ct.metadata}
                              for ct in sgraph.constraints],
@@ -351,12 +431,27 @@ def netlist_node(state, config):
             sexpr = _fetch_sexpr("power:PWR_FLAG")
             flag_ops = _parse_sexpr_to_ops(sexpr, "power")
             flag_pin_raw = _extract_pins_from_ops(flag_ops, "_PWRF")
-            selected = state.get("selected_components", [])
-            comp_ops = state.get("component_ops", {})
-            pm = state.get("pin_matrix", {})
-            for i, net_name in enumerate(sorted(need_flag)):
+            selected = list(state.get("selected_components", []))
+            comp_ops = dict(state.get("component_ops", {}))
+            pm = dict(state.get("pin_matrix", {}))
+            existing_flag_nets = {
+                _flag_net_name(comp) for comp in selected
+                if comp.get("id_str") == "power:PWR_FLAG"
+            }
+            existing_flag_nets.discard("")
+            existing_flag_indices = []
+            for comp in selected:
+                ref = str(comp.get("ref_des", "") or "")
+                if ref.startswith("#FLG") and ref[4:].isdigit():
+                    existing_flag_indices.append(int(ref[4:]))
+            next_index = max(existing_flag_indices, default=0)
+            injected_flag_nets: list[str] = []
+            for net_name in sorted(need_flag):
+                if net_name in existing_flag_nets:
+                    continue
+                next_index += 1
                 fc = _create_pwr_flag_component(
-                    net_name, i + 1, flag_ops, flag_pin_raw,
+                    net_name, next_index, flag_ops, flag_pin_raw,
                     f"PWR_FLAG: net {net_name} has no power-output pin",
                 )
                 selected.append(fc["component"])
@@ -364,13 +459,15 @@ def netlist_node(state, config):
                 pkey, pval = fc["pin_entry"]
                 pm[pkey] = pval
                 power_pins.append(fc["power_pin_entry"])
+                injected_flag_nets.append(net_name)
             result["selected_components"] = selected
             result["component_ops"] = comp_ops
             result["pin_matrix"] = pm
-            _emit(config, "agent:log", {
-                "message": (f"  Injected PWR_FLAG on {len(need_flag)} net(s): "
-                           f"{', '.join(sorted(need_flag))}")
-            })
+            if injected_flag_nets:
+                _emit(config, "agent:log", {
+                    "message": (f"  Injected PWR_FLAG on {len(injected_flag_nets)} net(s): "
+                               f"{', '.join(injected_flag_nets)}")
+                })
     except Exception as e:
         print(f"PWR_FLAG injection failed: {e}")
     return result

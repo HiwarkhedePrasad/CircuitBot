@@ -16,6 +16,10 @@ from agent.nodes import (
     ask_validation_help_node,
     ask_board_config_node,
 )
+from agent.nodes.modify import classify_modification_node, apply_modification_node
+from agent.nodes.design_review import design_review_node
+from agent.nodes.datasheet_search import datasheet_search_node
+from agent.nodes.connection_search import connection_search_node
 from agent.utils import _route_after_validate, _route_after_validation_help, _route_after_pcb_approval, _route_after_erc
 
 MAX_ERC_RETRIES = 3
@@ -56,6 +60,9 @@ def build_graph() -> StateGraph:
     builder.add_node("ask_pcb_approval", ask_pcb_approval_node)
     builder.add_node("ask_board_config", ask_board_config_node)
     builder.add_node("pcb_layout", pcb_layout_node)
+    builder.add_node("design_review", design_review_node)
+    builder.add_node("datasheet_search", datasheet_search_node)
+    builder.add_node("connection_search", connection_search_node)
     builder.add_node("validate_repair", validate_repair_node)
     builder.add_node("ask_validation_help", ask_validation_help_node)
     builder.add_node("error_end", error_end_node)
@@ -63,7 +70,8 @@ def build_graph() -> StateGraph:
     builder.set_entry_point("analyze")
     builder.add_edge("analyze", "research")
     builder.add_edge("research", "select")
-    builder.add_edge("select", "symbol_compatibility")
+    builder.add_edge("select", "datasheet_search")
+    builder.add_edge("datasheet_search", "symbol_compatibility")
     builder.add_edge("symbol_compatibility", "validate")
     builder.add_conditional_edges("validate", _route_after_validate, {
         "validate_repair": "validate_repair",
@@ -78,7 +86,8 @@ def build_graph() -> StateGraph:
         "error_end": "error_end",
     })
     builder.add_edge("dispatch", "symbol_validate")
-    builder.add_edge("symbol_validate", "netlist")
+    builder.add_edge("symbol_validate", "connection_search")
+    builder.add_edge("connection_search", "netlist")
     builder.add_edge("netlist", "power_net_repair")
     builder.add_edge("power_net_repair", "structural_net_validate")
     builder.add_edge("structural_net_validate", "structural_net_repair")
@@ -97,10 +106,27 @@ def build_graph() -> StateGraph:
         "end": END,
     })
     builder.add_edge("ask_board_config", "pcb_layout")
-    builder.add_edge("pcb_layout", END)
+    builder.add_edge("pcb_layout", "design_review")
+    builder.add_edge("design_review", END)
     builder.add_edge("error_end", END)
 
     return builder.compile()
 
 
 agent_graph = build_graph()
+
+
+# ── Modify Graph (separate lightweight graph for design modifications) ──────
+
+def build_modify_graph() -> StateGraph:
+    """Build a lightweight graph for design modifications."""
+    builder = StateGraph(AgentState)
+    builder.add_node("classify", classify_modification_node)
+    builder.add_node("apply", apply_modification_node)
+    builder.set_entry_point("classify")
+    builder.add_edge("classify", "apply")
+    builder.add_edge("apply", END)
+    return builder.compile()
+
+
+modify_graph = build_modify_graph()

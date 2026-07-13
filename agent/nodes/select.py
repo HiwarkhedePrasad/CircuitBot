@@ -1,13 +1,13 @@
 import re
 
-from agent.datasheet import extract_critical_specs
 from agent.reranker import rank_candidates
 from agent.support_rules import get_supporting_components, resolve_fallback_symbol
 from agent.tools import search_components, fetch_footprint
 from agent.utils import (
     _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result,
-    _extract_part_numbers, _is_passive, _sanitize_data,
+    _extract_part_numbers, _is_passive, emit_thought, emit_tool_call, emit_tool_end, emit_step,
 )
+from uuid import uuid4
 
 _PREFIX_RULES: list[tuple[str, str]] = [
     ('CONNECTOR',  'J'), ('USB',  'J'), ('JACK',  'J'),
@@ -225,8 +225,54 @@ def _assign_ref_des(components: list[dict], sheet_map: dict[str, int] | None = N
     return components
 
 
+def _dedupe_selected_components(selected: list[dict], subsystem_sheet_map: dict[str, int], config) -> list[dict]:
+    # Dedup by component ID first, then by subsystem label for primary picks.
+    seen_ids: dict[str, str] = {}
+    deduped_ids: list[dict] = []
+    for c in selected:
+        id_str = c.get("id_str", "")
+        if not id_str:
+            deduped_ids.append(c)
+            continue
+        if id_str in seen_ids:
+            _emit(config, "agent:log", {
+                "message": f"  Dedup: dropped {c.get('ref_des', '?')} ({id_str}) -- duplicate of {seen_ids[id_str]}"
+            })
+            continue
+        seen_ids[id_str] = f"{c.get('ref_des', '?')} (subsystem: {c.get('subsystem', '?')})"
+        deduped_ids.append(c)
+    if len(deduped_ids) < len(selected):
+        selected = _assign_ref_des(deduped_ids, subsystem_sheet_map)
+        _emit(config, "agent:log", {"message": f"  After ID dedup: {len(selected)} component(s)"})
+
+    seen_subs: dict[str, str] = {}
+    deduped_subs: list[dict] = []
+    for c in selected:
+        if c.get("justification", "").startswith("Auto-added by validator"):
+            deduped_subs.append(c)
+            continue
+        sub = c.get("subsystem", "")
+        if not sub:
+            deduped_subs.append(c)
+            continue
+        if sub in seen_subs:
+            _emit(config, "agent:log", {
+                "message": f"  Dedup: dropped {c.get('ref_des', '?')} ({c.get('id_str', '?')}) -- "
+                           f"subsystem '{sub}' already has {seen_subs[sub]}"
+            })
+            continue
+        seen_subs[sub] = f"{c.get('ref_des', '?')} ({c.get('id_str', '?')})"
+        deduped_subs.append(c)
+    if len(deduped_subs) < len(selected):
+        selected = _assign_ref_des(deduped_subs, subsystem_sheet_map)
+        _emit(config, "agent:log", {"message": f"  After dedup: {len(selected)} component(s)"})
+    return selected
+
+
 def select_node(state, config):
-    _emit(config, "agent:thinking", {"message": "Selecting best components..."})
+    sel_id = uuid4().hex[:8]
+    emit_tool_call(config, sel_id, "Component Selection", "running")
+    emit_thought(config, "Selecting best components...")
     emit_assistant_message(config, "Scoring and ranking candidates to select the best components for each subsystem...")
     emit_tool_event(config, "Component Selection", "running", "Scoring and ranking candidates...")
     contract = _check_stage_contract("select", state, ["research_results", "prompt"])
@@ -241,6 +287,7 @@ def select_node(state, config):
 
     rejected_ids = set(state.get("rejected_ids", []))
     rejected_families = set(state.get("rejected_families", []))
+    existing_ids = {c.get("id_str", "") for c in state.get("selected_components", [])}
     for sub in research:
         if rejected_ids or rejected_families:
             before = len(sub.get("results", []))
@@ -256,7 +303,6 @@ def select_node(state, config):
                 })
 
     selected = []
-    existing_ids = {c["id_str"] for c in state.get("selected_components", [])}
     research.sort(key=lambda s: 0 if any(k in s.get('subsystem', '').lower() for k in ['mcu', 'processing', 'microcontroller', 'core']) else 1)
 
     _GENERIC_PASSIVES = frozenset([
@@ -270,21 +316,40 @@ def select_node(state, config):
             (c for c in state.get("selected_components", [])
              if c.get("subsystem") == sub_name
              and c.get("id_str") not in _GENERIC_PASSIVES
-             and c.get("id_str") not in rejected_ids),
+             and c.get("id_str") not in rejected_ids
+             and _normalize_part_family(c.get("id_str", "")) not in rejected_families
+             and c.get("justification", "").startswith("Auto-added by validator")),
             None
         )
         if match:
-            subs_to_skip.add(sub_name)
             selected.append(match)
             _emit(config, "agent:log", {
-                "message": f"  Preserved {match['id_str']} for '{sub_name}' (validator already fixed this)"
+                "message": f"  Preserved {match['id_str']} for '{sub_name}' (validator-added support part)"
             })
 
-    research = [sub for sub in research if sub["subsystem"] not in subs_to_skip]
 
-    _emit(config, "agent:thinking", {"message": f"Scoring candidates across {len(research)} subsystem(s)..."})
+    emit_thought(config, f"Scoring candidates across {len(research)} subsystem(s)...")
     for sub in research:
+        sub_name = sub.get("subsystem", "")
+        emit_step(config, sel_id, f"Scoring {sub_name}...", "running")
         candidates = _filter_candidates_by_expected_type(sub, sub.get("results", []), state.get("prompt", ""))
+
+        # Filter out components matching the template avoid list
+        avoid_list = sub.get("_avoid", [])
+        if avoid_list:
+            avoid_lower = [a.lower() for a in avoid_list]
+            original_count = len(candidates)
+            candidates = [
+                c for c in candidates
+                if not any(
+                    avoid_term in (c.get("id_str", "") + " " + c.get("text", "")).lower()
+                    for avoid_term in avoid_lower
+                )
+            ]
+            if len(candidates) < original_count:
+                _emit(config, "agent:log", {
+                    "message": f"  Filtered {original_count - len(candidates)} avoid-listed component(s)"
+                })
         if not candidates:
             rj = state.get("rejected_ids", [])
             reason = "all candidates rejected by validator — no substitute available" if rj else "no candidates found"
@@ -298,6 +363,25 @@ def select_node(state, config):
             user_prompt=state.get("prompt", ""),
             config=config,
         )
+        # Dev-board preference for prototyping prompts: when the user says
+        # "ESP32 with button" (simple MCU + peripherals), prefer dev boards
+        # over bare modules since they include USB, regulator, etc.
+        prompt_lower = state.get("prompt", "").lower()
+        _SIMPLE_MCU_KW = {"esp32", "arduino", "rp2040", "stm32", "nrf52"}
+        _PROTO_KW = {"with", "and", "button", "led", "sensor", "simple", "basic"}
+        is_prototyping = (
+            any(mcu in prompt_lower for mcu in _SIMPLE_MCU_KW) and
+            any(kw in prompt_lower for kw in _PROTO_KW) and
+            len(research) <= 6
+        )
+        if is_prototyping and ranked:
+            for cand in ranked:
+                cid = cand.get("id_str", "").upper()
+                if any(kw in cid for kw in ("DEVKIT", "DEV_KIT", "NODEMCU")):
+                    cand["score"] = cand.get("score", 0) + 2
+            # Re-sort by score descending
+            ranked.sort(key=lambda c: c.get("score", 0), reverse=True)
+
         # Deterministic user-requested part override: if the user named a
         # specific part number (e.g. "DS18B20") and it exists somewhere in
         # the ranked list but wasn't picked, promote it to #1.  This ensures
@@ -344,11 +428,20 @@ def select_node(state, config):
                     if found_idx is not None:
                         break
             if found_idx is not None:
-                _emit(config, "agent:log", {
-                    "message": f"  User-requested part {ranked[found_idx]['id_str']} at rank #{found_idx+1} "
-                               f"— promoting to #1 (user named this part in prompt)"
-                })
-                ranked.insert(0, ranked.pop(found_idx))
+                # Skip promotion if part type doesn't match subsystem
+                # (e.g., don't promote ESP32 MCU for "Power Input" subsystem)
+                _sub_lower = sub_name.lower()
+                _part_lib = ranked[found_idx].get("id_str", "").split(":")[0].upper()
+                _skip_promotion = False
+                if _sub_lower in ("power input", "power regulation", "power supply"):
+                    if _part_lib in ("MCU_", "RF_MODULE", "RF_", "MCU_ESPRESSIF"):
+                        _skip_promotion = True
+                if not _skip_promotion:
+                    _emit(config, "agent:log", {
+                        "message": f"  User-requested part {ranked[found_idx]['id_str']} at rank #{found_idx+1} "
+                                   f"— promoting to #1 (user named this part in prompt)"
+                    })
+                    ranked.insert(0, ranked.pop(found_idx))
         best = ranked[0] if ranked else None
         if not best:
             if existing_ids:
@@ -395,7 +488,7 @@ def select_node(state, config):
                 "category": best.get("category", best["id_str"].split(":")[0] if ":" in best["id_str"] else "General"),
                 "description": best.get("text", best.get("description", "")),
                 "justification": best.get("justification", ""),
-                "datasheet_text": "",
+                "datasheet_text": best.get("datasheet_snippet", ""),
                 "subsystem": sub.get("subsystem", ""),
                 "user_locked": is_user_part,
                 "footprint": best.get("footprint", ""),
@@ -442,50 +535,19 @@ def select_node(state, config):
             continue
         if c.get("id_str", "") in rejected_ids:
             continue
+        if _normalize_part_family(c.get("id_str", "")) in rejected_families:
+            continue
         if c.get("justification", "").startswith("Auto-added by validator"):
             selected.append(c)
             carried += 1
             _emit(config, "agent:log", {
                 "message": f"  Preserved {c['id_str']} (validator-added, carried forward)"
             })
-        elif c.get("subsystem", "") in research_names:
-            selected.append(c)
-            carried += 1
-            _emit(config, "agent:log", {
-                "message": f"  Preserved {c['id_str']} for '{c['subsystem']}' (reranker skipped, previous selection carried forward)"
-            })
     if carried:
         selected = _assign_ref_des(selected, subsystem_sheet_map)
         _emit(config, "agent:log", {"message": f"  Carried forward {carried} component(s)"})
 
-    # Dedup by subsystem label: if two non-passive components share the same
-    # subsystem (e.g., bare IC + module for same role across retry cycles),
-    # keep only the first one (which is the higher-ranked original pick).
-    # IMPORTANT: skip validator-added components — they are supporting ICs
-    # (USB-UART bridge, fuse, ESD diodes) that genuinely share the subsystem
-    # label with the main IC they support. Deduping them would remove valid
-    # connectivity (e.g., the USB bridge needed for ATmega USB communication).
-    seen_subs: dict[str, str] = {}
-    deduped_subs: list[dict] = []
-    for c in selected:
-        if c.get("justification", "").startswith("Auto-added by validator"):
-            deduped_subs.append(c)
-            continue
-        sub = c.get("subsystem", "")
-        if not sub:
-            deduped_subs.append(c)
-            continue
-        if sub in seen_subs:
-            _emit(config, "agent:log", {
-                "message": f"  Dedup: dropped {c['ref_des']} ({c.get('id_str', '?')}) — "
-                           f"subsystem '{sub}' already has {seen_subs[sub]}"
-            })
-            continue
-        seen_subs[sub] = f"{c['ref_des']} ({c.get('id_str', '?')})"
-        deduped_subs.append(c)
-    if len(deduped_subs) < len(selected):
-        selected = _assign_ref_des(deduped_subs, subsystem_sheet_map)
-        _emit(config, "agent:log", {"message": f"  After dedup: {len(selected)} component(s)"})
+    selected = _dedupe_selected_components(selected, subsystem_sheet_map, config)
 
     covered_prefixes_by_subsystem = {}
     for c in selected:
@@ -493,31 +555,13 @@ def select_node(state, config):
             prefix = ''.join(ch for ch in c.get("ref_des", "") if ch.isalpha())
             covered_prefixes_by_subsystem.setdefault(c["subsystem"], set()).add(prefix)
 
-    _emit(config, "agent:thinking", {"message": "Fetching datasheets for selected components..."})
     for s in selected:
-        id_str = s["id_str"]
         if s.get("datasheet_text"):
-            continue
-        url = ""
-        for sub in research:
-            for r in sub.get("results", []):
-                if r["id_str"] == id_str:
-                    url = r.get("datasheet", "")
-                    break
-            if url:
-                break
-        if url:
-            snippet = _sanitize_data(
-                extract_critical_specs(url),
-                label=f"datasheet:{s['id_str']}"
-            )
-            if snippet:
-                s["datasheet_text"] = snippet
-                _emit(config, "agent:log", {
-                    "message": f"  Fetched datasheet ({len(snippet)} chars) for {s['ref_des']} ({id_str})"
-                })
+            _emit(config, "agent:log", {
+                "message": f"  Datasheet info available for {s['ref_des']} ({s['id_str']})"
+            })
 
-    _emit(config, "agent:thinking", {"message": "Adding supporting components..."})
+    emit_thought(config, "Adding supporting components...")
     support_parts = []
     for s in selected:
         if s.get("user_locked"):
@@ -651,6 +695,7 @@ def select_node(state, config):
     if injected:
         selected.extend(injected)
         selected = _assign_ref_des(selected, subsystem_sheet_map)
+        selected = _dedupe_selected_components(selected, subsystem_sheet_map, config)
         _emit(config, "agent:log", {
             "message": f"  Injected {len(injected)} supporting components"
         })
@@ -724,6 +769,8 @@ def select_node(state, config):
     })
     part_names = [f'{s["ref_des"]}={s["id_str"].split(":")[-1]}' for s in selected if s.get("id_str")]
     emit_tool_event(config, "Component Selection", "completed", f"Selected {len(selected)} components")
+    emit_tool_end(config, sel_id, f"Selected {len(selected)} components across {len(research)} subsystem(s)",
+                   details=f"Components: {', '.join(part_names)}")
     emit_assistant_message(config, f"Selected {len(selected)} components: {', '.join(part_names)}.")
     return _stage_result(state, "select", {
         "selected_components": selected,

@@ -158,36 +158,22 @@ def generate_wires(ctx: Any) -> list[WireSegment]:
     for ref, (x, y, _rot) in comp_positions.items():
         bboxes.append((x - 5, y - 5, 10, 10))
 
-    for net in graph.nets.values():
-        net_pins = net.pins
-        if not net_pins:
-            continue
+    explicit_edges = list(getattr(graph, "llm_nets", []) or [])
+    if explicit_edges:
+        for conn in explicit_edges:
+            pk_a = conn.get("source", "")
+            pk_b = conn.get("target", "")
+            net_name = conn.get("net", "")
+            if not pk_a or not pk_b or not net_name:
+                continue
+            ref_a = pk_a.split(":")[0] if ":" in pk_a else ""
+            ref_b = pk_b.split(":")[0] if ":" in pk_b else ""
+            bid_a = comp_block.get(ref_a)
+            bid_b = comp_block.get(ref_b)
+            if not bid_a or not bid_b or bid_a == bid_b:
+                continue
 
-        net_name = net.name
-        is_power = str(net.role.value) in ("power", "ground") if hasattr(net.role, "value") else False
-
-        # Group pins by block
-        pins_by_block: dict[str, list[str]] = {}
-        for pk in net_pins:
-            ref = pk.split(":")[0] if ":" in pk else ""
-            bid = comp_block.get(ref)
-            if bid:
-                if bid not in pins_by_block:
-                    pins_by_block[bid] = []
-                pins_by_block[bid].append(pk)
-
-        if len(pins_by_block) < 2:
-            continue
-
-        # Generate wires between consecutive blocks
-        block_ids = list(pins_by_block.keys())
-        for i in range(len(block_ids) - 1):
-            bid_a = block_ids[i]
-            bid_b = block_ids[i + 1]
-            pk_a = pins_by_block[bid_a][0]
-            pk_b = pins_by_block[bid_b][0]
-
-            edge_key = (tuple(sorted([pk_a, pk_b])), net_name, "")
+            edge_key = (tuple(sorted([pk_a, pk_b])), net_name, "explicit")
             if edge_key in seen:
                 continue
             seen.add(edge_key)
@@ -197,6 +183,10 @@ def generate_wires(ctx: Any) -> list[WireSegment]:
             if pos_a is None or pos_b is None:
                 continue
 
+            net_node = graph.nets.get(net_name)
+            is_power = False
+            if net_node is not None and hasattr(net_node.role, "value"):
+                is_power = str(net_node.role.value) in ("power", "ground")
             src, bend, tgt = _choose_bend(pos_a, pos_b, is_power, bboxes)
             raw_points = [src, bend, tgt]
             points = _deduplicate_points(raw_points)
@@ -208,6 +198,57 @@ def generate_wires(ctx: Any) -> list[WireSegment]:
                 points=points,
                 width_mm=0.254,
             ))
+    else:
+        for net in graph.nets.values():
+            net_pins = net.pins
+            if not net_pins:
+                continue
+
+            net_name = net.name
+            is_power = str(net.role.value) in ("power", "ground") if hasattr(net.role, "value") else False
+
+            # Group pins by block
+            pins_by_block: dict[str, list[str]] = {}
+            for pk in net_pins:
+                ref = pk.split(":")[0] if ":" in pk else ""
+                bid = comp_block.get(ref)
+                if bid:
+                    if bid not in pins_by_block:
+                        pins_by_block[bid] = []
+                    pins_by_block[bid].append(pk)
+
+            if len(pins_by_block) < 2:
+                continue
+
+            # Fallback for legacy callers without explicit edge topology.
+            block_ids = list(pins_by_block.keys())
+            for i in range(len(block_ids) - 1):
+                bid_a = block_ids[i]
+                bid_b = block_ids[i + 1]
+                pk_a = pins_by_block[bid_a][0]
+                pk_b = pins_by_block[bid_b][0]
+
+                edge_key = (tuple(sorted([pk_a, pk_b])), net_name, "fallback")
+                if edge_key in seen:
+                    continue
+                seen.add(edge_key)
+
+                pos_a = _pin_sheet_position(ctx, pk_a)
+                pos_b = _pin_sheet_position(ctx, pk_b)
+                if pos_a is None or pos_b is None:
+                    continue
+
+                src, bend, tgt = _choose_bend(pos_a, pos_b, is_power, bboxes)
+                raw_points = [src, bend, tgt]
+                points = _deduplicate_points(raw_points)
+
+                new_wires.append(WireSegment(
+                    source=pk_a,
+                    target=pk_b,
+                    net=net_name,
+                    points=points,
+                    width_mm=0.254,
+                ))
 
     all_wires = existing_wires + new_wires
     ctx.wires = all_wires

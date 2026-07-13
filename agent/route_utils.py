@@ -52,6 +52,13 @@ def _route_after_erc(state, config=None) -> str:
         e.get("type") in fixable_types for e in errors
     )
     retries = state.get("_erc_retries", 0)
+    prev_error_count = state.get("_prev_erc_error_count", 999)
+    cur_error_count = len(errors)
+
+    # Break loop if no progress (errors not decreasing)
+    if cur_error_count >= prev_error_count and retries > 0:
+        return "ask_pcb_approval"
+
     if has_fixable and retries < 3:
         return "schematic_repair"
     return "ask_pcb_approval"

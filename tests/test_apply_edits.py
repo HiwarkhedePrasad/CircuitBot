@@ -31,6 +31,12 @@ def _make_test_model() -> BoardModel:
 
 # ── Validation tests ────────────────────────────────────────────────────────
 
+
+# Test helper: access the default session design
+def _td():
+    from server import session_manager
+    return session_manager.get_or_create("test").last_design
+
 def test_rejects_empty_events():
     events = []
     ok, data = _apply(events)
@@ -44,17 +50,17 @@ def test_rejects_non_array():
 
 
 def test_rejects_no_board_model():
-    """Without a board model in LAST_DESIGN, apply_edits should fail."""
-    from server import app, LAST_DESIGN, design_lock
+    """Without a board model in _td(), apply_edits should fail."""
+    from server import app, session_manager, design_lock
     with design_lock:
-        saved = LAST_DESIGN.get("board_model")
-        saved_components = LAST_DESIGN.get("selected_components")
-        LAST_DESIGN["board_model"] = None
-        LAST_DESIGN["selected_components"] = []
+        saved = _td().get("board_model")
+        saved_components = _td().get("selected_components")
+        _td()["board_model"] = None
+        _td()["selected_components"] = []
     try:
         with app.test_client() as client:
             resp = client.post(
-                "/api/apply_edits",
+                "/api/apply_edits?session_id=test",
                 data=json.dumps({"edit_events": [{
                     "pcb_edit_event_type": "edit_trace_hint",
                     "route": [{"x": 0, "y": 0}, {"x": 5, "y": 5}],
@@ -67,8 +73,8 @@ def test_rejects_no_board_model():
             assert "No board model or schematic design" in data.get("error", "")
     finally:
         with design_lock:
-            LAST_DESIGN["board_model"] = saved
-            LAST_DESIGN["selected_components"] = saved_components
+            _td()["board_model"] = saved
+            _td()["selected_components"] = saved_components
 
 
 def test_skips_in_progress_events():
@@ -445,22 +451,22 @@ def test_repeated_schematic_moves_do_not_accumulate_endpoint_drift():
 
 
 def test_mixed_schematic_and_pcb_events():
-    from server import app, LAST_DESIGN, design_lock
+    from server import app, session_manager, design_lock
     with design_lock:
         model = _make_test_model()
-        LAST_DESIGN["selected_components"] = [{"id_str": "Device:R", "ref_des": "R1"}]
-        LAST_DESIGN["board_model"] = model.to_dict()
-        LAST_DESIGN["pin_matrix"] = {
+        _td()["selected_components"] = [{"id_str": "Device:R", "ref_des": "R1"}]
+        _td()["board_model"] = model.to_dict()
+        _td()["pin_matrix"] = {
             "R1:1": {"x": -1, "y": 0, "ref_des": "R1", "pin_num": "1"},
             "R1:2": {"x": 1, "y": 0, "ref_des": "R1", "pin_num": "2"},
         }
-        LAST_DESIGN["netlist"] = [{"source": "R1:1", "target": "R1:2", "net": "GND"}]
-        LAST_DESIGN["wire_paths"] = []
-        LAST_DESIGN["component_placements"] = [{"ref_des": "R1", "x": 0, "y": 0}]
+        _td()["netlist"] = [{"source": "R1:1", "target": "R1:2", "net": "GND"}]
+        _td()["wire_paths"] = []
+        _td()["component_placements"] = [{"ref_des": "R1", "x": 0, "y": 0}]
 
     with app.test_client() as client:
         resp = client.post(
-            "/api/apply_edits",
+            "/api/apply_edits?session_id=test",
             data=json.dumps({"edit_events": [
                 {
                     "pcb_edit_event_type": "edit_trace_hint",
@@ -485,13 +491,13 @@ def test_mixed_schematic_and_pcb_events():
 
 
 def test_save_layout_accepts_manual_wire_without_final_design():
-    from server import app, LAST_DESIGN, design_lock
+    from server import app, session_manager, design_lock
     with design_lock:
-        LAST_DESIGN.clear()
+        _td().clear()
 
     with app.test_client() as client:
         resp = client.post(
-            "/api/save_layout",
+            "/api/save_layout?session_id=test",
             data=json.dumps({
                 "placements": [{"ref_des": "R1", "x": 0, "y": 0}],
                 "wire_paths": [{
@@ -508,7 +514,7 @@ def test_save_layout_accepts_manual_wire_without_final_design():
     assert resp.status_code == 200
     assert data["ok"] is True
     with design_lock:
-        assert LAST_DESIGN["wire_paths"][0]["wire_id"] == "local_wire"
+        assert _td()["wire_paths"][0]["wire_id"] == "local_wire"
 
 
 # ── Fixture helpers (must be imported after server) ──────────────────────────
@@ -519,19 +525,19 @@ _events_pending = []
 def _apply(edit_events):
     """Call /api/apply_edits logic directly.
 
-    Sets up a test BoardModel in LAST_DESIGN, invokes the handler,
+    Sets up a test BoardModel in _td(), invokes the handler,
     and returns (ok, response_data).
     """
-    from server import app, LAST_DESIGN, design_lock
+    from server import app, session_manager, design_lock
 
     with design_lock:
         model = _make_test_model()
-        LAST_DESIGN["selected_components"] = [{"id_str": "Device:R", "ref_des": "R1"}]
-        LAST_DESIGN["board_model"] = model.to_dict()
+        _td()["selected_components"] = [{"id_str": "Device:R", "ref_des": "R1"}]
+        _td()["board_model"] = model.to_dict()
 
     with app.test_client() as client:
         resp = client.post(
-            "/api/apply_edits",
+            "/api/apply_edits?session_id=test",
             data=json.dumps({"edit_events": edit_events}),
             content_type="application/json",
         )
@@ -541,22 +547,22 @@ def _apply(edit_events):
 
 
 def _apply_schematic(edit_events, existing_wires=None, placements=None):
-    from server import app, LAST_DESIGN, design_lock
+    from server import app, session_manager, design_lock
 
     with design_lock:
-        LAST_DESIGN["selected_components"] = [{"id_str": "Device:R", "ref_des": "R1"}]
-        LAST_DESIGN["board_model"] = None
-        LAST_DESIGN["pin_matrix"] = {
+        _td()["selected_components"] = [{"id_str": "Device:R", "ref_des": "R1"}]
+        _td()["board_model"] = None
+        _td()["pin_matrix"] = {
             "R1:1": {"x": -1, "y": 0, "ref_des": "R1", "pin_num": "1"},
             "R1:2": {"x": 1, "y": 0, "ref_des": "R1", "pin_num": "2"},
         }
-        LAST_DESIGN["netlist"] = [{"source": "R1:1", "target": "R1:2", "net": "GND"}]
-        LAST_DESIGN["wire_paths"] = list(existing_wires or [])
-        LAST_DESIGN["component_placements"] = list(placements or [{"ref_des": "R1", "x": 0, "y": 0}])
+        _td()["netlist"] = [{"source": "R1:1", "target": "R1:2", "net": "GND"}]
+        _td()["wire_paths"] = list(existing_wires or [])
+        _td()["component_placements"] = list(placements or [{"ref_des": "R1", "x": 0, "y": 0}])
 
     with app.test_client() as client:
         resp = client.post(
-            "/api/apply_edits",
+            "/api/apply_edits?session_id=test",
             data=json.dumps({"edit_events": edit_events}),
             content_type="application/json",
         )

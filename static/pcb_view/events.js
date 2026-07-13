@@ -339,6 +339,7 @@ function pcbHandleMouseDown(event) {
         activeSocket.emit('chat:commit_proposal', {
             session_id: window.circuitbotChatSessionId || null,
             id: pcbState.ghostProposal.id, 
+            component: pcbState.ghostProposal.component,
             x: finalWorld.x, 
             y: finalWorld.y 
         });

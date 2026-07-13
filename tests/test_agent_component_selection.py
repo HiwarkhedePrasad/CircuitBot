@@ -2,10 +2,15 @@ from agent.nodes.analyze import _apply_user_part_intent
 from agent.nodes.select import (
     _filter_candidates_by_expected_type,
     _normalize_part_family,
+    select_node,
 )
 from agent.nodes.validate import _check_prompt_integrity
 from agent.nodes.validate import validate_node
 from agent.nodes.validate_repair import _filter_repair_candidates
+
+
+def _cfg():
+    return {"configurable": {"emit": None}}
 
 
 def test_analyze_preserves_user_named_sensor_part():
@@ -90,3 +95,161 @@ def test_validate_reports_missing_library_after_max_retries(monkeypatch):
         {"configurable": {"emit": None}},
     )
     assert "No compatible component found in the available library" in result["_validation_error_detail"]
+
+
+def test_select_does_not_carry_forward_stale_primary_component(monkeypatch):
+    monkeypatch.setattr(
+        "agent.nodes.select.rank_candidates",
+        lambda *args, **kwargs: [{
+            "id_str": "MCU_ST_STM32:STM32F103C8Tx",
+            "category": "MCU",
+            "text": "STM32 MCU",
+            "footprint": "",
+            "pads": [],
+            "score": 5.0,
+            "justification": "better match",
+        }],
+    )
+    monkeypatch.setattr("agent.nodes.select.fetch_footprint", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("agent.nodes.select.get_supporting_components", lambda *_args, **_kwargs: [])
+
+    state = {
+        "prompt": "Use an STM32 microcontroller",
+        "retry_count": 0,
+        "research_results": [{
+            "subsystem": "MCU",
+            "function": "Main controller",
+            "results": [{
+                "id_str": "MCU_ST_STM32:STM32F103C8Tx",
+                "category": "MCU",
+                "text": "STM32 MCU",
+                "footprint": "",
+                "pads": [],
+            }],
+        }],
+        "selected_components": [{
+            "id_str": "MCU_Module:ESP32-WROOM-32",
+            "ref_des": "U1",
+            "category": "MCU",
+            "description": "stale previous pick",
+            "subsystem": "MCU",
+            "justification": "",
+            "datasheet_text": "",
+        }],
+    }
+
+    result = select_node(state, _cfg())
+    ids = [c["id_str"] for c in result["selected_components"]]
+    assert ids == ["MCU_ST_STM32:STM32F103C8Tx"]
+
+
+def test_select_keeps_validator_added_support_component(monkeypatch):
+    monkeypatch.setattr(
+        "agent.nodes.select.rank_candidates",
+        lambda *args, **kwargs: [{
+            "id_str": "MCU_ST_STM32:STM32F103C8Tx",
+            "category": "MCU",
+            "text": "STM32 MCU",
+            "footprint": "",
+            "pads": [],
+            "score": 5.0,
+            "justification": "better match",
+        }],
+    )
+    monkeypatch.setattr("agent.nodes.select.fetch_footprint", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("agent.nodes.select.get_supporting_components", lambda *_args, **_kwargs: [])
+
+    state = {
+        "prompt": "Use an STM32 microcontroller with USB",
+        "retry_count": 0,
+        "research_results": [{
+            "subsystem": "MCU",
+            "function": "Main controller",
+            "results": [{
+                "id_str": "MCU_ST_STM32:STM32F103C8Tx",
+                "category": "MCU",
+                "text": "STM32 MCU",
+                "footprint": "",
+                "pads": [],
+            }],
+        }],
+        "selected_components": [{
+            "id_str": "Interface_USB:CP2102N",
+            "ref_des": "U2",
+            "category": "Interface_USB",
+            "description": "USB UART bridge",
+            "subsystem": "MCU",
+            "justification": "Auto-added by validator: USB bridge required",
+            "datasheet_text": "",
+        }],
+    }
+
+    result = select_node(state, _cfg())
+    ids = {c["id_str"] for c in result["selected_components"]}
+    assert ids == {"MCU_ST_STM32:STM32F103C8Tx", "Interface_USB:CP2102N"}
+
+
+def test_select_dedupes_duplicate_support_injection(monkeypatch):
+    monkeypatch.setattr(
+        "agent.nodes.select.rank_candidates",
+        lambda *args, **kwargs: [{
+            "id_str": "MCU_ST_STM32:STM32F103C8Tx",
+            "category": "MCU",
+            "text": "STM32 MCU",
+            "footprint": "",
+            "pads": [],
+            "score": 5.0,
+            "justification": "better match",
+        }],
+    )
+    monkeypatch.setattr("agent.nodes.select.fetch_footprint", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        "agent.nodes.select.get_supporting_components",
+        lambda *_args, **_kwargs: [
+            {
+                "search_query": "0.1uF capacitor",
+                "preferred_id_str": "Device:C_Small",
+                "library_filter": "Device",
+                "ref_des_prefix": "C",
+                "description": "Decoupling capacitor",
+            },
+            {
+                "search_query": "0.1uF capacitor",
+                "preferred_id_str": "Device:C_Small",
+                "library_filter": "Device",
+                "ref_des_prefix": "C",
+                "description": "Decoupling capacitor",
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "agent.nodes.select.search_components",
+        lambda *args, **kwargs: [{
+            "id_str": "Device:C_Small",
+            "category": "Device",
+            "text": "Capacitor",
+            "footprint": "",
+            "pads": [],
+        }],
+    )
+
+    state = {
+        "prompt": "Use a microcontroller with decoupling",
+        "retry_count": 0,
+        "research_results": [{
+            "subsystem": "MCU",
+            "function": "Main controller",
+            "results": [{
+                "id_str": "MCU_ST_STM32:STM32F103C8Tx",
+                "category": "MCU",
+                "text": "STM32 MCU",
+                "footprint": "",
+                "pads": [],
+            }],
+        }],
+        "selected_components": [],
+    }
+
+    result = select_node(state, _cfg())
+    ids = [c["id_str"] for c in result["selected_components"]]
+    assert ids.count("Device:C_Small") == 1

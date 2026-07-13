@@ -1,15 +1,19 @@
 from agent.tools import fetch_sexpr, search_components
-from agent.utils import _emit, _parse_sexpr_to_ops, _extract_pins_from_ops
+from agent.utils import _emit, _parse_sexpr_to_ops, _extract_pins_from_ops, emit_thought, emit_tool_call, emit_tool_end, emit_step
+from uuid import uuid4
 
 
 def dispatch_node(state, config):
+    dispatch_id = uuid4().hex[:8]
+    emit_tool_call(config, dispatch_id, "Symbol Dispatch", "running")
+    emit_thought(config, "Loading symbols for all selected components...")
     pin_matrix = {}
     component_ops = {}
     skipped_refs = []
     for comp in state.get("selected_components", []):
         id_str = comp["id_str"]
         ref_des = comp["ref_des"]
-        _emit(config, "agent:thinking", {"message": f"Loading {ref_des} ({id_str})..."})
+        emit_step(config, dispatch_id, f"Loading {ref_des}...", "running")
         ops = []
         try:
             sexpr = fetch_sexpr(id_str)
@@ -34,7 +38,7 @@ def dispatch_node(state, config):
             skipped_refs.append({"ref_des": ref_des, "id_str": id_str})
             fp = comp.get("footprint", "") or "no footprint"
             _emit(config, "agent:log", {
-                "message": f"  ⚠ SKIPPED {ref_des} ({id_str}): no symbol found — "
+                "message": f"  \u26a0 SKIPPED {ref_des} ({id_str}): no symbol found — "
                            f"footprint={fp}. This component MISSING from PCB."
             })
             continue
@@ -59,7 +63,7 @@ def dispatch_node(state, config):
     if skipped_refs:
         skipped_msg = ", ".join(f"{s['ref_des']} ({s['id_str']})" for s in skipped_refs)
         _emit(config, "agent:log", {
-            "message": f"  ⚠ WARNING: {len(skipped_refs)} component(s) could not be loaded "
+            "message": f"  \u26a0 WARNING: {len(skipped_refs)} component(s) could not be loaded "
                        f"and will be ABSENT from the design: {skipped_msg}"
         })
 
@@ -70,16 +74,21 @@ def dispatch_node(state, config):
     if validated_count and final_count != validated_count:
         diff = final_count - validated_count
         _emit(config, "agent:log", {
-            "message": f"  ⚠ NETLIST FREEZE: {validated_count} components validated → "
+            "message": f"  \u26a0 NETLIST FREEZE: {validated_count} components validated → "
                        f"{final_count} dispatched ({diff:+d}) — "
                        f"{'extra' if diff > 0 else 'missing'} component(s) in layout"
         })
+
+    loaded = len(component_ops)
+    skipped = len(skipped_refs)
+    emit_step(config, dispatch_id, f"Loaded {loaded} symbols{' (' + str(skipped) + ' skipped)' if skipped else ''}", "completed")
+    emit_tool_end(config, dispatch_id, f"Dispatched {loaded} component symbols" + (f", {skipped} skipped" if skipped else ""),
+                   status="completed" if not skipped else "failed")
     result = {
         "pin_matrix": pin_matrix,
         "component_ops": component_ops,
         "retry_count": 0,
         "validation_errors": [],
-        "rejected_ids": [],
     }
     if skipped_refs:
         result["_skipped_components"] = skipped_refs

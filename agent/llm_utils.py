@@ -88,7 +88,7 @@ def _is_connection_error(e: Exception) -> bool:
     return False
 
 
-def _retry_llm_call(system: str, user: str, stage: str = "") -> str:
+def _retry_llm_call(system: str, user: str, stage: str = "", tools: list[dict] | None = None) -> str:
     global _LAST_429_TIME
     t0 = time.time()
     for attempt in range(MAX_LLM_RETRIES):
@@ -100,7 +100,7 @@ def _retry_llm_call(system: str, user: str, stage: str = "") -> str:
             )
         try:
             _rate_limit()
-            result = llm_call(system, user)
+            result = llm_call(system, user, tools=tools)
             _record_call()
             prefix = f" ({stage})" if stage else ""
             snippet = result[:300].replace('\n', ' ')
@@ -131,8 +131,8 @@ def _retry_llm_call(system: str, user: str, stage: str = "") -> str:
     raise AgentLLMError(f"LLM call failed after {MAX_LLM_RETRIES} retries{': ' + stage if stage else ''}")
 
 
-def _call_llm(system: str, user: str, stage: str = "", retries: int = MAX_LLM_RETRIES) -> str:
-    return _retry_llm_call(system, user, stage)
+def _call_llm(system: str, user: str, stage: str = "", retries: int = MAX_LLM_RETRIES, tools: list[dict] | None = None) -> str:
+    return _retry_llm_call(system, user, stage, tools=tools)
 
 
 def _call_llm_with_tools(system: str, user: str, max_tool_rounds: int = 2) -> str:

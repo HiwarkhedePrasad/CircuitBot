@@ -1,7 +1,8 @@
 """Placement node — runs component placement ONCE and locks."""
 
 from agent.placement import PlacementEngine
-from agent.utils import _emit, emit_assistant_message, emit_tool_event
+from agent.utils import _emit, emit_assistant_message, emit_tool_event, emit_thought, emit_tool_call, emit_tool_end
+from uuid import uuid4
 
 
 def placement_node(state, config):
@@ -17,7 +18,9 @@ def placement_node(state, config):
         emit_tool_event(config, "Placement", "failed", "No components to place.")
         return {}
 
-    _emit(config, "agent:thinking", {"message": "Placing components on the schematic sheet..."})
+    place_id = uuid4().hex[:8]
+    emit_tool_call(config, place_id, "Schematic Placement", "running")
+    emit_thought(config, "Placing components on the schematic sheet...")
     emit_assistant_message(config, "Running schematic placement...")
     emit_tool_event(config, "Placement", "running", "Placing components...")
 
@@ -45,6 +48,7 @@ def placement_node(state, config):
 
     emit_tool_event(config, "Placement", "completed",
                     f"Placed {len(placements)} components")
+    emit_tool_end(config, place_id, f"Placed {len(placements)} components")
     emit_assistant_message(config, f"Placement complete — {len(placements)} components placed.")
 
     return {

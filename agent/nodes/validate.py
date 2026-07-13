@@ -7,8 +7,9 @@ from agent.prompts import VALIDATE_SYSTEM, VALIDATE_USER
 from agent.tools import search_components
 from agent.utils import (
     _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result, _call_llm, _clean_json, _ref_prefix_for,
-    MAX_VALIDATION_RETRIES,
+    MAX_VALIDATION_RETRIES, emit_thought, emit_tool_call, emit_tool_end, emit_step,
 )
+from uuid import uuid4
 
 _KNOWN_SYMBOLS = frozenset([
     "Device:R_Small", "Device:C_Small", "Device:LED", "Device:L_Small",
@@ -441,7 +442,9 @@ def _enforce_redundancy_removal(
 
 
 def validate_node(state, config):
-    _emit(config, "agent:thinking", {"message": "Validating component selections..."})
+    val_id = uuid4().hex[:8]
+    emit_tool_call(config, val_id, "Validation", "running")
+    emit_thought(config, "Validating component selections...")
     emit_assistant_message(config, "Checking the selected components for electrical and functional issues...")
     emit_tool_event(config, "Validation", "running", "Checking component selections...")
     contract = _check_stage_contract("validate", state, ["selected_components", "analysis", "prompt"])
@@ -462,6 +465,7 @@ def validate_node(state, config):
 
     # Deterministic prompt-integrity pre-check runs BEFORE the LLM validation
     # so that part-family mismatches are caught even if the LLM hallucinates.
+    emit_step(config, val_id, "Checking prompt integrity and module preferences...", "running")
     integrity_errors = _check_prompt_integrity(prompt, comps)
     if integrity_errors:
         _emit(config, "agent:log", {
@@ -544,6 +548,7 @@ def validate_node(state, config):
         for c in comps
     )
 
+    emit_step(config, val_id, "Running LLM validation...", "running")
     llm_failed = False
     try:
         text = _call_llm(VALIDATE_SYSTEM, VALIDATE_USER.format(
@@ -589,6 +594,8 @@ def validate_node(state, config):
     missing = result.get("missing_components", [])
     errors = [i for i in issues if i.get("severity") == "error"]
     warnings = [i for i in issues if i.get("severity") == "warning"]
+
+    emit_step(config, val_id, "Post-processing and applying corrections...", "running")
 
     # ── Post-LLM redundancy enforcement ──
     # The LLM may flag components as "redundant" (e.g. external crystal + load
@@ -663,6 +670,7 @@ def validate_node(state, config):
                     "reason": issue.get("message", ""),
                     "suggestion": issue.get("suggestion", ""),
                 })
+                emit_tool_end(config, val_id, f"Validation failed — {issue.get('message', '')}", status="failed")
                 return _stage_result(state, "validate", {
                     "selected_components": comps,
                     "validation_errors": [issue.get("message", "")],
@@ -680,7 +688,7 @@ def validate_node(state, config):
         emit_tool_event(config, "Validation", "running", f"Warning: {w.get('message', '')}")
     corrections = []
     if missing:
-        _emit(config, "agent:thinking", {"message": f"Searching for {len(missing)} missing component(s)..."})
+        emit_thought(config, f"Searching for {len(missing)} missing component(s)...")
         for mc in missing:
             query = mc.get("suggested_query", mc.get("description", ""))
             try:
@@ -866,4 +874,7 @@ def validate_node(state, config):
             result["_validation_error_detail"] = (
                 f"Validation failed after {MAX_VALIDATION_RETRIES} retries: {error_msgs}"
             )
+    status = "failed" if validation_errors else "completed"
+    emit_tool_end(config, val_id, f"Validation {status} — {len(comps)} components, {len(validation_errors)} error(s), {len(warnings)} warning(s)",
+                   status=status)
     return _stage_result(state, "validate", result)

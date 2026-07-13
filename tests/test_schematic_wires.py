@@ -1,7 +1,7 @@
 """Tests for wire generation, labels, beautification, and export."""
 
 from agent.schematic.schematic_types import (
-    LayoutContext, WireSegment, SchematicOutput,
+    BlockGraph, FunctionalBlock, LayoutContext, WireSegment, SchematicOutput,
 )
 from agent.schematic.wires import generate_wires, _choose_bend, _pin_sheet_position
 from agent.schematic.labels import place_labels
@@ -115,6 +115,49 @@ class TestWires:
     def test_choose_bend_straight_line(self):
         s, b, t = _choose_bend((0, 0), (100, 0))
         assert b == (0, 0)
+
+    def test_generate_wires_uses_explicit_llm_edges(self):
+        g = SynthesisGraph()
+        for ref, id_str, category in [
+            ("U1", "MCU_ESP32:ESP32", "Microcontroller"),
+            ("R1", "Device:R", "Resistor"),
+            ("D1", "Device:LED", "LED"),
+        ]:
+            g.add_component({"ref_des": ref, "id_str": id_str, "category": category})
+        for ref, pin_key, pin_data in [
+            ("U1", "U1:1", {"name": "GPIO2", "etype": "output"}),
+            ("R1", "R1:1", {"name": "~", "etype": "passive"}),
+            ("R1", "R1:2", {"name": "~", "etype": "passive"}),
+            ("D1", "D1:1", {"name": "A", "etype": "passive"}),
+        ]:
+            g.add_pin(ref, pin_key, pin_data)
+        classify_all(g)
+        g.import_llm_nets([
+            {"source": "U1:1", "target": "R1:1", "net": "LED_DRV"},
+            {"source": "R1:2", "target": "D1:1", "net": "LED_DRV"},
+        ])
+
+        bg = BlockGraph()
+        for block_id, ref in [("b1", "U1"), ("b2", "R1"), ("b3", "D1")]:
+            block = FunctionalBlock(id=block_id, name=block_id)
+            block.component_refs.add(ref)
+            bg.add_block(block)
+
+        ctx = LayoutContext()
+        ctx.synthesis_graph = g
+        ctx.block_graph = bg
+        ctx.metadata = {
+            "component_positions": {
+                "U1": (0.0, 0.0, 0.0),
+                "R1": (20.0, 0.0, 0.0),
+                "D1": (40.0, 0.0, 0.0),
+            },
+            "intra_block_wires": [],
+        }
+
+        wires = generate_wires(ctx)
+        pairs = {(w.source, w.target) for w in wires}
+        assert pairs == {("U1:1", "R1:1"), ("R1:2", "D1:1")}
 
 
 # ── Labels ──────────────────────────────────────────────────────────────────

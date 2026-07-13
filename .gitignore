@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.egg-info/
 .eggs/
-.venv/
+.venv*/
 venv/
 env/
 ENV/
@@ -73,6 +73,9 @@ static/tscircuit-viewer.min.js
 *.kicad_pcb
 *.kicad_sch
 ~*.kicad_sch.lck
+
+# Diff / patch files
+*.diff
 
 # Debug scripts
 debug_*.py

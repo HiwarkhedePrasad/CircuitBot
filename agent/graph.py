@@ -10,6 +10,7 @@ from agent.nodes import (
     placement_node, routing_node, pcb_layout_node,
     schematic_audit_node, ask_pcb_approval_node,
     ask_validation_help_node,
+    datasheet_search_node, connection_search_node,
 )
 from agent.utils import (
     MAX_LLM_RETRIES, MAX_VALIDATION_RETRIES, MAX_BATCH_PINS,
@@ -33,6 +34,7 @@ __all__ = [
     "dispatch_node", "netlist_node",
     "placement_node", "routing_node", "pcb_layout_node",
     "ask_validation_help_node",
+    "datasheet_search_node", "connection_search_node",
     "MAX_LLM_RETRIES", "MAX_VALIDATION_RETRIES", "MAX_BATCH_PINS",
     "GND_NET_NAMES", "POWER_NET_NAMES", "POWER_ETYPES",
     "AgentLLMError",

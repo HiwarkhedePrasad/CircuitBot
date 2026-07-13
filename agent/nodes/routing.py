@@ -8,7 +8,8 @@ from agent.placement.blocks_v2 import _prepare_components, _get_comp_ref
 from agent.routing import route_traces, _snap
 from agent.routing.api import repair_placement_for_routing
 from agent.validation import ValidationIssue
-from agent.utils import _emit, emit_assistant_message, emit_tool_event
+from agent.utils import _emit, emit_assistant_message, emit_tool_event, emit_thought, emit_tool_call, emit_tool_end, emit_step
+from uuid import uuid4
 
 
 def _find_attachment_buddy(pin: str, net_name: str,
@@ -73,7 +74,9 @@ def routing_node(state, config):
         emit_tool_event(config, "Routing", "failed", "No components to route.")
         return {}
 
-    _emit(config, "agent:thinking", {"message": "Routing wires on the schematic..."})
+    route_id = uuid4().hex[:8]
+    emit_tool_call(config, route_id, "Wire Routing", "running")
+    emit_thought(config, "Routing wires on the schematic...")
     msg = "Re-routing with ERC repair connections..." if erc_pending else "Routing wires..."
     emit_assistant_message(config, msg)
     emit_tool_event(config, "Routing", "running",
@@ -108,6 +111,7 @@ def routing_node(state, config):
             c["rotation"] = match.get("rotation", 0)
 
     # ── 2. Merge ERC pending connections into netlist ───────────────
+    emit_step(config, route_id, "Merging ERC connections..." if erc_pending else "Building netlist...", "running")
     working_netlist = list(netlist)
     if erc_pending:
         for req in erc_pending:
@@ -191,8 +195,10 @@ def routing_node(state, config):
         targeted_netlist = working_netlist
 
     # ── 5. Route traces ─────────────────────────────────────────────
+    emit_step(config, route_id, "Routing wires...", "running")
     route_netlist = targeted_netlist if preserve_existing else working_netlist
-    raw_traces, dropped_pairs = route_traces(components, route_netlist, pin_matrix)
+    raw_traces, dropped_pairs = route_traces(components, route_netlist, pin_matrix,
+                                             erc_retries=erc_retries)
 
     if dropped_pairs:
         for src_ref, tgt_ref in dropped_pairs:
@@ -217,11 +223,12 @@ def routing_node(state, config):
                    (c["target"].split(":")[0], c["source"].split(":")[0]) in
                    [(a, b) for a, b in dropped_pairs]
             ]
-            retry_traces, n_retry_dropped = route_traces(components, dropped_netlist, pin_matrix)
+            retry_traces, n_retry_dropped = route_traces(components, dropped_netlist, pin_matrix,
+                                                         erc_retries=erc_retries)
             placements = [{"ref_des": c["ref_des"], "x": c["x"], "y": c["y"],
                            "rotation": c.get("rotation", 0.0)} for c in components]
 
-    MAX_WIRE_LEN = 300.0
+    MAX_WIRE_LEN = 300.0 * (1 + erc_retries * 0.5)
     clean_traces = list(preserved) if preserve_existing else []
     n_dropped = 0
     n_len_dropped = 0
@@ -329,6 +336,8 @@ def routing_node(state, config):
     suffix = " (ERC repair re-route)" if erc_pending else ""
     emit_tool_event(config, "Routing", "completed",
                     f"{len(clean_traces)} wires routed{suffix}")
+    emit_tool_end(config, route_id, f"Routed {len(clean_traces)} wires{suffix}",
+                   status="completed" if n_dropped == 0 else "failed")
     emit_assistant_message(
         config,
         f"Routing complete — {len(clean_traces)} wires drawn{suffix}."
@@ -345,5 +354,8 @@ def routing_node(state, config):
     if state.get("_erc_results"):
         result["_erc_retries"] = erc_retries + 1
         result["_erc_pending_connections"] = []
+        # Save error count for no-progress detection in _route_after_erc
+        erc_errors = state["_erc_results"].get("errors", [])
+        result["_prev_erc_error_count"] = len(erc_errors)
 
     return result

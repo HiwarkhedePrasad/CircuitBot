@@ -43,7 +43,7 @@ def validate_circuit(graph: SynthesisGraph) -> list[ValidationIssue]:
     # 2. Every power pin should connect to a power net
     for comp in graph.components.values():
         for pin_key, pin in comp.pins.items():
-            if pin.role not in (PinRole.POWER_IN, PinRole.POWER_OUT):
+            if pin.role not in (PinRole.POWER_IN, PinRole.POWER_OUT, PinRole.VIN, PinRole.VOUT):
                 continue
             on_power = any(
                 pin_key in net.pins and net.role == NetRole.POWER

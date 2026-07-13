@@ -38,6 +38,8 @@ def research_node(state, config):
             _emit(config, "agent:log", {
                 "message": f"  User-specified parts: found {len(results)} candidates"
             })
+
+    # Phase 1: KiCad RAG search (existing)
     for sub in analysis:
         name = sub.get("subsystem", sub if isinstance(sub, str) else "unknown")
         examples = sub.get("example_components", [])
@@ -70,7 +72,39 @@ def research_node(state, config):
         _emit(config, "agent:log", {
             "message": f"  {name}: found {len(deduped)} candidates"
         })
+
+    # Phase 1: Web research via DeepSearch (enhanced with live web data)
+    _emit(config, "agent:thinking", {"message": "Searching web for component intelligence..."})
+    emit_tool_event(config, "Web Component Research", "running", "Searching web for each subsystem...")
+    web_results = []
+    for sub in analysis:
+        name = sub.get("subsystem", "?")
+        function = sub.get("function", "")
+        examples = sub.get("example_components", [])
+        try:
+            from agent.deep_search import deep_search
+            summary = deep_search(
+                f"Research electronic components for subsystem: {name}. "
+                f"Function: {function}. "
+                f"Example components: {examples}. "
+                f"Return: recommended component types, popular part numbers, "
+                f"typical specifications, and any design considerations.",
+                config=config,
+            )
+            web_results.append({
+                "subsystem": name,
+                "summary": summary,
+            })
+            _emit(config, "agent:log", {"message": f"  Web research for '{name}': complete"})
+        except Exception as e:
+            _emit(config, "agent:log", {"message": f"  Web research for '{name}' failed: {e}"})
+            web_results.append({
+                "subsystem": name,
+                "summary": f"(Web research failed: {e})",
+            })
+
     total = sum(len(r.get("results", [])) for r in all_results)
-    emit_tool_event(config, "Component Research", "completed", f"Found {total} candidates across {len(analysis)} subsystems")
-    emit_assistant_message(config, f"Found {total} component candidates across {len(analysis)} subsystems.")
-    return {"research_results": all_results}
+    emit_tool_event(config, "Web Component Research", "completed", f"Researched {len(web_results)} subsystems on the web")
+    emit_tool_event(config, "Component Research", "completed", f"Found {total} RAG candidates + {len(web_results)} web summaries across {len(analysis)} subsystems")
+    emit_assistant_message(config, f"Found {total} component candidates across {len(analysis)} subsystems, plus web research data.")
+    return {"research_results": all_results, "web_research_results": web_results}

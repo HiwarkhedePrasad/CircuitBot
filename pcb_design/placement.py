@@ -593,11 +593,14 @@ def _weighted_hpwl(pos: dict[str, tuple[float, float]],
 
 
 def _pin_hpwl(pos: dict[str, tuple[float, float]],
-              netlist: list[dict], pin_matrix: dict) -> tuple[float, float, float]:
+              netlist: list[dict], pin_matrix: dict,
+              bbox_map: dict | None = None) -> tuple[float, float, float]:
     """Compute pin-level HPWL, overlap count, and crossings estimate.
 
     Returns (hpwl, overlap_count, crossing_estimate).
     """
+    if bbox_map is None:
+        bbox_map = {}
     hpwl = 0.0
     crossings = 0
     segments: list[tuple[float, float, float, float, float]] = []
@@ -630,8 +633,8 @@ def _pin_hpwl(pos: dict[str, tuple[float, float]],
             if _segments_intersect(x1, y1, x2, y2, x3, y3, x4, y4):
                 crossings += 1
 
-    # Overlap count
-    overlaps = _count_overlaps(pos, {})
+    # Overlap count — use actual bounding boxes, not defaults
+    overlaps = _count_overlaps(pos, bbox_map)
     return hpwl, overlaps, crossings
 
 
@@ -809,7 +812,7 @@ def _optimize_hpwl(pos: dict[str, tuple[float, float]],
         return pos
 
     for _ in range(PIN_REFINE_ITERATIONS):
-        before = _pin_hpwl(pos, netlist, pin_matrix)
+        before = _pin_hpwl(pos, netlist, pin_matrix, bbox_map)
         if before[0] < 0.01:
             break
 
@@ -823,7 +826,7 @@ def _optimize_hpwl(pos: dict[str, tuple[float, float]],
                              (0.5, 0.5), (-0.5, 0.5), (0.5, -0.5), (-0.5, -0.5)]:
                 saved = pos[ref]
                 pos[ref] = (saved[0] + ndx * 0.25, saved[1] + ndy * 0.25)
-                hpwl, overlaps, crossings = _pin_hpwl(pos, netlist, pin_matrix)
+                hpwl, overlaps, crossings = _pin_hpwl(pos, netlist, pin_matrix, bbox_map)
                 xs = [pos[r][0] for r in pos]
                 ys = [pos[r][1] for r in pos]
                 area = (max(xs) - min(xs)) * (max(ys) - min(ys)) if xs else 0
@@ -846,7 +849,7 @@ def _optimize_hpwl(pos: dict[str, tuple[float, float]],
                     new_y = old[1] + (new_y - old[1]) * ratio
                 pos[ref] = (new_x, new_y)
 
-        after = _pin_hpwl(pos, netlist, pin_matrix)
+        after = _pin_hpwl(pos, netlist, pin_matrix, bbox_map)
         if abs(before[0] - after[0]) < 0.01:
             break
 

@@ -8,23 +8,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- SVG sprite for avatars -->
+    <!-- SVG sprite -->
     <svg style="display:none">
-        <symbol id="icon-bot" viewBox="0 0 24 24">
-            <rect x="5" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
-            <circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.5"/>
-            <line x1="9" y1="3" x2="9" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="12" y1="3" x2="12" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="15" y1="3" x2="15" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="9" y1="21" x2="9" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="12" y1="21" x2="12" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="15" y1="21" x2="15" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="3" y1="9" x2="5" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="3" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="3" y1="15" x2="5" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="21" y1="9" x2="19" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="21" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="21" y1="15" x2="19" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <symbol id="icon-bot" viewBox="0 0 20 20" fill="none">
+            <path d="M10 2L12.5 7.5L18 10L12.5 12.5L10 18L7.5 12.5L2 10L7.5 7.5L10 2Z" fill="currentColor" opacity="0.6"/>
         </symbol>
     </svg>
     <div class="eda-app">
@@ -38,6 +25,10 @@
             <div class="toolbar">
                 <button id="addBtn" class="tool-btn" title="Add Selected Component to Schematic" disabled>
                     <span class="icon">+</span> Add Component
+                </button>
+                <div class="divider"></div>
+                <button id="schematicModeBtn" class="tool-btn" title="Toggle between Wire and Net Label mode [L/W]">
+                    <span class="icon">🏷</span> Net Labels
                 </button>
                 <div class="divider"></div>
                 <button id="exportSchBtn" class="tool-btn highlight" title="Export as KiCad .kicad_sch" disabled>
@@ -199,51 +190,34 @@
                 <div class="panel-section agent-section">
                     <div class="panel-header">
                         <span class="panel-title">AI Design Co-Pilot</span>
+                        <span class="agent-status-text" id="agentStatus">Ready</span>
                     </div>
                     <div class="agent-workspace">
-                        <!-- Thinking bar — thin line indicator -->
-                        <div class="agent-thinking-bar" id="agentThinkingBar"></div>
-                        <!-- Compact status bar -->
-                        <div class="agent-status-bar">
-                            <span class="agent-status-text" id="agentStatus">Ready</span>
-                        </div>
-                        <!-- Activity stream -->
                         <div class="agent-conversation" id="agentConversation">
                             <div class="conv-empty" id="convEmpty">
-                                <div class="empty-icon">
-                                    <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
-                                        <rect x="6" y="6" width="32" height="32" rx="4" stroke="var(--green)" stroke-width="1.2" opacity="0.35"/>
-                                        <circle cx="22" cy="22" r="5" stroke="var(--green)" stroke-width="1.2" opacity="0.45"/>
-                                        <circle cx="22" cy="22" r="1.5" fill="var(--green)" opacity="0.5"/>
-                                        <line x1="14" y1="2" x2="14" y2="6" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="22" y1="2" x2="22" y2="6" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="30" y1="2" x2="30" y2="6" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="14" y1="42" x2="14" y2="38" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="22" y1="42" x2="22" y2="38" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="30" y1="42" x2="30" y2="38" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="2" y1="14" x2="6" y2="14" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="2" y1="22" x2="6" y2="22" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="2" y1="30" x2="6" y2="30" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="42" y1="14" x2="38" y2="14" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="42" y1="22" x2="38" y2="22" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
-                                        <line x1="42" y1="30" x2="38" y2="30" stroke="var(--green)" stroke-width="1.2" opacity="0.2" stroke-linecap="round"/>
+                                <div class="agent-avatar-lg">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path d="M10 2L12.5 7.5L18 10L12.5 12.5L10 18L7.5 12.5L2 10L7.5 7.5L10 2Z" fill="currentColor" opacity="0.6"/>
                                     </svg>
                                 </div>
-                                <div class="empty-title">Describe a circuit</div>
-                                <div class="empty-sub">I'll design the schematic and PCB layout for you.</div>
+                                <div class="empty-title">How can I help you?</div>
+                                <div class="empty-sub">Ask me to design a circuit, find components, or generate a PCB layout.</div>
                                 <div class="suggestion-chips" id="suggestionChips">
-                                    <button class="suggestion-chip" data-prompt="Design a 3.3V USB power supply with LED indicator">3.3V USB power supply</button>
-                                    <button class="suggestion-chip" data-prompt="ESP32 with button and status LED">ESP32 with button & LED</button>
-                                    <button class="suggestion-chip" data-prompt="Temperature sensor with ADC and display">Temperature sensor</button>
-                                    <button class="suggestion-chip" data-prompt="Battery charger with status LED">Battery charger</button>
-                                    <button class="suggestion-chip" data-prompt="Motor driver circuit with ESP32">Motor driver</button>
+                                    <button class="chip" data-prompt="Design a 3.3V USB power supply with LED indicator">3.3V USB power supply</button>
+                                    <button class="chip" data-prompt="ESP32 with button and status LED">ESP32 with button & LED</button>
+                                    <button class="chip" data-prompt="Temperature sensor with ADC and display">Temperature sensor</button>
+                                    <button class="chip" data-prompt="Battery charger with status LED">Battery charger</button>
+                                    <button class="chip" data-prompt="Motor driver circuit with ESP32">Motor driver</button>
                                 </div>
                             </div>
                         </div>
-                        <!-- Command input -->
-                        <div class="agent-input-group">
-                            <textarea id="agentPrompt" placeholder="Describe a circuit..." rows="1"></textarea>
-                            <button id="agentBtn" class="btn-send" disabled>Build</button>
+                        <div class="agent-composer">
+                            <textarea id="agentPrompt" placeholder="Ask the AI Design Co-Pilot..." rows="1"></textarea>
+                            <button id="agentBtn" class="send-btn" disabled>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M1 8L15 1L10 15L7 9L1 8Z" fill="currentColor"/>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -254,9 +228,9 @@
     <!-- Scripts -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
-    <script src="/static/schematic.js?v=12"></script>
-    <script src="/static/renderer_legacy.js?v=10"></script>
-    <script src="/static/schematic_renderer.js?v=2"></script>
+    <script src="/static/schematic.js?v=13"></script>
+    <script src="/static/renderer_legacy.js?v=11"></script>
+    <script src="/static/schematic_renderer.js?v=3"></script>
     <script src="/static/pcb_view/constants.js?v=16"></script>
     <script src="/static/pcb_view/state.js?v=16"></script>
     <script src="/static/pcb_view/utils.js?v=16"></script>
@@ -271,7 +245,7 @@
     <script src="/static/pcb_view/editor_webgl.js?v=16"></script>
     <script src="/static/pcb_view/events.js?v=16"></script>
     <script src="/static/tscircuit-bridge.js?v=1"></script>
-    <script src="/static/app.js?v=13"></script>
+    <script src="/static/app.js?v=14"></script>
     <!-- Toast notifications -->
     <div id="toastContainer" class="toast-container"></div>
 </body>

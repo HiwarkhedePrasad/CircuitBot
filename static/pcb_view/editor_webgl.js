@@ -2136,9 +2136,14 @@ class PcbEditorWebGL {
         return null;
     }
 
+    _sessionUrl(path) {
+        const sid = (window.circuitbotChatSessionId || '').trim();
+        return sid ? path + '?session_id=' + encodeURIComponent(sid) : path;
+    }
+
     async saveBoardModel() {
         if (!pcbState.boardModel) return false;
-        const res = await fetch('/api/save_board_model', {
+        const res = await fetch(this._sessionUrl('/api/save_board_model'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ board_model: pcbState.boardModel }),

@@ -688,7 +688,8 @@
           "end": {
             "x": 0.0,
             "y": -1.38
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -701,7 +702,8 @@
           "end": {
             "x": -1.38,
             "y": -1.38
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -714,7 +716,8 @@
           "end": {
             "x": -1.38,
             "y": 36.94
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -727,7 +730,8 @@
           "end": {
             "x": 1.27,
             "y": 1.27
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -740,7 +744,8 @@
           "end": {
             "x": 3.92,
             "y": 36.94
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -753,7 +758,8 @@
           "end": {
             "x": 3.92,
             "y": -1.38
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -766,7 +772,8 @@
           "end": {
             "x": 1.27,
             "y": -1.38
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -779,7 +786,8 @@
           "end": {
             "x": 3.92,
             "y": 36.94
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_rect",
@@ -793,6 +801,7 @@
             "x": 4.32,
             "y": 37.34
           },
+          "line_style": "solid",
           "fill": "none"
         },
         {
@@ -806,7 +815,8 @@
           "end": {
             "x": 0.0,
             "y": -1.27
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -819,7 +829,8 @@
           "end": {
             "x": -1.27,
             "y": 0.0
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -832,7 +843,8 @@
           "end": {
             "x": 3.81,
             "y": -1.27
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -845,7 +857,8 @@
           "end": {
             "x": 3.81,
             "y": 36.83
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_line",
@@ -858,7 +871,8 @@
           "end": {
             "x": -1.27,
             "y": 36.83
-          }
+          },
+          "line_style": "solid"
         },
         {
           "kind": "fp_text",
@@ -879,5 +893,127 @@
   "nets": [],
   "power_pins": [],
   "power_labels": [],
-  "outline_segments": []
+  "outline_segments": [
+    {
+      "kind": "gr_line",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 22.48,
+        "y": 10.32
+      },
+      "end": {
+        "x": 41.02,
+        "y": 10.32
+      }
+    },
+    {
+      "kind": "gr_arc",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 41.02,
+        "y": 10.32
+      },
+      "mid": {
+        "x": 42.4342,
+        "y": 10.9058
+      },
+      "end": {
+        "x": 43.02,
+        "y": 12.32
+      }
+    },
+    {
+      "kind": "gr_line",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 43.02,
+        "y": 12.32
+      },
+      "end": {
+        "x": 43.02,
+        "y": 63.88
+      }
+    },
+    {
+      "kind": "gr_arc",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 43.02,
+        "y": 63.88
+      },
+      "mid": {
+        "x": 42.4342,
+        "y": 65.2942
+      },
+      "end": {
+        "x": 41.02,
+        "y": 65.88
+      }
+    },
+    {
+      "kind": "gr_line",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 41.02,
+        "y": 65.88
+      },
+      "end": {
+        "x": 22.48,
+        "y": 65.88
+      }
+    },
+    {
+      "kind": "gr_arc",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 22.48,
+        "y": 65.88
+      },
+      "mid": {
+        "x": 21.0658,
+        "y": 65.2942
+      },
+      "end": {
+        "x": 20.48,
+        "y": 63.88
+      }
+    },
+    {
+      "kind": "gr_line",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 20.48,
+        "y": 63.88
+      },
+      "end": {
+        "x": 20.48,
+        "y": 12.32
+      }
+    },
+    {
+      "kind": "gr_arc",
+      "layer": "Edge.Cuts",
+      "width": 0.1,
+      "start": {
+        "x": 20.48,
+        "y": 12.32
+      },
+      "mid": {
+        "x": 21.0658,
+        "y": 10.9058
+      },
+      "end": {
+        "x": 22.48,
+        "y": 10.32
+      }
+    }
+  ],
+  "layer_count": 2
 }

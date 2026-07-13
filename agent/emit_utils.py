@@ -1,6 +1,7 @@
 import secrets
 import time
 import uuid
+from uuid import uuid4
 
 
 def _safe_print(text: str) -> None:
@@ -31,6 +32,35 @@ def _emit(config, event, data):
         emit_fn(event, data)
 
 
+def emit_thought_stream(config, event_type, id, content, status="completed", details=None, parent_id=None):
+    _emit(config, "agent:thought_stream", {
+        "type": event_type,
+        "id": id,
+        "content": content,
+        "status": status,
+        "details": details,
+        "parent_id": parent_id,
+        "ts": time.time(),
+    })
+
+
+def emit_thought(config, content, id=None):
+    emit_thought_stream(config, "thought", id or f"thought_{uuid4().hex[:8]}", content, "completed")
+
+
+def emit_tool_call(config, id, title, status="running"):
+    emit_thought_stream(config, "tool_call", id, title, status)
+
+
+def emit_tool_end(config, id, summary, details=None, status="completed"):
+    emit_thought_stream(config, "tool_call", id, summary, status, details=details)
+
+
+def emit_step(config, parent_id, label, status="pending"):
+    id = f"{parent_id}_step_{uuid4().hex[:4]}"
+    emit_thought_stream(config, "step", id, label, status, parent_id=parent_id)
+
+
 def emit_assistant_message(config, text: str) -> None:
     _emit(config, "agent:conversation", {
         "type": "assistant",
@@ -52,20 +82,6 @@ def emit_tool_event(config, title: str, status: str = "running",
     if details is not None:
         payload["details"] = details
     _emit(config, "agent:conversation", payload)
-
-
-def _emit_activity(config, phase, title, status, level="info", kind="", detail=None):
-    payload = {
-        "runId": config["configurable"].get("run_id", ""),
-        "phase": phase,
-        "title": title,
-        "status": status,
-        "level": level,
-        "kind": kind,
-    }
-    if detail is not None:
-        payload["detail"] = detail
-    _emit(config, "agent:activity", payload)
 
 
 def _sanitize_data(text: str, label: str = "external data") -> str:

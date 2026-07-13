@@ -1,19 +1,89 @@
 import json
 import time
 import uuid
+import re
 
-from server.state import rag, design_lock, LAST_DESIGN, _WIREBENDER_LAYOUT
+from server.state import rag, design_lock, session_manager
+
+MAX_SESSION_AGE_SECONDS = 3600  # 1 hour — sessions older than this are evicted
 
 
 class ChatSession:
     def __init__(self):
         self.chat_history = []
+        self.thought_stream = []
         self.board_model = None
         self.proposals = {}
         self.last_active = time.time()
+        # Learning: user preferences and correction history
+        self.preferences = {
+            "preferred_parts": {},      # {component_type: preferred_part_id}
+            "rejected_parts": [],       # list of part IDs user rejected
+            "preferred_values": {},     # {component_type: preferred_value}
+            "correction_count": 0,      # how many times user modified a design
+            "design_patterns": [],      # patterns the user tends to use
+        }
 
 
 CHAT_SESSIONS: dict[str, ChatSession] = {}
+
+
+def _evict_stale_sessions():
+    """Remove sessions older than MAX_SESSION_AGE_SECONDS to prevent memory leak."""
+    now = time.time()
+    stale = [sid for sid, sess in CHAT_SESSIONS.items()
+             if now - sess.last_active > MAX_SESSION_AGE_SECONDS]
+    for sid in stale:
+        CHAT_SESSIONS.pop(sid, None)
+
+
+def record_user_correction(session: ChatSession, mod_type: str, target: dict, value: dict):
+    """Record a user correction to learn preferences."""
+    session.preferences["correction_count"] += 1
+
+    if mod_type == "value_change":
+        ref = target.get("ref", "")
+        val = value.get("value", "")
+        if ref and val:
+            # Extract component type from ref (e.g., "R1" -> "resistor", "C2" -> "capacitor")
+            comp_type = _ref_to_type(ref)
+            if comp_type:
+                session.preferences["preferred_values"][comp_type] = val
+
+    elif mod_type == "part_swap":
+        ref = target.get("ref", "")
+        part_id = value.get("part_id", "")
+        if ref and part_id:
+            comp_type = _ref_to_type(ref)
+            if comp_type:
+                session.preferences["preferred_parts"][comp_type] = part_id
+
+    elif mod_type == "remove_component":
+        ref = target.get("ref", "")
+        if ref:
+            session.preferences["rejected_parts"].append(ref)
+
+
+def get_user_preferences(session: ChatSession) -> dict:
+    """Get user preferences for use in component selection."""
+    return dict(session.preferences)
+
+
+def _ref_to_type(ref: str) -> str:
+    """Convert a reference designator prefix to a component type."""
+    import re
+    match = re.match(r"^([A-Za-z]+)", ref)
+    if not match:
+        return ""
+    prefix = match.group(1).upper()
+    type_map = {
+        "R": "resistor", "C": "capacitor", "L": "inductor",
+        "D": "diode", "Q": "transistor", "U": "ic",
+        "J": "connector", "SW": "switch", "Y": "crystal",
+        "F": "fuse", "BT": "battery", "M": "motor",
+        "LS": "speaker", "LED": "led",
+    }
+    return type_map.get(prefix, prefix.lower())
 
 
 def _create_empty_board_model():
@@ -28,13 +98,17 @@ def _create_empty_board_model():
 
 
 def _get_or_create_chat_session(session_id: str) -> ChatSession:
+    _evict_stale_sessions()
     session = CHAT_SESSIONS.get(session_id)
     if session is None:
         session = ChatSession()
+        ds = session_manager.get_or_create(session_id)
         with design_lock:
-            existing_board = LAST_DESIGN.get("board_model")
+            existing_board = ds.get_design().get("board_model")
         session.board_model = json.loads(json.dumps(existing_board)) if existing_board else _create_empty_board_model()
         CHAT_SESSIONS[session_id] = session
+    else:
+        session.last_active = time.time()
     return session
 
 
@@ -43,6 +117,30 @@ def _prune_legacy_mock_history(session: ChatSession) -> None:
         msg for msg in session.chat_history
         if not (isinstance(msg, dict) and msg.get("role") == "assistant" and "Mock response" in str(msg.get("content")))
     ]
+
+
+def _proposal_type_matches(query: str, result) -> bool:
+    query_upper = query.upper()
+    id_str = str(getattr(result, "id_str", "") or "")
+    text = str(getattr(result, "text", "") or "")
+    haystack = f"{id_str} {text}".upper()
+
+    if any(token in query_upper for token in ("STATUS LED", "INDICATOR", " LED")):
+        return "LED" in haystack and "RGB" not in haystack
+    if any(token in query_upper for token in ("BUTTON", "TACTILE", "SWITCH", "PUSHBUTTON", "PUSH BUTTON")):
+        return any(token in haystack for token in ("SW_PUSH", "SWITCH", "BUTTON", "TACTILE")) and "RGB" not in haystack
+    if "ESP32" in query_upper:
+        return "ESP32" in haystack
+    return True
+
+
+def _proposal_search_query(text: str) -> str:
+    text_lower = text.lower().strip()
+    if "status led" in text_lower or text_lower == "led":
+        return "generic status led"
+    if any(token in text_lower for token in ("button", "switch", "pushbutton", "push button", "tactile")):
+        return "tactile push button switch"
+    return text
 
 
 def _load_real_footprint_geometry(symbol_id: str | None, explicit_footprint: str | None = None) -> dict | None:
@@ -102,10 +200,12 @@ def _load_real_footprint_geometry(symbol_id: str | None, explicit_footprint: str
 
 
 def _build_component_proposal_from_query(text: str):
-    results = rag.search(text, k=1)
+    query = _proposal_search_query(text)
+    results = rag.search(query, k=8)
     if not results:
         return None
-    best = results[0]
+    filtered = [r for r in results if _proposal_type_matches(text, r)]
+    best = filtered[0] if filtered else results[0]
     pin_defs = rag.pins(best.id_str) or []
     if not pin_defs:
         pin_defs = [{"num": "1", "name": "P1"}, {"num": "2", "name": "P2"}]

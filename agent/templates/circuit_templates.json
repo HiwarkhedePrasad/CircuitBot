@@ -1,0 +1,348 @@
+{
+  "templates": [
+    {
+      "id": "usb_power_supply_3v3",
+      "name": "3.3V USB Power Supply",
+      "description": "USB-powered 3.3V regulated supply with LED indicator and bypass caps",
+      "keywords": ["usb", "power", "3.3v", "regulator", "ldo"],
+      "subsystems": [
+        {
+          "subsystem": "USB Input",
+          "function": "USB Type-C or Micro-USB connector for power input",
+          "example_components": ["Connector_USB_C", "USB_B_Micro"],
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO voltage regulator with input and output capacitors",
+          "example_components": ["AMS1117-3.3", "AP2112K-3.3", "ME6211C33"],
+          "bus": "power",
+          "supporting": [
+            {"type": "capacitor", "value": "10uF", "role": "input bulk"},
+            {"type": "capacitor", "value": "100nF", "role": "input bypass"},
+            {"type": "capacitor", "value": "10uF", "role": "output bulk"},
+            {"type": "capacitor", "value": "100nF", "role": "output bypass"}
+          ]
+        },
+        {
+          "subsystem": "LED Indicator",
+          "function": "Visible LED with current-limiting resistor to indicate power status",
+          "example_components": ["LED_0603"],
+          "bus": "signal",
+          "supporting": [
+            {"type": "resistor", "value": "1k", "role": "current limiter"}
+          ],
+          "avoid": ["LD271", "infrared", "IR"]
+        }
+      ],
+      "nets": [
+        {"name": "USB_VBUS", "pins": ["USB:VBUS", "REG:IN"]},
+        {"name": "VCC_3V3", "pins": ["REG:OUT", "LED:ANODE"]},
+        {"name": "GND", "pins": ["USB:GND", "REG:GND", "LED:CATHODE"]}
+      ]
+    },
+    {
+      "id": "esp32_minimal",
+      "name": "ESP32 Minimal System",
+      "description": "ESP32-WROOM-32 with crystal, caps, and reset circuit",
+      "keywords": ["esp32", "wifi", "bluetooth", "microcontroller", "mcu"],
+      "subsystems": [
+        {
+          "subsystem": "Microcontroller",
+          "function": "ESP32-WROOM-32 WiFi/BT module",
+          "example_components": ["ESP32-WROOM-32"],
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO for ESP32 (needs 300mA+)",
+          "example_components": ["AMS1117-3.3", "AP2112K-3.3"],
+          "bus": "power",
+          "supporting": [
+            {"type": "capacitor", "value": "10uF", "role": "decoupling"},
+            {"type": "capacitor", "value": "100nF", "role": "bypass"}
+          ]
+        },
+        {
+          "subsystem": "Reset Circuit",
+          "function": "Push-button reset with RC debounce",
+          "example_components": [],
+          "bus": "digital",
+          "supporting": [
+            {"type": "resistor", "value": "10k", "role": "pull-up"},
+            {"type": "capacitor", "value": "100nF", "role": "debounce"},
+            {"type": "button", "value": "SW_Push", "role": "reset"}
+          ]
+        },
+        {
+          "subsystem": "Status LED",
+          "function": "GPIO-driven status LED on pin 2",
+          "example_components": ["LED_0603"],
+          "bus": "signal",
+          "supporting": [
+            {"type": "resistor", "value": "1k", "role": "current limiter"}
+          ]
+        }
+      ],
+      "nets": [
+        {"name": "VCC_3V3", "pins": ["REG:OUT", "ESP:3V3"]},
+        {"name": "GND", "pins": ["REG:GND", "ESP:GND", "BTN:GND"]},
+        {"name": "EN", "pins": ["ESP:EN", "R:OUT", "C:POS"]},
+        {"name": "GPIO2", "pins": ["ESP:GPIO2", "R:IN"]}
+      ]
+    },
+    {
+      "id": "sensor_station",
+      "name": "Environmental Sensor Station",
+      "description": "Temperature, humidity, and pressure sensor with I2C interface",
+      "keywords": ["sensor", "temperature", "humidity", "pressure", "bme", "bmp", "dht", "i2c"],
+      "subsystems": [
+        {
+          "subsystem": "Sensor",
+          "function": "BME280 or BME680 temperature/humidity/pressure sensor",
+          "example_components": ["BME280", "BME680", "BMP280"],
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Pull-ups",
+          "function": "Pull-up resistors for I2C SDA and SCL lines",
+          "example_components": [],
+          "bus": "i2c",
+          "supporting": [
+            {"type": "resistor", "value": "4.7k", "role": "SDA pull-up"},
+            {"type": "resistor", "value": "4.7k", "role": "SCL pull-up"}
+          ]
+        },
+        {
+          "subsystem": "Power Filtering",
+          "function": "Decoupling capacitors for sensor power rail",
+          "example_components": [],
+          "bus": "power",
+          "supporting": [
+            {"type": "capacitor", "value": "100nF", "role": "bypass"},
+            {"type": "capacitor", "value": "10uF", "role": "bulk"}
+          ]
+        },
+        {
+          "subsystem": "Connector",
+          "function": "Pin header for I2C connection to main board",
+          "example_components": ["Conn_01x04"],
+          "bus": "connector"
+        }
+      ],
+      "nets": [
+        {"name": "VCC", "pins": ["CONN:VCC", "SENSOR:VDD"]},
+        {"name": "GND", "pins": ["CONN:GND", "SENSOR:GND"]},
+        {"name": "SDA", "pins": ["CONN:SDA", "SENSOR:SDA", "R1:OUT"]},
+        {"name": "SCL", "pins": ["CONN:SCL", "SENSOR:SCL", "R2:OUT"]}
+      ]
+    },
+    {
+      "id": "battery_charger",
+      "name": "LiPo Battery Charger",
+      "description": "USB-powered single-cell LiPo charger with charge indicator",
+      "keywords": ["battery", "charger", "lipo", "li-ion", "tp4056", "charging"],
+      "subsystems": [
+        {
+          "subsystem": "Charger IC",
+          "function": "TP4056 or similar LiPo charger with built-in protection",
+          "example_components": ["TP4056", "MCP73831"],
+          "bus": "power"
+        },
+        {
+          "subsystem": "USB Input",
+          "function": "USB connector for charging power",
+          "example_components": ["USB_B_Micro", "Connector_USB_C"],
+          "bus": "power"
+        },
+        {
+          "subsystem": "Charge Indicators",
+          "function": "LEDs for charging and charge-complete status",
+          "example_components": ["LED_0603", "LED_0603"],
+          "bus": "signal",
+          "supporting": [
+            {"type": "resistor", "value": "1k", "role": "charge LED"},
+            {"type": "resistor", "value": "1k", "role": "done LED"}
+          ]
+        },
+        {
+          "subsystem": "Battery Connector",
+          "function": "2-pin connector for LiPo battery",
+          "example_components": ["Conn_01x02"],
+          "bus": "power"
+        }
+      ],
+      "nets": [
+        {"name": "USB_VBUS", "pins": ["USB:VBUS", "CHG:VIN"]},
+        {"name": "BATT", "pins": ["CHG:BATT", "CONN:BATT+"]},
+        {"name": "GND", "pins": ["USB:GND", "CHG:GND", "CONN:BATT-"]},
+        {"name": "CHRG", "pins": ["CHG:CHRG", "R1:IN"]},
+        {"name": "STDBY", "pins": ["CHG:STDBY", "R2:IN"]}
+      ]
+    },
+    {
+      "id": "led_driver",
+      "name": "Constant Current LED Driver",
+      "description": "PWM-controlled constant current driver for high-power LEDs",
+      "keywords": ["led", "driver", "pwm", "constant current", "mosfet"],
+      "subsystems": [
+        {
+          "subsystem": "LED",
+          "function": "High-power LED (1W or 3W)",
+          "example_components": ["LED_Aluminum"],
+          "bus": "power"
+        },
+        {
+          "subsystem": "Current Sense",
+          "function": "Low-value resistor for current sensing",
+          "example_components": [],
+          "bus": "analog",
+          "supporting": [
+            {"type": "resistor", "value": "1R", "role": "current sense"}
+          ]
+        },
+        {
+          "subsystem": "MOSFET Switch",
+          "function": "N-channel MOSFET for PWM dimming control",
+          "example_components": ["2N7002", "IRLML6344"],
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Gate Resistor",
+          "function": "Gate pull-down and series resistor for MOSFET",
+          "example_components": [],
+          "bus": "digital",
+          "supporting": [
+            {"type": "resistor", "value": "10k", "role": "gate pull-down"},
+            {"type": "resistor", "value": "100R", "role": "gate series"}
+          ]
+        }
+      ],
+      "nets": [
+        {"name": "LED_VCC", "pins": ["LED:ANODE"]},
+        {"name": "LED_DRIVE", "pins": ["LED:CATHODE", "R_SENSE:IN"]},
+        {"name": "LED_GND", "pins": ["R_SENSE:OUT", "FET:DRAIN"]},
+        {"name": "GATE", "pins": ["FET:GATE", "R_SER:OUT"]},
+        {"name": "PWM_IN", "pins": ["R_SER:IN"]}
+      ]
+    },
+    {
+      "id": "motor_driver",
+      "name": "DC Motor Driver",
+      "description": "H-bridge or single MOSFET motor driver with flyback protection",
+      "keywords": ["motor", "driver", "h-bridge", "dc motor", "servo"],
+      "subsystems": [
+        {
+          "subsystem": "Motor Connector",
+          "function": "2-pin connector for DC motor",
+          "example_components": ["Conn_01x02"],
+          "bus": "power"
+        },
+        {
+          "subsystem": "H-Bridge Driver",
+          "function": "Dual H-bridge IC for bidirectional motor control",
+          "example_components": ["L293D", "DRV8833", "TB6612FNG"],
+          "bus": "power"
+        },
+        {
+          "subsystem": "Flyback Protection",
+          "function": "Schottky diodes across motor terminals",
+          "example_components": ["BAT54"],
+          "bus": "power"
+        },
+        {
+          "subsystem": "Control Interface",
+          "function": "Input pins for direction and speed control",
+          "example_components": ["Conn_01x04"],
+          "bus": "digital"
+        }
+      ],
+      "nets": [
+        {"name": "MOTOR_VCC", "pins": ["DRV:VM", "CONN:VCC"]},
+        {"name": "MOTOR_A", "pins": ["DRV:OUT1", "MOTOR:+"], "note": "Motor terminal A"},
+        {"name": "MOTOR_B", "pins": ["DRV:OUT2", "MOTOR:-"], "note": "Motor terminal B"},
+        {"name": "GND", "pins": ["DRV:GND", "CONN:GND"]},
+        {"name": "IN1", "pins": ["DRV:IN1", "CONN:IN1"]},
+        {"name": "IN2", "pins": ["DRV:IN2", "CONN:IN2"]}
+      ]
+    },
+    {
+      "id": "temperature_sensor_analog",
+      "name": "Analog Temperature Sensor",
+      "description": "NTC thermistor with voltage divider and op-amp buffer",
+      "keywords": ["temperature", "ntc", "thermistor", "analog", "sensor"],
+      "subsystems": [
+        {
+          "subsystem": "Temperature Sensor",
+          "function": "NTC thermistor for temperature measurement",
+          "example_components": ["NTC_10K"],
+          "bus": "analog"
+        },
+        {
+          "subsystem": "Voltage Divider",
+          "function": "Precision resistor divider for NTC linearization",
+          "example_components": [],
+          "bus": "analog",
+          "supporting": [
+            {"type": "resistor", "value": "10k", "role": "divider top"},
+            {"type": "capacitor", "value": "100nF", "role": "filter"}
+          ]
+        },
+        {
+          "subsystem": "ADC Connector",
+          "function": "Pin header for analog output to MCU ADC",
+          "example_components": ["Conn_01x03"],
+          "bus": "connector"
+        }
+      ],
+      "nets": [
+        {"name": "VCC", "pins": ["CONN:VCC", "R_TOP:IN"]},
+        {"name": "NTC_NODE", "pins": ["R_TOP:OUT", "NTC:IN", "C:POS", "CONN:OUT"]},
+        {"name": "GND", "pins": ["CONN:GND", "NTC:OUT"]}
+      ]
+    },
+    {
+      "id": "rs485_interface",
+      "name": "RS-485 Interface",
+      "description": "Half-duplex RS-485 transceiver with termination and ESD protection",
+      "keywords": ["rs485", "rs-485", "serial", "communication", "modbus"],
+      "subsystems": [
+        {
+          "subsystem": "RS-485 Transceiver",
+          "function": "MAX485 or similar half-duplex RS-485 transceiver",
+          "example_components": ["MAX485", "SP3485"],
+          "bus": "serial"
+        },
+        {
+          "subsystem": "Termination",
+          "function": "120 ohm termination resistor (optional, switchable)",
+          "example_components": [],
+          "bus": "serial",
+          "supporting": [
+            {"type": "resistor", "value": "120R", "role": "termination"}
+          ]
+        },
+        {
+          "subsystem": "ESD Protection",
+          "function": "TVS diode array for bus line protection",
+          "example_components": ["PESD2CAN"],
+          "bus": "protection"
+        },
+        {
+          "subsystem": "Connector",
+          "function": "2-pin terminal block for A/B bus lines",
+          "example_components": ["Conn_01x02"],
+          "bus": "connector"
+        }
+      ],
+      "nets": [
+        {"name": "RS485_A", "pins": ["TRCV:A", "TERM:A", "TVS:A", "CONN:A"]},
+        {"name": "RS485_B", "pins": ["TRCV:B", "TERM:B", "TVS:B", "CONN:B"]},
+        {"name": "GND", "pins": ["TRCV:GND", "TVS:GND", "CONN:GND"]},
+        {"name": "TX", "pins": ["TRCV:DI", "CONN:TX"]},
+        {"name": "RX", "pins": ["TRCV:RO", "CONN:RX"]},
+        {"name": "DE", "pins": ["TRCV:DE", "TRCV:RE", "CONN:DE"]}
+      ]
+    }
+  ]
+}

@@ -409,4 +409,6 @@ class TestValidationPipeline:
             {"source": "U1:3", "target": "U2:1", "net": "3V3"},
         ])
         issues = validate_circuit(g)
-        assert len(issues) >= 0  # no crashes
+        # Verify validation returns a list and doesn't crash
+        assert isinstance(issues, list)
+        assert len(issues) > 0, "Validation should find issues in an incomplete test circuit"

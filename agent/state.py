@@ -73,3 +73,12 @@ class AgentState(TypedDict, total=False):
     _validation_error_detail: Optional[str]  # Detailed error for ask_validation_help
     synthesis_graph: Optional["dict"]   # serialised SynthesisGraph (set by netlist_node)
     layer_count: int                    # PCB layer count (2, 4, 6, or 8) — set by ask_board_config
+    # Modification fields (for modify_design intent)
+    modification_type: Optional[str]    # value_change, part_swap, add_component, remove_component, net_modify, reroute
+    modification_target: Optional[dict]  # {ref: "R1"} or {net: "VCC"}
+    modification_value: Optional[dict]  # {"value": "10k"} or {"part_id": "C1234"}
+    original_design: Optional[dict]     # Snapshot of LAST_DESIGN before modification
+    web_research_results: Optional[List[dict]]  # Phase 1: web research per subsystem
+    datasheet_search_results: Optional[List[dict]]  # Phase 2: datasheet research per component
+    connection_search_results: Optional[List[dict]]  # Phase 3: connection/wiring research
+    review_suggestions: Optional[List[dict]]  # Design review suggestions

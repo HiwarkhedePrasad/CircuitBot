@@ -37,8 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let agentBusy = false;
     let currentSchematic = new Schematic();
     let schematicWireStart = null;
-    const MAX_CONVERSATION_MESSAGES = 500;
-    const MAX_CONVERSATION_ITEMS = 300;
+    let schematicEditorMode = 'wire'; // 'wire' | 'netlabel'
+    const MAX_CONVERSATION_MESSAGES = 2000;
+    const MAX_CONVERSATION_ITEMS = 2000;
     const MAX_APPROVAL_BUTTONS = 10;
 
     // ── Tab Management ────────────────────────────────────────────────────────
@@ -295,6 +296,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 onPinClick: (pin, world) => {
                     handleSchematicPinClick(pin, world);
                 },
+                onNetLabelClick: (nl, world) => {
+                    handleNetLabelClick(nl, world);
+                },
                 onCoordChange: (wx, wy) => {
                     if (coordDisplay) coordDisplay.textContent = `X: ${wx.toFixed(2)} Y: ${wy.toFixed(2)}`;
                 },
@@ -337,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
             (e.edit_event_type || '').includes('location')
         );
         try {
-            const res = await fetch('/api/apply_edits', {
+            const res = await fetch(apiUrl('/api/apply_edits'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ edit_events: editEvents }),
@@ -348,6 +352,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (currentSchematic && data.wire_paths) {
                 currentSchematic.wirePaths = data.wire_paths;
+                if (typeof currentSchematic.recomputeJunctions === 'function') {
+                    currentSchematic.recomputeJunctions();
+                }
             }
             if (hasMoveEvents && currentSchematic && data.component_placements) {
                 for (const p of data.component_placements) {
@@ -374,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function persistSchematicLayoutFallback() {
         if (!currentSchematic) return false;
         try {
-            const res = await fetch('/api/save_layout', {
+            const res = await fetch(apiUrl('/api/save_layout'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -385,6 +392,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     })),
                     wire_paths: currentSchematic.wirePaths || [],
                     power_labels: currentSchematic.powerLabels || [],
+                    net_labels: currentSchematic.netLabels.map(l => ({
+                        id: l.id,
+                        net: l.net,
+                        x: l.x,
+                        y: l.y,
+                        orientation: l.orientation,
+                        pin: l.pin,
+                    })),
                 }),
             });
             return res.ok;
@@ -395,6 +410,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleSchematicPinClick(pin, world) {
         if (!currentSchematic || !renderer) return;
+
+        // In net label mode, clicking a pin creates/assigns a net label
+        if (schematicEditorMode === 'netlabel') {
+            handleNetLabelPinClick(pin);
+            return;
+        }
+
         if (!schematicWireStart) {
             schematicWireStart = pin;
             renderer.setActivePin(pin);
@@ -423,6 +445,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!Array.isArray(currentSchematic.wirePaths)) currentSchematic.wirePaths = [];
         currentSchematic.wirePaths = currentSchematic.wirePaths.filter(w => w.wire_id !== wireId);
         currentSchematic.wirePaths.push(optimisticWire);
+        if (typeof currentSchematic.recomputeJunctions === 'function') {
+            currentSchematic.recomputeJunctions();
+        }
         renderer.refresh();
         updateCompletenessBadge(currentSchematic.wirePaths, currentSchematic.netlist || []);
         const event = {
@@ -438,6 +463,200 @@ document.addEventListener('DOMContentLoaded', () => {
             addLogEntry(`Wired ${start.key} to ${pin.key}${ok ? '' : ' locally'}`, ok ? 'success' : 'log');
         });
     }
+
+    // ── Net Label Interaction ──────────────────────────────────────────────
+
+    let _netLabelRenameInput = null;
+
+    function handleNetLabelPinClick(pin) {
+        if (!currentSchematic || !renderer) return;
+
+        // Check if pin already has a net label
+        const existing = currentSchematic.getNetLabelsForPin(pin.key);
+        if (existing.length > 0) {
+            // Select existing label for rename
+            const nl = existing[0];
+            renderer.setActiveNetLabel({ id: nl.id, net: nl.net, x: nl.x, y: nl.y, label: nl });
+            showNetLabelRenameInput(nl);
+            return;
+        }
+
+        // Auto-generate net name
+        const netName = currentSchematic.nextAutoNetName();
+
+        // Determine orientation from pin direction
+        let orientation = 0;
+        if (pin.pinNum && currentSchematic) {
+            for (const comp of currentSchematic.components) {
+                if (comp.refDesignator === pin.refDes) {
+                    for (const op of comp.ops) {
+                        if (op[0] === 'pin') {
+                            const numNode = op.find(a => Array.isArray(a) && a[0] === 'number');
+                            const pinNum = numNode && numNode[1] ? String(numNode[1]).replace(/"/g, '') : '';
+                            if (pinNum === pin.pinNum) {
+                                const at = op.find(a => Array.isArray(a) && a[0] === 'at');
+                                if (at) orientation = parseFloat(at[3] || 0);
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        const lbl = currentSchematic.addNetLabel(netName, pin.x, pin.y, orientation, pin.key);
+        renderer.refresh();
+        addLogEntry(`Net label ${netName} created for ${pin.key}`, 'log');
+        showNetLabelRenameInput(lbl);
+    }
+
+    function handleNetLabelClick(nl, world) {
+        if (!currentSchematic || !renderer) return;
+        renderer.setActiveNetLabel(nl);
+        showNetLabelRenameInput(nl.label);
+    }
+
+    function showNetLabelRenameInput(label) {
+        if (!renderer || !label) return;
+        hideNetLabelRenameInput();
+
+        const screen = renderer.worldToScreen(label.x, label.y);
+        if (!screen) return;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'netlabel-rename-input';
+        input.value = label.net;
+        input.dataset.labelId = label.id;
+
+        // Position over the label in viewport coordinates
+        const canvasRect = renderer.canvas.getBoundingClientRect();
+        input.style.left = Math.round(canvasRect.left + screen.x) + 'px';
+        input.style.top = Math.round(canvasRect.top + screen.y - 10) + 'px';
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commitNetLabelRename(input);
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                hideNetLabelRenameInput();
+            }
+        });
+        input.addEventListener('blur', () => {
+            commitNetLabelRename(input);
+        });
+
+        document.body.appendChild(input);
+        _netLabelRenameInput = input;
+        input.focus();
+        input.select();
+    }
+
+    function commitNetLabelRename(input) {
+        if (!input || !currentSchematic) return;
+        const labelId = input.dataset.labelId;
+        const newName = input.value.trim();
+        hideNetLabelRenameInput();
+
+        const label = currentSchematic.netLabels.find(l => l.id === labelId);
+        if (!label) return;
+        if (!newName) {
+            // Empty name → delete the label
+            currentSchematic.removeNetLabel(labelId);
+            renderer.setActiveNetLabel(null);
+        } else if (newName !== label.net) {
+            const oldName = label.net;
+            currentSchematic.renameNet(oldName, newName);
+            addLogEntry(`Net ${oldName} → ${newName}`, 'log');
+        }
+        if (renderer) {
+            renderer.setActiveNetLabel(null);
+            renderer.refresh();
+        }
+    }
+
+    function hideNetLabelRenameInput() {
+        if (_netLabelRenameInput) {
+            _netLabelRenameInput.removeEventListener('blur', commitNetLabelRename);
+            _netLabelRenameInput.remove();
+            _netLabelRenameInput = null;
+        }
+    }
+
+    function deleteNetLabel(labelId) {
+        if (!currentSchematic) return;
+        const label = currentSchematic.netLabels.find(l => l.id === labelId);
+        if (label) {
+            addLogEntry(`Net label ${label.net} deleted`, 'log');
+            currentSchematic.removeNetLabel(labelId);
+            renderer.setActiveNetLabel(null);
+            renderer.refresh();
+        }
+    }
+
+    function setSchematicEditorMode(mode) {
+        schematicEditorMode = mode;
+        if (modeIndicator) {
+            modeIndicator.textContent = mode === 'wire' ? 'WIRE MODE' : 'NET LABEL MODE';
+            modeIndicator.style.borderColor = mode === 'wire' ? 'var(--copper)' : 'var(--agent-amber)';
+            modeIndicator.style.color = mode === 'wire' ? 'var(--copper)' : 'var(--agent-amber)';
+        }
+        // Update toggle button
+        const modeBtn = document.getElementById('schematicModeBtn');
+        if (modeBtn) {
+            modeBtn.textContent = mode === 'wire' ? '🏷 Net Labels' : '〰 Wires';
+            modeBtn.classList.toggle('active', mode === 'netlabel');
+        }
+        // Clear any in-progress wire
+        if (mode === 'netlabel') {
+            schematicWireStart = null;
+            if (renderer) {
+                renderer.clearWireDraft();
+                renderer.setActivePin(null);
+            }
+        }
+        // In net label mode, hide physical wires to reduce clutter
+        if (renderer) {
+            renderer.setShowWires(mode === 'wire');
+        }
+        // Add a visual cue about which mode is active
+        const msg = mode === 'wire'
+            ? 'Wire mode: click pins to draw physical wires'
+            : 'Net Label mode: click a pin to create a logical net label (L)';
+        addLogEntry(msg, 'log');
+    }
+
+    // ── Net Label Mode Toggle ──────────────────────────────────────────────
+
+    const schematicModeBtn = document.getElementById('schematicModeBtn');
+    if (schematicModeBtn) {
+        schematicModeBtn.addEventListener('click', () => {
+            setSchematicEditorMode(schematicEditorMode === 'wire' ? 'netlabel' : 'wire');
+        });
+    }
+
+    // Keyboard shortcut: L toggles net label mode, W toggles wire mode
+    document.addEventListener('keydown', (e) => {
+        if (isPCBMode() || isSymbolPreviewMode()) return;
+        // Don't trigger if typing in an input
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'l' || e.key === 'L') {
+            e.preventDefault();
+            setSchematicEditorMode('netlabel');
+        }
+        if (e.key === 'w' || e.key === 'W') {
+            e.preventDefault();
+            setSchematicEditorMode('wire');
+        }
+        // Delete key removes active net label
+        if ((e.key === 'Delete' || e.key === 'Backspace') && renderer && renderer._activeNetLabel) {
+            e.preventDefault();
+            deleteNetLabel(renderer._activeNetLabel.id);
+        }
+    });
 
     function isPCBMode() {
         return document.getElementById('viewPCBBtn').classList.contains('active');
@@ -462,7 +681,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Don't fetch if board model already has real components
         const model = pcbState.boardModel;
         if (model.components && model.components.length > 0) return;
-        const res = await fetch('/api/pcb_enriched_board_model');
+        const res = await fetch(apiUrl('/api/pcb_enriched_board_model'));
         if (!res.ok) return; // Silently handle 404/errors
         const data = await res.json();
         if (!data || !data.board_model) return;
@@ -540,6 +759,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         modeIndicator.classList.remove('hidden');
+        // Ensure mode indicator reflects current mode
+        setSchematicEditorMode(schematicEditorMode);
     }
 
     function inferBoardComponentCategory(component) {
@@ -610,6 +831,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return ops;
     }
 
+    function _findNonOverlappingPosition(schematic) {
+        const comps = schematic.components;
+        if (comps.length === 0) return { x: 0, y: 0 };
+
+        // Find the bounding box of all existing components
+        let maxX = 0, maxY = 0;
+        for (const c of comps) {
+            const right = c.x + (c.width || 5);
+            const bottom = c.y + (c.height || 5);
+            if (right > maxX) maxX = right;
+            if (bottom > maxY) maxY = bottom;
+        }
+
+        // Place in a grid pattern, wrapping to next row after 5 components
+        const col = comps.length % 5;
+        const row = Math.floor(comps.length / 5);
+        const gridSpacing = 10;
+
+        return {
+            x: snapToGrid(col * gridSpacing),
+            y: snapToGrid(maxY + gridSpacing + row * gridSpacing),
+        };
+    }
+
     function syncSchematicFromBoardModel(boardModel) {
         if (!boardModel || !Array.isArray(boardModel.components)) return;
         if (!currentSchematic) currentSchematic = new Schematic();
@@ -628,6 +873,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 component.footprint || component.name || ''
             );
             if (comp) {
+                // Place at non-overlapping position
+                const pos = _findNonOverlappingPosition(currentSchematic);
+                comp.x = pos.x;
+                comp.y = pos.y;
                 changed = true;
             }
         }
@@ -714,8 +963,10 @@ document.addEventListener('DOMContentLoaded', () => {
             addConversationMessage('system', data.message || 'Design complete.');
             updateComponentListUI();
             updateSchematicButtons();
-            const exportBtn = document.getElementById('exportSchBtn');
-            if (exportBtn) exportBtn.disabled = false;
+            const exportSchBtn = document.getElementById('exportSchBtn');
+            const exportPCBBtn = document.getElementById('exportPCBBtn');
+            if (exportSchBtn) exportSchBtn.disabled = false;
+            if (exportPCBBtn) exportPCBBtn.disabled = false;
             // Ensure schematic is visible after agent completes
             if (currentSchematic && currentSchematic.components.length > 0) {
                 setActiveTab('viewSchematicBtn');
@@ -723,8 +974,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 setPcbToolbarVisibility(false);
             }
         });
+        socket.on('agent:persisted', (data) => {
+            addLogEntry('Design saved — ready to export.', 'success');
+        });
         socket.on('agent:pcb_approval', (data) => {
-            addConversationMessage('assistant', data.message || 'Schematic complete. Proceed to PCB layout?');
+            const msg = data.message || `Schematic complete (${data.component_count || 0} components, ${data.wire_count || 0} wires). Proceed to PCB layout?`;
+            addConversationMessage('assistant', msg);
             const existingButtons = agentConversation.querySelectorAll('.conv-approval-buttons');
             existingButtons.forEach(node => node.remove());
             const btnDiv = document.createElement('div');
@@ -746,7 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
             agentConversation.scrollTop = agentConversation.scrollHeight;
         });
         socket.on('agent:board_config', (data) => {
-            addConversationMessage('assistant', data.message || 'How many PCB layers do you need?');
+            addConversationMessage('assistant', data.message);
             const options = data.options || [
                 { layers: 2, label: '2-Layer', description: 'F.Cu + B.Cu (Standard)' },
                 { layers: 4, label: '4-Layer', description: 'F.Cu + In1 + In2 + B.Cu (Recommended)' },
@@ -776,8 +1031,9 @@ document.addEventListener('DOMContentLoaded', () => {
             agentConversation.scrollTop = agentConversation.scrollHeight;
         });
         socket.on('agent:validation_help', (data) => {
-            const errors = (data.errors || []).join('\\n');
-            const msg = `Validation could not auto-fix ${data.errors ? data.errors.length : 0} issue(s) after multiple retries.\\n\\nRemaining issues:\\n${errors || '(none listed)'}\\n\\nHow would you like to proceed?`;
+            const errors = (data.errors || []);
+            const errorList = errors.map(e => typeof e === 'string' ? e : e.message || String(e)).join('\\n');
+            const msg = data.message || `Validation could not auto-fix ${errors.length} issue(s) after multiple retries.\\n\\nRemaining issues:\\n${errorList || '(none listed)'}\\n\\nHow would you like to proceed?`;
             addConversationMessage('assistant', msg.replace(/\\n/g, '<br>'));
             const existingButtons = agentConversation.querySelectorAll('.conv-approval-buttons');
             existingButtons.forEach(node => node.remove());
@@ -817,8 +1073,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (pcbUploadArea) pcbUploadArea.classList.add('hidden');
                 addLogEntry('PCB editor loaded with white airwires for manual routing.', 'log');
                 addLogEntry('PCB model loaded for board view.', 'success');
-                exportPCBBtn.disabled = false;
-                importPCBBtn.disabled = false;
+                // Export buttons enabled only after agent:persisted — NOT here
             }
         });
         socket.on('agent:error', (data) => {
@@ -830,6 +1085,53 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         socket.on('agent:conversation', (data) => {
             handleConversationEvent(data);
+        });
+
+        // ── Agentic Thought Stream (structured event log) ──────────────
+        socket.on('agent:thought_stream', (data) => {
+            handleThoughtStreamEvent(data);
+        });
+
+        // Design review suggestion cards
+        socket.on('agent:review_suggestion', (data) => {
+            const card = document.createElement('div');
+            card.className = 'review-card';
+
+            const category = data.category || 'general';
+            const severity = data.severity || 'low';
+
+            card.innerHTML = `
+                <div class="review-card-header">
+                    <span class="review-category review-severity-${severity}">${category}</span>
+                </div>
+                <div class="review-description">${_escapeHtml(data.description || '')}</div>
+                <div class="review-suggestion-text">${_escapeHtml(data.suggestion || '')}</div>
+                <div class="review-actions">
+                    <button class="btn-apply">Apply</button>
+                    <button class="btn-dismiss">Dismiss</button>
+                </div>
+            `;
+
+            card.querySelector('.btn-dismiss').addEventListener('click', () => card.remove());
+            card.querySelector('.btn-apply').addEventListener('click', () => {
+                const suggestion = data.suggestion || '';
+                if (suggestion) {
+                    agentPrompt.value = suggestion;
+                    agentBtn.click();
+                }
+                card.remove();
+            });
+
+            agentConversation.appendChild(card);
+            agentConversation.scrollTop = agentConversation.scrollHeight;
+        });
+
+        socket.on('agent:review_complete', (data) => {
+            const summary = document.createElement('div');
+            summary.className = 'review-summary';
+            summary.textContent = `Review complete: ${data.count || 0} suggestion(s)`;
+            agentConversation.appendChild(summary);
+            agentConversation.scrollTop = agentConversation.scrollHeight;
         });
     }
 
@@ -865,17 +1167,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addConversationMessage(type, text) {
-        // Only remove empty state for user messages and agent responses,
-        // not for system/log messages (so suggestion chips stay visible)
         if (type !== 'log' && type !== 'system') {
             const empty = agentConversation.querySelector('.conv-empty');
             if (empty) empty.remove();
         }
 
+        // Route log/detail messages into the last tool_call or thought card
+        if (type === 'log' || type === 'system') {
+            const cards = agentConversation.querySelectorAll('.conv-tool-call, .conv-thought');
+            const lastCard = cards.length ? cards[cards.length - 1] : null;
+            if (lastCard) {
+                // Expand the parent so logs are visible
+                const body = lastCard.querySelector('.tool-call-body, .thought-body');
+                if (body) {
+                    body.classList.add('open');
+                }
+                const chevron = lastCard.querySelector('.thought-chevron, .tool-call-chevron');
+                if (chevron) chevron.classList.add('open');
+
+                const isDetail = typeof text === 'string' && (text.startsWith('  ') || text.includes('='));
+                const entryClass = isDetail ? 'conv-log-line' : 'conv-log-line milestone';
+                let targetBody = body;
+                if (!targetBody) {
+                    targetBody = document.createElement('div');
+                    targetBody.className = 'thought-body open';
+                    lastCard.appendChild(targetBody);
+                }
+                const logLine = document.createElement('div');
+                logLine.className = entryClass;
+                logLine.innerHTML = renderBadges(isDetail ? text.trimStart() : text);
+                targetBody.appendChild(logLine);
+
+                agentConversation.scrollTop = agentConversation.scrollHeight;
+                return;
+            }
+        }
+
+        // Fallback: render as standalone (legacy)
         const row = document.createElement('div');
         row.className = 'conv-msg-row';
 
-        // Add avatar for agent messages
         if (type !== 'log' && type !== 'system' && type !== 'error') {
             const avatar = document.createElement('div');
             avatar.className = 'conv-avatar bot';
@@ -887,13 +1218,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const isDetail = typeof text === 'string' && (text.startsWith('  ') || text.includes('='));
         if (type === 'error') {
             entry.className = 'conv-error-msg';
-            entry.innerHTML = '<span class="conv-error-icon">⚠</span> ' + _escapeHtml(text);
+            entry.innerHTML = '<span class="conv-error-icon">\u26a0</span> ' + _escapeHtml(text);
         } else if (isDetail) {
             entry.className = 'conv-detail';
-            entry.textContent = text.trimStart();
+            entry.innerHTML = renderBadges(text.trimStart());
         } else {
             entry.className = 'conv-milestone';
-            entry.textContent = text;
+            entry.innerHTML = renderBadges(text);
         }
         const ts = document.createElement('span');
         ts.className = 'conv-timestamp';
@@ -942,8 +1273,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateAgentButton() {
         agentBtn.disabled = agentBusy || !agentPrompt.value.trim();
-        agentBtn.textContent = agentBusy ? 'Building...' : 'Build';
-        agentBtn.className = 'btn-send' + (agentBusy ? ' running' : '');
+        agentBtn.classList.toggle('hidden', agentBusy || !agentPrompt.value.trim());
     }
 
     const conversation = [];
@@ -1015,9 +1345,219 @@ document.addEventListener('DOMContentLoaded', () => {
         trimConversationDom();
     }
 
+    // ── Thought Stream Event Handler ────────────────────────────────────────
+
+    let toolCallCards = {};
+
+    function scrollToBottom() {
+        agentConversation.scrollTop = agentConversation.scrollHeight;
+    }
+
+    function getBadgeIcon(status) {
+        if (status === 'running') return '⟳';
+        if (status === 'completed') return '✓';
+        if (status === 'failed') return '✕';
+        return '○';
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function _badgeReplace(s) {
+        // REF_DES (U1, R2, C3, SW1, J1, etc.)
+        s = s.replace(/\b([A-Z]{1,3})(\d+)\b/g,
+            '<span class="comp-badge ref">$1$2</span>');
+        // score=N or score=N.N
+        s = s.replace(/\b(score\s*=\s*\d+(?:\.\d+)?)/g,
+            '<span class="comp-badge score">$1</span>');
+        // status keywords
+        s = s.replace(/\b(completed|running|failed|pending|skipped)\b/gi,
+            '<span class="comp-badge status">$1</span>');
+        return s;
+    }
+
+    function renderBadges(text) {
+        let result = escapeHtml(text);
+        // 1. Library:ComponentName → badge lib + badge part (highest priority)
+        result = result.replace(/\b([A-Z][A-Za-z0-9_]+):([A-Za-z0-9][A-Za-z0-9._\-\/]+)\b/g,
+            '<span class="comp-badge lib">$1</span><span class="comp-badge part">:$2</span>');
+        // 2. Apply remaining badge replacements only on text outside HTML tags
+        let output = '';
+        let lastIdx = 0;
+        const tagRe = /<[^>]*>/g;
+        let match;
+        while ((match = tagRe.exec(result)) !== null) {
+            output += _badgeReplace(result.slice(lastIdx, match.index));
+            output += match[0];
+            lastIdx = match.index + match[0].length;
+        }
+        output += _badgeReplace(result.slice(lastIdx));
+        return output;
+    }
+
+    function renderThought(data) {
+        const empty = agentConversation.querySelector('.conv-empty');
+        if (empty) empty.remove();
+        const status = data.status || 'completed';
+        const card = document.createElement('div');
+        card.className = 'conv-thought';
+        card.dataset.thoughtId = data.id || '';
+
+        const header = document.createElement('div');
+        header.className = 'thought-header';
+        header.innerHTML = `
+            <span class="thought-chevron">▶</span>
+            <span class="thought-badge ${status}">${getBadgeIcon(status)}</span>
+            <span class="thought-title">${renderBadges(data.content)}</span>
+        `;
+        card.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'thought-body';
+        if (data.details) {
+            const detailsDiv = document.createElement('div');
+            detailsDiv.className = 'thought-body-content';
+            detailsDiv.innerHTML = renderBadges(data.details);
+            body.appendChild(detailsDiv);
+        }
+        card.appendChild(body);
+
+        header.addEventListener('click', () => {
+            const isOpen = body.classList.toggle('open');
+            header.querySelector('.thought-chevron').classList.toggle('open', isOpen);
+        });
+
+        agentConversation.appendChild(card);
+        scrollToBottom();
+        trimConversationDom();
+    }
+
+    function renderToolCall(data) {
+        const empty = agentConversation.querySelector('.conv-empty');
+        if (empty) empty.remove();
+        const { id, content, status, details, expand } = data;
+
+        // If already exists, update it
+        if (toolCallCards[id]) {
+            updateToolCall(id, status, details);
+            return;
+        }
+
+        const card = document.createElement('div');
+        card.className = 'conv-tool-call';
+        card.dataset.toolId = id;
+
+        const header = document.createElement('div');
+        header.className = 'tool-call-header';
+        header.innerHTML = `
+            <span class="tool-call-chevron">▶</span>
+            <span class="tool-call-badge ${status}">${getBadgeIcon(status)}</span>
+            <span class="tool-call-title">${renderBadges(content)}</span>
+        `;
+        card.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'tool-call-body';
+        if (details) {
+            const pre = document.createElement('pre');
+            pre.className = 'tool-call-details';
+            pre.innerHTML = renderBadges(details);
+            body.appendChild(pre);
+        }
+        const steps = document.createElement('div');
+        steps.className = 'tool-call-steps';
+        body.appendChild(steps);
+        card.appendChild(body);
+
+        header.addEventListener('click', () => {
+            const isOpen = body.classList.toggle('open');
+            header.querySelector('.tool-call-chevron').classList.toggle('open', isOpen);
+        });
+
+        // Auto-expand web search results
+        if (expand || id.startsWith('websearch_')) {
+            body.classList.add('open');
+            header.querySelector('.tool-call-chevron').classList.add('open');
+        }
+
+        agentConversation.appendChild(card);
+        toolCallCards[id] = card;
+        scrollToBottom();
+        trimConversationDom();
+    }
+
+    function updateToolCall(id, status, details) {
+        const card = toolCallCards[id];
+        if (!card) return;
+        const badge = card.querySelector('.tool-call-badge');
+        badge.className = `tool-call-badge ${status}`;
+        badge.textContent = getBadgeIcon(status);
+        if (details) {
+            let pre = card.querySelector('.tool-call-details');
+            if (!pre) {
+                const body = card.querySelector('.tool-call-body');
+                pre = document.createElement('pre');
+                pre.className = 'tool-call-details';
+                const steps = body.querySelector('.tool-call-steps');
+                if (steps) {
+                    body.insertBefore(pre, steps);
+                } else {
+                    body.appendChild(pre);
+                }
+            }
+            pre.innerHTML = renderBadges(details);
+        }
+    }
+
+    function renderStep(data) {
+        const { parent_id, content, status } = data;
+        const parent = document.querySelector(`[data-tool-id="${parent_id}"]`);
+        if (!parent) return;
+
+        const stepsContainer = parent.querySelector('.tool-call-steps');
+        if (!stepsContainer) return;
+
+        // Check if this step already exists (match by label text)
+        const existing = stepsContainer.querySelector(`[data-step-label="${escapeHtml(content)}"]`);
+        if (existing) {
+            existing.className = `step ${status}`;
+            existing.querySelector('.step-marker').textContent = getBadgeIcon(status);
+            return;
+        }
+
+        const step = document.createElement('div');
+        step.className = `step ${status}`;
+        step.dataset.stepLabel = content;
+        step.innerHTML = `
+            <div class="step-marker">${getBadgeIcon(status)}</div>
+            <div class="step-label">${renderBadges(content)}</div>
+        `;
+        stepsContainer.appendChild(step);
+        scrollToBottom();
+    }
+
+    function handleThoughtStreamEvent(data) {
+        if (!data || !data.type) return;
+        switch (data.type) {
+            case 'thought':
+                renderThought(data);
+                break;
+            case 'tool_call':
+                renderToolCall(data);
+                break;
+            case 'step':
+                renderStep(data);
+                break;
+        }
+    }
+
     function clearConversation() {
         conversation.length = 0;
         agentConversation.innerHTML = '';
+        toolCallCards = {};
     }
 
     function exportConversation() {
@@ -1079,6 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const comp = currentSchematic.addRawComponent(id_str, ref_des, ops, category, description || '');
         if (comp) {
+            comp.lib_id = id_str;
             addLogEntry(`  Placed ${comp.refDesignator} (${comp.name})`, 'log');
         }
         updateComponentListUI();
@@ -1089,13 +1630,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const badge = document.getElementById('completenessBadge');
         if (!badge) return;
         const nWires = (traces || []).filter(t => (t.path || []).length >= 2).length;
+        // Net labels count as connections too
+        const nLabels = (currentSchematic && currentSchematic.netLabels) ? currentSchematic.netLabels.length : 0;
         const nExpected = (netlist || []).length;
-        if (nExpected === 0) {
+        const nConnected = nWires + nLabels;
+        if (nExpected === 0 && nConnected === 0) {
             badge.classList.add('hidden');
             return;
         }
-        const pct = Math.round(nWires / nExpected * 100);
-        badge.textContent = `${nWires}/${nExpected} (${pct}%)`;
+        const pct = nExpected > 0 ? Math.round(nConnected / nExpected * 100) : 100;
+        badge.textContent = `${nConnected}/${nExpected} (${pct}%)`;
         badge.className = 'completeness-badge';
         if (pct >= 95) badge.classList.add('good');
         else if (pct >= 70) badge.classList.add('warn');
@@ -1108,15 +1652,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const placements = data.placements || [];
         const traces = data.traces || [];
         const powerLabels = data.power_labels || [];
+        const netLabels = data.net_labels || [];
 
         // Apply backend placements directly
         placements.forEach(p => {
             const comp = currentSchematic.components.find(c => c.refDesignator === p.ref_des);
-            if (comp) { comp.x = p.x; comp.y = p.y; }
+            if (comp) {
+                comp.x = p.x;
+                comp.y = p.y;
+                if (typeof p.rotation === 'number') comp.rotation = p.rotation;
+            }
         });
         currentSchematic.wirePaths = traces;
         currentSchematic.powerLabels = powerLabels;
         currentSchematic.netlist = data.netlist || [];
+        // Apply net labels from backend
+        if (netLabels.length > 0) {
+            currentSchematic.netLabels = netLabels.map(nl => new NetLabel(nl.id, nl.net, nl.x, nl.y, nl.orientation || 0, nl.pin || null));
+            currentSchematic._netLabelCounter = currentSchematic.netLabels.reduce((max, l) => {
+                const num = parseInt(l.id.replace('nl_', ''), 10);
+                return isNaN(num) ? max : Math.max(max, num);
+            }, 0);
+        }
+        if (typeof currentSchematic.recomputeJunctions === 'function') {
+            currentSchematic.recomputeJunctions();
+        }
         updateCompletenessBadge(traces, data.netlist || []);
         displayNetlist(data.netlist || [], data.power_pins || []);
         enterSchematicView();
@@ -1245,16 +1805,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const exportSchBtn = document.getElementById('exportSchBtn');
     if (exportSchBtn) {
-        exportSchBtn.addEventListener('click', () => {
+        exportSchBtn.addEventListener('click', async () => {
             addLogEntry('Exporting KiCad schematic...', 'log');
-            window.location.href = '/api/export_sch';
+            try {
+                const res = await fetch(apiUrl('/api/export_sch'));
+                if (!res.ok) {
+                    const text = await res.text();
+                    addLogEntry('Export failed: ' + text, 'error');
+                    showToast('Export failed: ' + text, 'error', 5000);
+                    return;
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'circuitbot.kicad_sch';
+                a.click();
+                URL.revokeObjectURL(url);
+                addLogEntry('Schematic exported successfully.', 'success');
+            } catch (err) {
+                addLogEntry('Export error: ' + err.message, 'error');
+                showToast('Export error: ' + err.message, 'error', 5000);
+            }
         });
     }
 
     if (exportPCBBtn) {
-        exportPCBBtn.addEventListener('click', () => {
+        exportPCBBtn.addEventListener('click', async () => {
             addLogEntry('Exporting KiCad PCB...', 'log');
-            window.location.href = '/api/export_pcb';
+            try {
+                const res = await fetch(apiUrl('/api/export_pcb'));
+                if (!res.ok) {
+                    const text = await res.text();
+                    addLogEntry('Export failed: ' + text, 'error');
+                    showToast('Export failed: ' + text, 'error', 5000);
+                    return;
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'circuitbot.kicad_pcb';
+                a.click();
+                URL.revokeObjectURL(url);
+                addLogEntry('PCB exported successfully.', 'success');
+            } catch (err) {
+                addLogEntry('Export error: ' + err.message, 'error');
+                showToast('Export error: ' + err.message, 'error', 5000);
+            }
         });
     }
 
@@ -1272,7 +1870,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const formData = new FormData();
             formData.append('pcb_file', file);
             try {
-                const res = await fetch('/api/import_pcb', { method: 'POST', body: formData });
+                const res = await fetch(apiUrl('/api/import_pcb'), { method: 'POST', body: formData });
                 const data = await res.json();
                 if (data.error) {
                     addLogEntry(`Import failed: ${data.error}`, 'error');
@@ -1433,6 +2031,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     window.circuitbotChatSessionId = sessionId;
 
+    // ── Session-aware URL helper ──────────────────────────────────────────────
+    function apiUrl(path) {
+        const sid = window.circuitbotChatSessionId || '';
+        return sid ? path + '?session_id=' + encodeURIComponent(sid) : path;
+    }
+
     const activeProposals = {};
     let chatHydrated = false;
 
@@ -1454,13 +2058,51 @@ document.addEventListener('DOMContentLoaded', () => {
         const proposal = activeProposals[id];
         if (!proposal || typeof pcbState === 'undefined') return;
 
-        enterPCBView(false);
-        pcbState.ghostProposal = proposal;
-        pcbState.lastPointerWorld = pcbState.lastPointerWorld || { x: 0, y: 0 };
-        pcbSetMode(PCB_MODE.GHOST_PLACEMENT);
-        pcbEditor.requestOverlayRefresh();
+        // If already in PCB view, do ghost placement there
+        // Otherwise, add directly to the current view's schematic
+        const currentView = getCurrentView();
+        if (currentView === 'pcb') {
+            pcbState.ghostProposal = proposal;
+            pcbState.lastPointerWorld = pcbState.lastPointerWorld || { x: 0, y: 0 };
+            pcbSetMode(PCB_MODE.GHOST_PLACEMENT);
+            pcbEditor.requestOverlayRefresh();
+        } else {
+            // Add to schematic directly
+            _commitProposalToSchematic(proposal);
+        }
 
         if (card) setProposalStatus(card, 'Placing...');
+    }
+
+    function _commitProposalToSchematic(proposal) {
+        if (!currentSchematic || !proposal) return;
+        const comp = proposal.component || {};
+        const symbolId = comp.symbol_id || comp.id_str || '';
+        const refDes = comp.ref || comp.ref_des || symbolId.split(':').pop().substring(0, 8);
+        const ops = comp.schematic_ops || comp.ops || [];
+        const category = comp.category || comp.name || 'Component';
+
+        if (ops.length > 0) {
+            const pos = _findNonOverlappingPosition(currentSchematic);
+            const schematicComp = currentSchematic.addRawComponent(
+                symbolId, refDes, ops, category, comp.description || ''
+            );
+            schematicComp.x = pos.x;
+            schematicComp.y = pos.y;
+
+            if (renderer) renderer.refresh();
+            updateComponentListUI();
+            showToast(`Added ${refDes} to schematic at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`, 'success');
+        } else {
+            showToast(`Added ${refDes} — no schematic symbol available, PCB only`, 'info');
+        }
+    }
+
+    function getCurrentView() {
+        if (typeof isSchematicView === 'function' && isSchematicView()) return 'schematic';
+        if (typeof isPCBView === 'function' && isPCBView()) return 'pcb';
+        if (typeof isSymbolPreviewMode === 'function' && isSymbolPreviewMode()) return 'symbol';
+        return 'schematic';
     }
 
     function renderProposalCard(data) {
@@ -1507,41 +2149,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const history = Array.isArray(data.history) ? data.history : [];
         const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+        const thoughtStream = Array.isArray(data.thought_stream) ? data.thought_stream : [];
 
-        // If no history and no proposals, keep the suggestion chips
-        if (!history.length && !proposals.length) {
-            return; // Don't clear the empty state with chips
+        // If no content at all, keep the suggestion chips
+        if (!history.length && !proposals.length && !thoughtStream.length) {
+            return;
         }
 
         // Has real content — clear and rebuild
         clearConversation();
         Object.keys(activeProposals).forEach((key) => delete activeProposals[key]);
 
+        // Replay thought stream events first (restores tool cards, steps, thoughts)
+        for (const evt of thoughtStream) {
+            handleThoughtStreamEvent(evt);
+        }
+
+        // Then render text history (supplementary — avoids double-render of assistant replies)
         for (const message of history) {
             if (message.role === 'user') {
-                const row = document.createElement('div');
-                row.className = 'conv-msg-row user';
-                const avatar = document.createElement('div');
-                avatar.className = 'conv-avatar user';
-                avatar.textContent = 'Y';
-                row.appendChild(avatar);
                 const userMsg = document.createElement('div');
                 userMsg.className = 'conv-user-msg';
                 userMsg.textContent = message.content || '';
-                row.appendChild(userMsg);
-                agentConversation.appendChild(row);
+                agentConversation.appendChild(userMsg);
             } else if (message.role === 'assistant') {
-                const row = document.createElement('div');
-                row.className = 'conv-msg-row';
-                const avatar = document.createElement('div');
-                avatar.className = 'conv-avatar bot';
-                avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
-                row.appendChild(avatar);
-                const agentMsg = document.createElement('div');
-                agentMsg.className = 'conv-agent-msg';
-                agentMsg.textContent = message.content || '';
-                row.appendChild(agentMsg);
-                agentConversation.appendChild(row);
+                // Check if this assistant reply is already covered by a thought card
+                // (skip if a thought with matching content exists)
+                const thoughts = agentConversation.querySelectorAll('.conv-thought');
+                let covered = false;
+                for (const t of thoughts) {
+                    const title = t.querySelector('.thought-title');
+                    if (title && title.textContent.trim() === (message.content || '').trim()) {
+                        covered = true;
+                        break;
+                    }
+                }
+                if (!covered) {
+                    const agentMsg = document.createElement('div');
+                    agentMsg.className = 'conv-thought';
+                    agentMsg.innerHTML = `<div class="thought-header"><span class="thought-chevron">▶</span><span class="thought-badge completed">✓</span><span class="thought-title">${escapeHtml(message.content || '')}</span></div>`;
+                    const body = document.createElement('div');
+                    body.className = 'thought-body';
+                    agentMsg.appendChild(body);
+                    agentConversation.appendChild(agentMsg);
+                }
             } else if (message.role === 'system') {
                 addConversationMessage('log', message.content || '');
             }
@@ -1551,7 +2202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderProposalCard(proposal);
         }
 
-        if (history.length || proposals.length) {
+        if (history.length || proposals.length || thoughtStream.length) {
             trimConversationDom();
             agentConversation.scrollTop = agentConversation.scrollHeight;
         }
@@ -1577,11 +2228,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (empty) empty.remove();
 
         const row = document.createElement('div');
-        row.className = 'conv-msg-row user';
-        const avatar = document.createElement('div');
-        avatar.className = 'conv-avatar user';
-        avatar.textContent = 'Y';
-        row.appendChild(avatar);
         const userMsg = document.createElement('div');
         userMsg.className = 'conv-user-msg';
         userMsg.textContent = text;
@@ -1599,17 +2245,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showAgentStatus('Ready', 'ready');
         
         const row = document.createElement('div');
-        row.className = 'conv-msg-row';
-        const avatar = document.createElement('div');
-        avatar.className = 'conv-avatar bot';
-        avatar.innerHTML = '<svg><use href="#icon-bot"/></svg>';
-        row.appendChild(avatar);
         const msgDiv = document.createElement('div');
-        msgDiv.className = 'conv-agent-msg';
+        msgDiv.className = 'conv-thought';
         msgDiv.innerHTML = _renderMarkdown(data.text || '');
         row.appendChild(msgDiv);
         agentConversation.appendChild(row);
-        agentConversation.scrollTop = agentConversation.scrollHeight;
     });
 
     socket.on('chat:proposal', (data) => {
@@ -1666,7 +2306,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Suggestion chips — click to fill prompt and send
     document.addEventListener('click', (e) => {
-        const chip = e.target.closest('.suggestion-chip');
+        const chip = e.target.closest('.chip');
         if (chip) {
             const prompt = chip.dataset.prompt;
             if (prompt) {

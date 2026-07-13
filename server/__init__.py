@@ -16,7 +16,7 @@ if not ensure_proxy(timeout=15):
 else:
     print(f"LLM proxy ready — {LLM_MODEL} @ {LLM_BASE_URL}")
 
-from server.state import app, socketio, rag, design_lock, LAST_DESIGN, _WIREBENDER_LAYOUT, _agent_events
+from server.state import app, socketio, rag, design_lock, session_manager
 from server.chat import CHAT_SESSIONS, ChatSession, _build_component_proposal_from_query
 
 import server.routes  # noqa: registers HTTP routes

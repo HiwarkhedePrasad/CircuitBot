@@ -5,6 +5,7 @@ const vm = require('vm');
 const constantsSource = fs.readFileSync('static/pcb_view/constants.js', 'utf8');
 const stateSource = fs.readFileSync('static/pcb_view/state.js', 'utf8');
 const utilsSource = fs.readFileSync('static/pcb_view/utils.js', 'utf8');
+const kicanvasTransformSource = fs.readFileSync('static/pcb_view/kicanvas_transform.js', 'utf8');
 
 const context = {
     console,
@@ -19,6 +20,8 @@ const context = {
 };
 
 vm.createContext(context);
+vm.runInContext(kicanvasTransformSource, context);
+context.KiCMath = context.window.KiCMath;
 vm.runInContext(constantsSource, context);
 vm.runInContext(`${stateSource}
 globalThis.pcbState = pcbState;
@@ -50,7 +53,7 @@ const helpers = context.__PCB_TEST__;
 assert.strictEqual(helpers.snapToGrid(1.31), 1.27);
 const rotated = helpers.rotatePoint(1, 0, 90);
 assert.ok(Math.abs(rotated.x) < 1e-9);
-assert.ok(Math.abs(rotated.y - (-1)) < 1e-9);
+assert.ok(Math.abs(rotated.y - 1) < 1e-9);
 
 assert.deepStrictEqual(
     JSON.parse(JSON.stringify(helpers.routePoint({ x: 5.1, y: 2.5 }))),
@@ -71,7 +74,7 @@ const center = JSON.parse(JSON.stringify(
         { x: 1, y: 0, rotation: 0 }
     )
 ));
-assert.deepStrictEqual(center, { x: 10, y: 21 });
+assert.deepStrictEqual(center, { x: 10, y: 19 });
 
 const centerWithPadRotation = JSON.parse(JSON.stringify(
     helpers.getComponentPadPosition(
@@ -79,7 +82,7 @@ const centerWithPadRotation = JSON.parse(JSON.stringify(
         { x: 1, y: 0, rotation: 90 }
     )
 ));
-assert.deepStrictEqual(centerWithPadRotation, { x: 10, y: 21 });
+assert.deepStrictEqual(centerWithPadRotation, { x: 10, y: 19 });
 
 const padFromPinKey = JSON.parse(JSON.stringify(
     helpers.getPadPositionByPinKey({
@@ -92,7 +95,7 @@ const padFromPinKey = JSON.parse(JSON.stringify(
         }],
     }, 'U1:1')
 ));
-assert.deepStrictEqual(padFromPinKey, { x: 10, y: 21 });
+assert.deepStrictEqual(padFromPinKey, { x: 10, y: 19 });
 
 const bounds = JSON.parse(JSON.stringify(
     helpers.getComponentBounds({

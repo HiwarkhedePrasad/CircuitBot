@@ -41,3 +41,6 @@ jobs:
 
       - name: Run schematic renderer JS regression tests
         run: node tests/test_schematic_renderer.js
+
+      - name: Run session URL helper regression tests
+        run: node tests/test_session_url_helper.js

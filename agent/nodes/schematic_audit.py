@@ -5,7 +5,8 @@ Does NOT re-place or re-route. Operates on state data from routing_node.
 
 from agent.erc_runner import run_kicad_erc
 from agent.layout_engine import _snap
-from agent.utils import _emit, emit_assistant_message, emit_tool_event
+from agent.utils import _emit, emit_assistant_message, emit_tool_event, emit_thought, emit_tool_call, emit_tool_end, emit_step
+from uuid import uuid4
 
 
 def schematic_audit_node(state, config):
@@ -20,7 +21,9 @@ def schematic_audit_node(state, config):
     if not comps or not placements:
         return {}
 
-    _emit(config, "agent:thinking", {"message": "Auditing schematic connectivity..."})
+    audit_id = uuid4().hex[:8]
+    emit_tool_call(config, audit_id, "Schematic Audit", "running")
+    emit_thought(config, "Auditing schematic connectivity...")
     emit_assistant_message(config, "Running schematic audit — validating wiring...")
     emit_tool_event(config, "Schematic Audit", "running", "Validating wiring...")
 
@@ -61,6 +64,8 @@ def schematic_audit_node(state, config):
     # ── 2. Validate existing traces ─────────────────────────────────
     clean_traces = [t for t in traces if len(t.get("path", [])) >= 2]
     dropped_pairs = state.get("_dropped_pairs", [])
+
+    emit_step(config, audit_id, "Validating existing traces...", "running")
 
     # Check netlist wire coverage
     wired_ref_pairs: set[tuple[str, str]] = set()
@@ -114,6 +119,7 @@ def schematic_audit_node(state, config):
         })
 
     # ── 3. Export and validate kicad_sch ─────────────────────────────
+    emit_step(config, audit_id, "Generating and validating KiCad schematic...", "running")
     sch_text = None
     try:
         from agent.kicad_export import generate_kicad_sch
@@ -151,6 +157,7 @@ def schematic_audit_node(state, config):
         return {}
 
     # ── 4. Run KiCad ERC if available ────────────────────────────────
+    emit_step(config, audit_id, "Running KiCad ERC...", "running")
     erc_result = None
     if sch_text:
         erc_result = run_kicad_erc(sch_text)
@@ -194,12 +201,16 @@ def schematic_audit_node(state, config):
 
         erc_retries = state.get("_erc_retries", 0)
         if fixable > 0:
+            emit_tool_end(config, audit_id, f"ERC found {fixable} fixable issue(s) — routing to repair",
+                           status="failed")
             # Return ERC results so the builder routes to repair (loop break via _route_after_erc)
             return {
                 "_erc_results": erc_result,
                 "_erc_pending_connections": fresh_pending,
             }
         elif fixable == 0 and total > 0:
+            emit_tool_end(config, audit_id, f"ERC completed with {total} non-fixable issue(s)",
+                           status="failed")
             emit_tool_event(config, "KiCad ERC", "completed",
                 f"Only {total} non-fixable issue(s) remain — proceeding")
     else:
@@ -250,4 +261,5 @@ def schematic_audit_node(state, config):
         emit_tool_event(config, "Schematic Audit", "completed", "No corrections needed")
         emit_assistant_message(config, "Schematic audit passed — all wiring is correct.")
 
+    emit_tool_end(config, audit_id, "Schematic audit passed")
     return {}

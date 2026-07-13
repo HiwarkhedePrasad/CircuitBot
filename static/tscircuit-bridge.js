@@ -43,12 +43,17 @@
 
   /* ---- helpers ------------------------------------------------------- */
 
+  function _sessionUrl(path) {
+    var sid = (window.circuitbotChatSessionId || "").trim()
+    return sid ? path + "?session_id=" + encodeURIComponent(sid) : path
+  }
+
   function fetchCircuitJson() {
     var body = null
     if (window.pcbState && window.pcbState.boardModel) {
       body = JSON.stringify({ board_model: window.pcbState.boardModel })
     }
-    return fetch("/api/circuit_json", {
+    return fetch(_sessionUrl("/api/circuit_json"), {
       method: body ? "POST" : "GET",
       headers: body ? { "Content-Type": "application/json" } : {},
       body: body,
@@ -66,7 +71,7 @@
 
   async function persistBoardFallback() {
     if (!window.pcbState || !window.pcbState.boardModel) return
-    await fetch("/api/save_board_model", {
+    await fetch(_sessionUrl("/api/save_board_model"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ board_model: window.pcbState.boardModel }),
@@ -106,7 +111,7 @@
       return
     }
     try {
-      var resp = await fetch("/api/apply_edits", {
+      var resp = await fetch(_sessionUrl("/api/apply_edits"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ edit_events: committed }),

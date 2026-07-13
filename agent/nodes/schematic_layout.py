@@ -41,6 +41,7 @@ def _build_synthesis_graph(state: dict) -> Any:
         for net_name, nd in serialised.get("nets", {}).items():
             net = g.get_or_create_net(net_name)
             net.pins = set(nd.get("pins", []))
+        g.llm_nets = list(serialised.get("llm_nets", []) or [])
         from agent.synthesis.classifier import classify_all
         classify_all(g)
         return g

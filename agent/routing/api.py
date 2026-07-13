@@ -336,6 +336,7 @@ def apply_schematic_edit(wire_paths: list[dict], event: dict, netlist: list[dict
 
 
 def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
+                 erc_retries: int = 0,
                  ) -> tuple[list[dict], list[tuple[str, str]]]:
     pos = {c['ref_des']: (c['x'], c['y']) for c in components}
     traces: list[dict] = []
@@ -374,7 +375,11 @@ def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
             return float('inf')
         return abs(s[0] - t[0]) + abs(s[1] - t[1])
 
-    max_allowed = MAX_WIRE_MANHATTAN * 1.5
+    # Progressive relaxation: on retries, allow longer wires and more collisions
+    max_collisions = MAX_COLLISIONS + erc_retries * 2
+    max_wire = MAX_WIRE_MANHATTAN * (1.5 + erc_retries * 0.5)
+
+    max_allowed = max_wire
     routable = [c for c in netlist if _mhd(c) <= max_allowed]
     for c in netlist:
         if _mhd(c) > max_allowed:
@@ -409,9 +414,9 @@ def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
             dropped = True
         elif not _is_orthogonal(path):
             dropped = True
-        elif _path_length(path) > MAX_WIRE_MANHATTAN * 1.5:
+        elif _path_length(path) > max_wire:
             dropped = True
-        elif _path_collisions(path, components, src_ref, tgt_ref) > MAX_COLLISIONS:
+        elif _path_collisions(path, components, src_ref, tgt_ref) > max_collisions:
             dropped = True
 
         if dropped:
