@@ -39,6 +39,7 @@ from agent.exceptions import ExportValidationError
 # Use agent.sexpr_utils.snap() / agent.sexpr_utils.pin_abs() when
 # coordinate transforms are needed outside this module.
 from agent.sexpr_utils import snap as _grid_snap, pin_abs as _pin_abs_global, GRID as _GRID
+from agent.routing.geometry import _orthogonal_segments_intersect
 
 GRID = 1.27
 
@@ -275,6 +276,10 @@ def generate_kicad_sch(design: dict) -> str:
     for lbl in power_labels:
         xs.append(lbl['x'])
         ys.append(-lbl['y'])
+    for nl in design.get('net_labels', []):
+        at = nl.get('at', {})
+        xs.append(at.get('x', 0))
+        ys.append(-at.get('y', 0))
     min_x = min(xs) if xs else 0.0
     min_y = min(ys) if ys else 0.0
     off_x = _snap(50.8 - min_x)
@@ -321,7 +326,7 @@ def generate_kicad_sch(design: dict) -> str:
 
         sx = _snap(place['x'] + off_x)
         sy = _snap(-place['y'] + off_y)
-        name = c['id_str'].partition(':')[2]
+        name = c.get("value") or c['id_str'].partition(':')[2]
         sym_uuid = _new_uuid()
         rot = int(round(float(place.get('rotation', 0.0)) / 90.0) * 90) % 360
         out.append(f'  (symbol (lib_id {_q(c["id_str"])}) (at {_fmt(sx)} {_fmt(sy)} {rot}) (unit 1)')
@@ -399,6 +404,7 @@ def generate_kicad_sch(design: dict) -> str:
             pin_sheet_positions[pin_key] = (abs_px, abs_py)
 
     seen_segs: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+    emitted_segments: list[tuple[str, tuple[tuple[float, float], tuple[float, float]]]] = []
     endpoint_count: dict[tuple[float, float], int] = {}
     wire_lines: list[str] = []
     n_dropped = 0
@@ -456,10 +462,19 @@ def generate_kicad_sch(design: dict) -> str:
             if seg_len > MAX_SEG_MM:
                 n_dropped += 1
                 continue
-            key = ((x1, y1), (x2, y2)) if (x1, y1) <= (x2, y2) else ((x2, y2), (x1, y1))
+            net = str(w.get('net', ''))
+            segment = ((x1, y1), (x2, y2)) if (x1, y1) <= (x2, y2) else ((x2, y2), (x1, y1))
+            key = segment
+            for prior_net, prior_segment in emitted_segments:
+                if prior_net != net and _orthogonal_segments_intersect(segment, prior_segment):
+                    raise ExportValidationError(
+                        f"Cross-net wire intersection between '{net}' and '{prior_net}'",
+                        issues=[{"code": "EV002", "net": net, "other_net": prior_net}],
+                    )
             if key in seen_segs:
                 continue
             seen_segs.add(key)
+            emitted_segments.append((net, segment))
             endpoint_count[(x1, y1)] = endpoint_count.get((x1, y1), 0) + 1
             endpoint_count[(x2, y2)] = endpoint_count.get((x2, y2), 0) + 1
             if src_key: surviving_wired_pins.add(src_key)
@@ -506,18 +521,76 @@ def generate_kicad_sch(design: dict) -> str:
         pin_y = _snap(-lbl['y'] + off_y)
         canvas_dir = lbl.get('dir', 'right')
 
-        dx = 1 if canvas_dir == 'right' else -1 if canvas_dir == 'left' else 0
-        # Canvas Y grows upward; KiCad sheet Y grows downward.
-        dy = -1 if canvas_dir == 'up' else 1 if canvas_dir == 'down' else 0
-        label_x = _snap(pin_x + dx * POWER_STUB_MM)
-        label_y = _snap(pin_y + dy * POWER_STUB_MM)
+        # Try the preferred direction first, then alternatives,
+        # to avoid cross-net wire intersections between power stubs
+        # (e.g. VDD stub crossing GND stub).
+        _CARDINALS = ['right', 'left', 'up', 'down']
+        candidates = [canvas_dir] + [d for d in _CARDINALS if d != canvas_dir]
 
-        label_key = (net, label_x, label_y)
+        chosen_dir = None
+        chosen_label_x = None
+        chosen_label_y = None
+        chosen_segment = None
+        chosen_key = None
+        label_key = None
+
+        for cd in candidates:
+            dx = 1 if cd == 'right' else -1 if cd == 'left' else 0
+            dy = -1 if cd == 'up' else 1 if cd == 'down' else 0
+            cand_label_x = _snap(pin_x + dx * POWER_STUB_MM)
+            cand_label_y = _snap(pin_y + dy * POWER_STUB_MM)
+
+            cand_label_key = (net, cand_label_x, cand_label_y)
+            if cand_label_key in emitted_power_labels:
+                continue
+
+            if (pin_x, pin_y) == (cand_label_x, cand_label_y):
+                chosen_dir = cd
+                chosen_label_x = cand_label_x
+                chosen_label_y = cand_label_y
+                chosen_segment = None
+                chosen_key = None
+                label_key = cand_label_key
+                break
+
+            segment = (
+                ((pin_x, pin_y), (cand_label_x, cand_label_y))
+                if (pin_x, pin_y) <= (cand_label_x, cand_label_y)
+                else ((cand_label_x, cand_label_y), (pin_x, pin_y))
+            )
+            key = segment
+
+            intersects = False
+            for prior_net, prior_segment in emitted_segments:
+                if prior_net != net and _orthogonal_segments_intersect(segment, prior_segment):
+                    intersects = True
+                    break
+
+            if not intersects:
+                if key not in seen_segs:
+                    chosen_dir = cd
+                    chosen_label_x = cand_label_x
+                    chosen_label_y = cand_label_y
+                    chosen_segment = segment
+                    chosen_key = key
+                    label_key = cand_label_key
+                    break
+
+        if chosen_dir is None:
+            # All directions intersect — emit the label without a stub wire.
+            # The global label still connects electrically in KiCad.
+            chosen_dir = canvas_dir
+            chosen_label_x = pin_x
+            chosen_label_y = pin_y
+            chosen_segment = None
+            chosen_key = None
+            label_key = (net, chosen_label_x, chosen_label_y)
+
         if label_key in emitted_power_labels:
             continue
         emitted_power_labels.add(label_key)
 
-        sheet_dir = canvas_dir
+        sheet_dir = chosen_dir
         if sheet_dir == 'up':
             sheet_dir = 'down'
         elif sheet_dir == 'down':
@@ -525,19 +598,15 @@ def generate_kicad_sch(design: dict) -> str:
         angle = _DIR_ANGLE.get(sheet_dir, 0)
         shape = 'passive' if net == 'GND' else 'input'
 
-        if (pin_x, pin_y) != (label_x, label_y):
-            key = (
-                ((pin_x, pin_y), (label_x, label_y))
-                if (pin_x, pin_y) <= (label_x, label_y)
-                else ((label_x, label_y), (pin_x, pin_y))
-            )
-            if key not in seen_segs:
-                seen_segs.add(key)
+        if chosen_segment is not None and chosen_key is not None:
+            if chosen_key not in seen_segs:
+                seen_segs.add(chosen_key)
+                emitted_segments.append((net, chosen_segment))
                 endpoint_count[(pin_x, pin_y)] = endpoint_count.get((pin_x, pin_y), 0) + 1
-                endpoint_count[(label_x, label_y)] = endpoint_count.get((label_x, label_y), 0) + 1
+                endpoint_count[(chosen_label_x, chosen_label_y)] = endpoint_count.get((chosen_label_x, chosen_label_y), 0) + 1
                 wire_lines.append(
                     f'  (wire (pts (xy {_fmt(pin_x)} {_fmt(pin_y)}) '
-                    f'(xy {_fmt(label_x)} {_fmt(label_y)}))'
+                    f'(xy {_fmt(chosen_label_x)} {_fmt(chosen_label_y)}))'
                 )
                 wire_lines.append('    (stroke (width 0) (type default))')
                 wire_lines.append(f'    (uuid {_q(_new_uuid())})')
@@ -545,7 +614,7 @@ def generate_kicad_sch(design: dict) -> str:
 
         out.append(
             f'  (global_label {_q(net)} (shape {shape}) '
-            f'(at {_fmt(label_x)} {_fmt(label_y)} {angle}) '
+            f'(at {_fmt(chosen_label_x)} {_fmt(chosen_label_y)} {angle}) '
             f'(fields_autoplaced yes)'
         )
         out.append('    (effects (font (size 1.27 1.27)) (justify left))')
@@ -555,6 +624,31 @@ def generate_kicad_sch(design: dict) -> str:
     # Track power-label pins as wired (they got a stub segment above).
     for lbl in power_labels:
         pin_key = lbl.get('pin', '')
+        if pin_key:
+            surviving_wired_pins.add(pin_key)
+
+    # ── (c) net labels and global labels from connection records ──
+    for nl in design.get('net_labels', []):
+        nl_type = nl.get('type', 'label')
+        net = nl.get('net', '')
+        at = nl.get('at', {})
+        lx = _snap(at.get('x', 0) + off_x)
+        ly = _snap(-at.get('y', 0) + off_y)
+
+        if nl_type == 'global':
+            shape = 'input'
+            out.append(
+                f'  (global_label {_q(net)} (shape {shape}) '
+                f'(at {_fmt(lx)} {_fmt(ly)} 0) (fields_autoplaced yes)'
+            )
+        else:
+            out.append(
+                f'  (label {_q(net)} (at {_fmt(lx)} {_fmt(ly)} 0) (fields_autoplaced yes)'
+            )
+        out.append('    (effects (font (size 1.27 1.27)) (justify left))')
+        out.append(f'    (uuid {_q(_new_uuid())})')
+        out.append('  )')
+        pin_key = nl.get('pin', '')
         if pin_key:
             surviving_wired_pins.add(pin_key)
 
