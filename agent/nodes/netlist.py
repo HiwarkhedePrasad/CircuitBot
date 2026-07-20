@@ -4,6 +4,7 @@ from functools import lru_cache
 from agent.bus_checker import check_bus_topology
 from agent.power_domains import POWER_NETS as _CANONICAL_POWER_NETS
 from agent.prompts import NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER
+from agent.feature_flags import is_enabled
 from agent.utils import (
     _emit, emit_assistant_message, emit_tool_event, _make_signal_batches, _merge_net, _generate_nets_fallback,
     _clean_json, _call_llm_with_tools,
@@ -136,6 +137,50 @@ def netlist_node(state, config):
     if not comps or not pins:
         _emit(config, "agent:log", {"message": "No components or pins to route."})
         return {"netlist": [], "nets": [], "power_pins": []}
+    # ── Build research context from web research, datasheets, and connection guidance ──
+    research_parts = []
+
+    web_research = state.get("web_research_results", [])
+    if web_research:
+        lines = []
+        for r in web_research:
+            sub = r.get("subsystem", "")
+            summary = r.get("summary", "")
+            if summary and not summary.startswith("("):
+                lines.append(f"[{sub}] {summary[:400]}")
+        if lines:
+            research_parts.append("Web component research:\n" + "\n".join(lines))
+
+    ds_results = state.get("datasheet_search_results", [])
+    if ds_results:
+        lines = []
+        for r in ds_results:
+            ref = r.get("ref_des", "")
+            id_str = r.get("id_str", "")
+            summary = r.get("summary", "")
+            if summary and not summary.startswith("("):
+                lines.append(f"[{ref} ({id_str})] {summary[:400]}")
+        if lines:
+            research_parts.append("Datasheet information:\n" + "\n".join(lines))
+
+    conn_results = state.get("connection_search_results", [])
+    if conn_results:
+        lines = []
+        for r in conn_results:
+            title = r.get("title", "")
+            summary = r.get("summary", "")
+            if summary and not summary.startswith("("):
+                lines.append(f"[{title}] {summary[:300]}")
+        if lines:
+            research_parts.append("Connection wiring guidance (from web research):\n" + "\n".join(lines))
+
+    research_context = "\n\n".join(research_parts)
+    if research_context:
+        research_context += "\n\nUse the above research to guide your wiring decisions."
+        _emit(config, "agent:log", {
+            "message": f"  Injecting {len(research_parts)} research section(s) into netlist prompt"
+        })
+
     comps_desc = "\n".join(
         f'  {c["ref_des"]}: {c["id_str"]} ({c["category"]})'
         for c in comps
@@ -197,6 +242,13 @@ def netlist_node(state, config):
         })
     trace_constraints: dict = {}
     explicit_signal_edges: list[dict] = []
+
+    # Ensure LLM proxy is alive before starting batch processing
+    try:
+        from config import ensure_proxy
+        ensure_proxy(timeout=15)
+    except Exception:
+        pass
     for bi, batch_refs in enumerate(batches, 1):
         batch_tc = {}
         batch_keys = sorted(
@@ -219,13 +271,15 @@ def netlist_node(state, config):
             for k in batch_keys
         )
         existing = ", ".join(n["net"] for n in nets) or "(none yet)"
+        user_prompt = NETLIST_BATCH_USER.format(
+            prompt=state["prompt"],
+            components_desc=batch_comps_desc,
+            research_context=research_context,
+            existing_nets=existing,
+            pins_desc=pins_desc,
+        )
         text = _call_llm_with_tools(
-            NETLIST_BATCH_SYSTEM, NETLIST_BATCH_USER.format(
-                prompt=state["prompt"],
-                components_desc=batch_comps_desc,
-                existing_nets=existing,
-                pins_desc=pins_desc,
-            ),
+            NETLIST_BATCH_SYSTEM, user_prompt,
             max_tool_rounds=4,
         )
         text = _clean_json(text)
@@ -289,9 +343,59 @@ def netlist_node(state, config):
             })
 
     # ── Bus topology check ─────────────────────────────────────────
-    nets, bus_warnings = check_bus_topology(nets, pins, comps)
+    nets, bus_warnings, bus_removed_pins = check_bus_topology(nets, pins, comps)
+    if bus_removed_pins:
+        # Power isolation ejected signal-etype pins from power/GND nets.
+        # Remove them from assigned so the fallback can process them.
+        old_count = len(assigned)
+        for p in bus_removed_pins:
+            assigned.discard(p)
+        _emit(config, "agent:log", {
+            "message": f"  Bus check: freed {old_count - len(assigned)} pin(s) from assigned "
+                       f"for fallback recovery"
+        })
     for w in bus_warnings:
         _emit(config, "agent:log", {"message": w})
+
+    # ── M1b: Surface bus warnings to user ──────────────────────────
+    _bus_warnings_for_result = list(bus_warnings) if is_enabled("BUS_WARNINGS_SURFACED") else []
+
+    # ── Power rail merging ─────────────────────────────────────────────
+    # Merge power nets that share a voltage rail.  If net A has a power_out
+    # pin (the source) and net B has only power_in/passive pins (consumers),
+    # merge B into A.  This handles cases where VDD/VCC/VOUT are the same
+    # 3.3V rail from a regulator but got distinct net names.
+    def _pin_etype(pk: str) -> str:
+        return (pins.get(pk, {}) or {}).get("etype", "") or ""
+
+    power_nets = [n for n in nets
+                  if (_is_power_net(n["net"]) or _is_gnd_net(n["net"]))
+                  and n["net"].upper() != "GND"]
+    net_has_source: dict[str, bool] = {}
+    for n in power_nets:
+        net_has_source[n["net"]] = any(
+            _pin_etype(p).lower() == "power_out" for p in n.get("pins", [])
+        )
+    source_nets = {n for n, has in net_has_source.items() if has}
+    consumer_nets = [n for n in power_nets if not net_has_source.get(n["net"], False)]
+    for cn in consumer_nets:
+        cname = cn["net"]
+        if not cn.get("pins"):
+            continue
+        best_source = None
+        for sn in source_nets:
+            if sn.upper() == cname.upper():
+                continue
+            best_source = sn
+            break
+        if best_source:
+            c_pins = list(cn["pins"])
+            _merge_net(nets, best_source, c_pins)
+            for p in c_pins:
+                assigned.add(p)
+            _emit(config, "agent:log", {
+                "message": f"  Power merge: merged '{cname}' ({len(c_pins)} pins) into '{best_source}'"
+            })
 
     leftover = {k: pins[k] for k in pins if k not in assigned}
     if leftover:
@@ -321,6 +425,13 @@ def netlist_node(state, config):
             clean.append(p)
         if len(clean) >= 2 or (_is_gnd_net(name) or _is_power_net(name)) and len(clean) >= 1:
             valid_nets.append({"net": name, "pins": clean})
+        else:
+            # Single-pin signal net — drop the pins from assigned so they
+            # surface as PCV001 (uncovered) rather than silently vanishing.
+            for p in clean:
+                assigned.discard(p)
+                used_pins.discard(p)
+    erc_removed_pins: list[tuple[str, str]] = []
     for net in valid_nets:
         if _is_gnd_net(net["net"]):
             keep = []
@@ -328,10 +439,44 @@ def netlist_node(state, config):
                 pname = pins[p].get("name", "").upper()
                 if _is_power_net(pname):
                     used_pins.discard(p)
+                    erc_removed_pins.append((p, pname))
                     _emit(config, "agent:log", {"message": f"  ERC: removed power pin {p} ({pname}) from GND net"})
                 else:
                     keep.append(p)
             net["pins"] = keep
+    # Re-home ERC-removed pins to their proper power net if it exists
+    if erc_removed_pins:
+        net_by_canon: dict[str, list[str]] = {}
+        for vn in valid_nets:
+            if not _is_gnd_net(vn["net"]):
+                net_by_canon.setdefault(vn["net"].upper(), []).extend(vn["pins"])
+        for p, pname in erc_removed_pins:
+            from agent.power_domains import classify as _classify_rail
+            canon = _classify_rail(pname) or pname.lstrip("+")
+            if canon.upper() in net_by_canon:
+                net_by_canon[canon.upper()].append(p)
+                used_pins.add(p)
+                for vn in valid_nets:
+                    if vn["net"].upper() == canon.upper():
+                        assert isinstance(vn["pins"], list)
+                        vn["pins"].append(p)
+                        break
+                _emit(config, "agent:log", {"message": f"  ERC: re-homed {p} ({pname}) to net '{canon}'"})
+            else:
+                assigned.discard(p)
+                _emit(config, "agent:log", {"message": f"  ERC: orphaned {p} ({pname}) — no power net '{canon}' found"})
+
+    # ── Auto pull-up detection ─────────────────────────────────────────
+    netlist_validation_issues: list[dict] = []
+    try:
+        from agent.auto_pullup import find_missing_pullups
+        pullup_issues = find_missing_pullups(valid_nets, pins, comps)
+        for pi in pullup_issues:
+            _emit(config, "agent:log", {"message": f"  {pi['code']}: {pi['message']}"})
+            netlist_validation_issues.append(pi)
+    except Exception as pu_ex:
+        _emit(config, "agent:log", {"message": f"  Pull-up check failed: {pu_ex}"})
+
     power_pins = []
     netlist = []
     seen_edges: set[tuple[str, str, str]] = set()
@@ -377,7 +522,12 @@ def netlist_node(state, config):
         })
     # ── Inject PWR_FLAG for power nets without a power-output driver ──
     result = {"netlist": netlist, "nets": valid_nets, "power_pins": power_pins,
-              "trace_constraints": trace_constraints}
+              "trace_constraints": trace_constraints,
+              "_validation_issues": netlist_validation_issues}
+    if _bus_warnings_for_result:
+        result["validation_warnings"] = _bus_warnings_for_result
+        for w in _bus_warnings_for_result:
+            emit_thought(config, f"Bus topology: {w}")
     # ── Build canonical synthesis graph ──────────────────────────────
     try:
         from agent.synthesis.graph import SynthesisGraph
@@ -393,23 +543,54 @@ def netlist_node(state, config):
         sgraph.import_power_pins(power_pins)
         classify_all(sgraph)
         match_and_constrain(sgraph)
-        result["synthesis_graph"] = {
-            "components": {r: {"ref_des": r, "id_str": c.id_str, "library": c.library,
-                               "category": c.category, "user_locked": c.user_locked,
-                               "pins": {pk: {"name": p.name, "role": p.role.value, "etype": p.etype}
-                                        for pk, p in c.pins.items()}}
-                           for r, c in sgraph.components.items()},
-            "nets": {n: {"name": n, "role": nr.role.value, "pins": sorted(nr.pins)}
-                     for n, nr in sgraph.nets.items()},
-            "llm_nets": list(netlist),
-            "constraints": [{"type": ct.type.value, "source_pin": ct.source_pin,
-                              "target_pin": ct.target_pin, "metadata": ct.metadata}
-                             for ct in sgraph.constraints],
-        }
+
+        # Store live graph for downstream use (M1a flag or always for netlist)
+        result["synthesis_graph"] = sgraph
+
+        # Serialize for state persistence
         _emit(config, "agent:log", {
             "message": (f"Synthesis graph: {len(sgraph.components)} components, "
                         f"{len(sgraph.nets)} nets, {len(sgraph.constraints)} constraints")
         })
+
+        # ── M1b: Deterministic validation on the graph ────────────────
+        if is_enabled("VALIDATION_DETERMINISTIC"):
+            try:
+                from agent.synthesis.validation import validate_circuit
+                from agent.synthesis.engine import validate_constraints, suggest_repairs
+
+                validation_issues = validate_circuit(sgraph)
+                constraint_viols = validate_constraints(sgraph)
+                repairs = suggest_repairs(constraint_viols)
+
+                all_issues = list(validation_issues)
+                for cv in constraint_viols:
+                    all_issues.append({
+                        "code": "CON001",
+                        "severity": cv.severity,
+                        "stage": "synthesis",
+                        "message": cv.description,
+                    })
+
+                if all_issues:
+                    result["_validation_issues"] = all_issues
+                    for issue in all_issues:
+                        severity = issue.get("severity", "warning")
+                        code = issue.get("code", "UNKNOWN")
+                        msg = issue.get("message", "")
+                        emit_thought(config, f"Validation [{severity}] {code}: {msg}")
+
+                if repairs:
+                    emit_thought(config, f"Suggested {len(repairs)} repair(s) for constraint violations")
+                    for r in repairs:
+                        emit_thought(config, f"  Repair: {r.description} (priority {r.priority})")
+
+                _emit(config, "agent:log", {
+                    "message": f"Deterministic validation: {len(all_issues)} issues, {len(repairs)} repairs suggested"
+                })
+            except Exception as ve:
+                _emit(config, "agent:log", {"message": f"  Deterministic validation failed: {ve}"})
+
     except Exception as exc:
         _emit(config, "agent:log", {"message": f"Synthesis graph build failed: {exc}"})
 

@@ -312,20 +312,20 @@ def _match_usb_c_receptacle(
         vbus_rail = "VBUS"
 
     for ref in usb_refs:
-        usb_pins = {
-            _canonical(pin_matrix[k].get("name", "")): k
-            for k in pin_matrix
-            if k.split(":")[0] == ref and k not in assigned
-        }
+        # Build name -> [pin_key, ...] to preserve ALL pins per name
+        usb_pins: dict[str, list[str]] = {}
+        for k in pin_matrix:
+            if k.split(":")[0] == ref and k not in assigned:
+                cname = _canonical(pin_matrix[k].get("name", ""))
+                usb_pins.setdefault(cname, []).append(k)
 
-        # VBUS → power rail
+        # VBUS -> power rail (match ALL VBUS pins, not just the first)
         for vbus_name in ("VBUS", "VBUS1", "VBUS2"):
-            if vbus_name in usb_pins and usb_pins[vbus_name] not in result.matched_pins:
-                pk = usb_pins[vbus_name]
-                result.new_nets.append({"net": vbus_rail, "pins": [pk]})
-                result.new_power_pins.append({"pin": pk, "net": vbus_rail})
-                result.matched_pins.add(pk)
-                break
+            for pk in usb_pins.get(vbus_name, []):
+                if pk not in result.matched_pins:
+                    result.new_nets.append({"net": vbus_rail, "pins": [pk]})
+                    result.new_power_pins.append({"pin": pk, "net": vbus_rail})
+                    result.matched_pins.add(pk)
 
         # GND pins
         for gnd_name in ("GND", "GND1", "GND2"):
@@ -434,9 +434,19 @@ def match_pins(
 
     result = MatchResult()
 
-    result.merge(_match_temp_sensor_to_adc(components, pin_matrix, assigned))
-    result.merge(_match_power_terminal(components, pin_matrix, existing_power_pins, assigned))
-    result.merge(_match_decoupling_cap(components, pin_matrix, existing_power_pins, assigned))
-    result.merge(_match_usb_c_receptacle(components, pin_matrix, existing_power_pins, assigned))
+    _RULES = [
+        ("temp sensor → ADC",     _match_temp_sensor_to_adc,       (components, pin_matrix, assigned)),
+        ("power terminal",        _match_power_terminal,           (components, pin_matrix, existing_power_pins, assigned)),
+        ("decoupling capacitor",  _match_decoupling_cap,           (components, pin_matrix, existing_power_pins, assigned)),
+        ("USB-C receptacle",      _match_usb_c_receptacle,         (components, pin_matrix, existing_power_pins, assigned)),
+    ]
+    for rule_name, rule_fn, rule_args in _RULES:
+        try:
+            sub = rule_fn(*rule_args)
+            result.merge(sub)
+        except Exception as ex:
+            import sys
+            print(f"Pin matcher: rule '{rule_name}' failed ({type(ex).__name__}: {ex}) — skipping",
+                  file=sys.stderr)
 
     return result.to_dict()
