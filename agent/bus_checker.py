@@ -79,14 +79,15 @@ def _check_power_isolation(
     pin_matrix: dict,
     comps: list,
     warnings: list,
-) -> list[dict]:
+) -> tuple[list[dict], set[str]]:
     """Remove signal-type pins from power/GND nets.
 
-    A signal pin is one whose etype is input/output/bidirectional/tri_state.
-    Exception: passive-component pins (resistors, caps) may cross between
-    a power net and a signal net (pull-up/down role).
+    Returns (corrected_nets, removed_pins) where removed_pins is the set
+    of pin keys ejected from power/GND nets.  Callers MUST remove these
+    from their ``assigned`` set so the fallback can recover them.
     """
     corrected = []
+    removed_pins: set[str] = set()
     for net in nets:
         name = net.get("net", "")
         pins = net.get("pins", [])
@@ -107,11 +108,12 @@ def _check_power_isolation(
                 f"  Bus check — power isolation: removed {p} ({_pin_name(p, pin_matrix)}, etype={etype}) "
                 f"from net '{name}' (signal pin on power rail)"
             )
+            removed_pins.add(p)
         if clean:
             corrected.append({"net": name, "pins": clean})
         elif len(pins) == 0:
             corrected.append({"net": name, "pins": clean})
-    return corrected
+    return corrected, removed_pins
 
 
 # ── Rule 2: I2C bus merge ──────────────────────────────────────────────
@@ -412,7 +414,7 @@ def check_bus_topology(
     nets: list[dict],
     pin_matrix: dict,
     comps: list,
-) -> tuple[list[dict], list[str]]:
+) -> tuple[list[dict], list[str], set[str]]:
     """Run all deterministic bus-topology checks on LLM-generated nets.
 
     Args:
@@ -421,20 +423,25 @@ def check_bus_topology(
         comps: List of selected components.
 
     Returns:
-        (corrected_nets, warnings):
+        (corrected_nets, warnings, removed_pins):
           corrected_nets — nets with violations repaired (pins removed/merged).
           warnings — human-readable strings describing each fix.
+          removed_pins — pin keys ejected from power/GND nets by power isolation.
+                        Caller must remove these from ``assigned`` so the
+                        fallback can recover them.
     """
     warnings: list[str] = []
+    all_removed_pins: set[str] = set()
 
     # Rule order matters — I2C merge first to collapse aliases, then check
     # the merged result for power/short issues.
     nets = _check_i2c_merge(nets, pin_matrix, warnings)
-    nets = _check_power_isolation(nets, pin_matrix, comps, warnings)
+    nets, removed = _check_power_isolation(nets, pin_matrix, comps, warnings)
+    all_removed_pins.update(removed)
     nets = _check_uart_cross(nets, pin_matrix, warnings)
     nets = _check_same_component_short(nets, pin_matrix, comps, warnings)
     nets = _check_crystal_load_caps(nets, pin_matrix, comps, warnings)
     nets = _check_power_flag_required(nets, pin_matrix, comps, warnings)
     nets = _check_auto_named_nets(nets, pin_matrix, warnings)
 
-    return nets, warnings
+    return nets, warnings, all_removed_pins
