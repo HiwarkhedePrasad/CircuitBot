@@ -91,7 +91,7 @@ def ensure_proxy(timeout: int = 30) -> bool:
     return False
 
 
-def get_llm_client(temperature=1.0, max_tokens=8192, request_timeout=120):
+def get_llm_client(temperature=1.0, max_tokens=8192, request_timeout=300):
     return ChatOpenAI(
         model=LLM_MODEL,
         base_url=LLM_BASE_URL,

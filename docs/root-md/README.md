@@ -51,9 +51,9 @@ CircuitBot/
 ├── config.py                    Runtime configuration helpers
 ├── requirements.txt             Python dependencies
 ├── package.json                 Frontend/package metadata
-├── README.md                    Project overview and setup
+├── docs/root-md/README.md                    Project overview and setup
 ├── LICENSE                      Project license
-├── CIRCUITBOT_SUMMARY.md        Current engineering status summary
+├── docs/root-md/CIRCUITBOT_SUMMARY.md        Current engineering status summary
 │
 ├── agent/                       LangGraph agent and design pipeline
 │   ├── builder.py               Graph construction

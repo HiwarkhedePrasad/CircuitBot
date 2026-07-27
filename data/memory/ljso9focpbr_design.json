@@ -1,0 +1,30 @@
+{
+  "design_id": "ljso9focpbr",
+  "intent": null,
+  "decisions": [
+    {
+      "id": "027c7caf",
+      "entity_id": "U401",
+      "revision": 0,
+      "decision": "Review: Regulator VIN (U401:1) shorted to GND while VOUT (U401:4) tied to 5V VBUS and EN (U401:3) tied to VOUT. 3.3V rail receives 5V.",
+      "rationale": "Connect J1 VBUS to U401:1 and U401:3. Connect U401:4 to the 3.3V rail. Connect U401:2 to GND.",
+      "timestamp": 1785060063.5536284
+    },
+    {
+      "id": "05ff70ae",
+      "entity_id": "J1",
+      "revision": 0,
+      "decision": "Review: USB-C CC1 and CC2 pins (J1 A5/B5) have no 5.1k\u03a9 pull-down resistors. Power source cannot detect the device.",
+      "rationale": "Add 5.1k\u03a9 resistors from J1 CC1 and CC2 pins to GND.",
+      "timestamp": 1785060063.558868
+    },
+    {
+      "id": "8eb1fa6c",
+      "entity_id": "",
+      "revision": 0,
+      "decision": "Review: OLED display specified in the design intent is missing from the design.",
+      "rationale": "Add an I2C OLED display (e.g., SSD1306) to the 3.3V rail and I2C bus (GPIO14/15).",
+      "timestamp": 1785060063.5634003
+    }
+  ]
+}

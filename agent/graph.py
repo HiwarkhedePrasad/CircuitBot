@@ -5,7 +5,7 @@ imports (e.g. ``from agent.graph import agent_graph``) continue to work.
 """
 from agent.builder import agent_graph, build_graph
 from agent.nodes import (
-    analyze_node, research_node, select_node, validate_node,
+    analyze_node, research_node, deepresearch_node, select_node, validate_node,
     dispatch_node, netlist_node,
     placement_node, routing_node, pcb_layout_node,
     schematic_audit_node, ask_pcb_approval_node,
@@ -30,7 +30,7 @@ from agent.utils import (
 
 __all__ = [
     "agent_graph", "build_graph",
-    "analyze_node", "research_node", "select_node", "validate_node",
+    "analyze_node", "research_node", "deepresearch_node", "select_node", "validate_node",
     "dispatch_node", "netlist_node",
     "placement_node", "routing_node", "pcb_layout_node",
     "ask_validation_help_node",

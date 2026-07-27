@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import time
 import traceback
@@ -19,13 +20,13 @@ except ImportError:
 
 MAX_LLM_RETRIES = 5
 MAX_VALIDATION_RETRIES = 3
-MAX_BATCH_PINS = 24
+MAX_BATCH_PINS = 16
 
 _LLM_CALL_HISTORY: list[float] = []
-_LLM_CALL_HISTORY_MAX = 20
-_LLM_MIN_INTERVAL = 0.0
+_LLM_CALL_HISTORY_MAX = 50
+_LLM_MIN_INTERVAL = float(os.getenv("LLM_MIN_INTERVAL", "0.5"))
 _LLM_WINDOW_SEC = 60.0
-_LLM_MAX_PER_WINDOW = 999
+_LLM_MAX_PER_WINDOW = int(os.getenv("LLM_MAX_PER_MINUTE", "20"))
 _LAST_429_TIME: float = 0.0
 
 
@@ -90,6 +91,16 @@ def _is_connection_error(e: Exception) -> bool:
 
 def _retry_llm_call(system: str, user: str, stage: str = "", tools: list[dict] | None = None) -> str:
     global _LAST_429_TIME
+
+    # Inject skill content for this pipeline stage
+    try:
+        from agent.skill_loader import load_skill_for_stage
+        skill_content = load_skill_for_stage(stage)
+        if skill_content:
+            system = skill_content + "\n" + system
+    except Exception:
+        pass  # skill loader failure should not break the pipeline
+
     t0 = time.time()
     for attempt in range(MAX_LLM_RETRIES):
         elapsed = time.time() - t0

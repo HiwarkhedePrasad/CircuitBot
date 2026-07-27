@@ -100,7 +100,7 @@ function getColumnForCategory(category) {
     return COLUMN_DEFS.length - 1;
 }
 
-function snapToGrid(value) {
+function snapToSchematicGrid(value) {
     return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
 
@@ -214,6 +214,16 @@ class SchematicComponent {
         this.bbox = calculateOpsBBox(ops);
         this.geomBBox = calculateGeometryBBox(ops);
         this.refDesignator = this.extractRef();
+        // Enriched component data
+        this.footprint = '';
+        this.pads = [];
+        this.pins = [];
+        this.datasheet = '';
+        this.datasheet_text = '';
+        this.pin_summary = '';
+        this.value = '';
+        this.manufacturer = '';
+        this.has_footprint = false;
     }
 
     extractRef() {
@@ -227,6 +237,23 @@ class SchematicComponent {
 
     get width() { return this.bbox.w; }
     get height() { return this.bbox.h; }
+
+    getPins() { return this.pins; }
+    getFootprint() { return this.footprint; }
+    getDatasheet() { return this.datasheet; }
+
+    /** Enrich component with data from backend RAG lookup */
+    enrich(data) {
+        if (data.footprint) this.footprint = data.footprint;
+        if (data.pads) this.pads = data.pads;
+        if (data.pins) this.pins = data.pins;
+        if (data.datasheet) this.datasheet = data.datasheet;
+        if (data.datasheet_text) this.datasheet_text = data.datasheet_text;
+        if (data.pin_summary) this.pin_summary = data.pin_summary;
+        if (data.value) this.value = data.value;
+        if (data.manufacturer) this.manufacturer = data.manufacturer;
+        this.has_footprint = !!this.footprint;
+    }
 }
 
 // ── Net Label ────────────────────────────────────────────────────────────
@@ -243,6 +270,59 @@ class NetLabel {
     }
 }
 
+// ── Image Marker ────────────────────────────────────────────────────────
+// An image marker is a screenshot/photo placed on the schematic canvas
+// as a visual reference. Asset_id prevents storing large base64 inside
+// the design snapshot — the image itself lives in the asset store.
+class ImageMarker {
+    constructor(id, x, y, imageDataUrl, label, width, height, markerNumber, scale, rotation, assetId, revealed) {
+        this.id = id;
+        this.markerNumber = markerNumber || 0;
+        this.x = x;
+        this.y = y;
+        this.imageDataUrl = imageDataUrl;
+        this.label = label || '';
+        this.width = width || 20;
+        this.height = height || 15;
+        this.scale = scale || 1;
+        this.rotation = rotation || 0;
+        this.assetId = assetId || null;
+        this._imageRevealed = !!revealed;
+    }
+
+    toDesignSnapshot() {
+        return {
+            id: this.id,
+            marker_number: this.markerNumber,
+            label: this.label,
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height,
+            scale: this.scale,
+            rotation: this.rotation,
+            asset_id: this.assetId,
+            revealed: this._imageRevealed,
+        };
+    }
+
+    static fromSnapshot(snap) {
+        return new ImageMarker(
+            snap.id,
+            snap.x, snap.y,
+            null,
+            snap.label || '',
+            snap.width || 20,
+            snap.height || 15,
+            snap.marker_number || 0,
+            snap.scale || 1,
+            snap.rotation || 0,
+            snap.asset_id || null,
+            snap.revealed || false,
+        );
+    }
+}
+
 // --- Schematic Manager (data container only) ---
 class Schematic {
     constructor() {
@@ -252,7 +332,10 @@ class Schematic {
         this.junctionPoints = [];
         this.powerLabels = [];
         this.netLabels = [];
+        this.imageMarkers = [];
+        this.netlist = [];
         this._netLabelCounter = 0;
+        this._imageMarkerCounter = 0;
     }
 
     addComponent(id, name, ops, category, description) {
@@ -261,18 +344,29 @@ class Schematic {
         const comp = new SchematicComponent(id, name, ops, category, description);
         // Simple staggered placement for manually added components
         const offset = this.components.length * 15;
-        comp.x = snapToGrid(offset);
-        comp.y = snapToGrid(offset);
+        comp.x = snapToSchematicGrid(offset);
+        comp.y = snapToSchematicGrid(offset);
         this.components.push(comp);
         return comp;
     }
 
-    addRawComponent(id, refDes, ops, category, description) {
+    addRawComponent(id, refDes, ops, category, description, extra = {}) {
         const existing = this.components.find(c => c.refDesignator === refDes);
-        if (existing) return existing;
+        if (existing) {
+            if (extra.footprint) existing.footprint = extra.footprint;
+            if (extra.pads) existing.pads = extra.pads;
+            if (extra.datasheet) existing.datasheet = extra.datasheet;
+            if (extra.datasheet_text) existing.datasheet_text = extra.datasheet_text;
+            return existing;
+        }
         const comp = new SchematicComponent(id, refDes, ops, category, description);
         comp.lib_id = id;
         comp.refDesignator = refDes;
+        if (extra.footprint) comp.footprint = extra.footprint;
+        if (extra.pads) comp.pads = extra.pads;
+        if (extra.datasheet) comp.datasheet = extra.datasheet;
+        if (extra.datasheet_text) comp.datasheet_text = extra.datasheet_text;
+        if (extra.value) comp.value = extra.value;
         this.components.push(comp);
         return comp;
     }
@@ -294,7 +388,9 @@ class Schematic {
         this.junctionPoints = [];
         this.powerLabels = [];
         this.netLabels = [];
+        this.imageMarkers = [];
         this._netLabelCounter = 0;
+        this._imageMarkerCounter = 0;
         this.netlist = [];
     }
 
@@ -323,6 +419,64 @@ class Schematic {
         const before = this.netLabels.length;
         this.netLabels = this.netLabels.filter(l => l.id !== id);
         return this.netLabels.length < before;
+    }
+
+    // ── Image Marker methods ──────────────────────────────────────
+
+    getNextImageMarkerNumber() {
+        let max = 0;
+        for (const m of this.imageMarkers) {
+            if (m.markerNumber > max) max = m.markerNumber;
+        }
+        return max + 1;
+    }
+
+    addImageMarkerAt(x, y, imageDataUrl, label, width, height, assetId, markerNumber) {
+        const id = `img_${++this._imageMarkerCounter}`;
+        const num = markerNumber !== undefined ? markerNumber : this.getNextImageMarkerNumber();
+        const marker = new ImageMarker(id, x, y, imageDataUrl, label, width, height, num, 1, 0, assetId);
+        this.imageMarkers.push(marker);
+        return marker;
+    }
+
+    removeImageMarker(id) {
+        const before = this.imageMarkers.length;
+        this.imageMarkers = this.imageMarkers.filter(m => m.id !== id);
+        return this.imageMarkers.length < before;
+    }
+
+    getImageMarkerById(id) {
+        return this.imageMarkers.find(m => m.id === id) || null;
+    }
+
+    /** Load markers from a snapshot, syncing the counter to avoid ID collisions. */
+    loadImageMarkers(markers) {
+        if (!Array.isArray(markers)) return;
+        for (const m of markers) {
+            const marker = ImageMarker.fromSnapshot(m);
+            this.imageMarkers.push(marker);
+            const num = m.marker_number || 0;
+            if (num >= this._imageMarkerCounter) {
+                this._imageMarkerCounter = num + 1;
+            }
+            // Load image from asset store if assetId is present
+            if (marker.assetId) {
+                this._loadMarkerImage(marker);
+            }
+        }
+    }
+
+    async _loadMarkerImage(marker) {
+        try {
+            const resp = await fetch(`/api/schematic_assets/${marker.assetId}`);
+            if (!resp.ok) return;
+            const result = await resp.json();
+            if (result.image_data) {
+                marker.imageDataUrl = result.image_data;
+            }
+        } catch (err) {
+            console.warn(`Failed to load image for marker ${marker.id}:`, err);
+        }
     }
 
     /** Get net labels attached to a specific pin key. */
@@ -386,6 +540,61 @@ class Schematic {
             }
         }
         return map;
+    }
+
+    // ── Design Snapshot Serialization ───────────────────────────────────────
+    // Serializes the full canvas state into a backend-compatible format
+    // for canonical state synchronization.
+
+    /**
+     * Serialize the current schematic to a design snapshot.
+     * @param {number} revision - Current synced revision (optimistic locking).
+     * @returns {Object} Backend-compatible design snapshot.
+     */
+    toDesignSnapshot(revision = 0) {
+        const components = this.components.map(c => ({
+            ref_des: c.refDesignator,
+            id_str: c.lib_id || c.id,
+            value: c.value || '',
+            footprint: c.footprint || '',
+            category: c.category || '',
+            x: c.x,
+            y: c.y,
+            rotation: 0,
+            ops: c.ops || [],
+            pins: c.pins || [],
+            pads: c.pads || [],
+        }));
+
+        const wire_paths = this.wirePaths.map(w => ({
+            wire_id: w.wire_id,
+            source: w.source,
+            target: w.target,
+            path: w.path || [],
+            net: w.net || '',
+            manual: w.manual || false,
+        }));
+
+        const net_labels = this.netLabels.map(nl => ({
+            id: nl.id,
+            net: nl.net,
+            x: nl.x,
+            y: nl.y,
+            orientation: nl.orientation,
+            pin: nl.pin,
+        }));
+
+        const image_markers = this.imageMarkers.map(m => m.toDesignSnapshot());
+
+        return {
+            revision,
+            components,
+            wire_paths,
+            net_labels,
+            image_markers,
+            power_labels: this.powerLabels || [],
+            netlist: this.netlist || [],
+        };
     }
 
     /** Check if a pin is connected (via wire OR net label). */

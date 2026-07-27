@@ -9,7 +9,10 @@ from agent.routing.constants import (
     MAX_WIRE_MANHATTAN, MAX_COLLISIONS, GRID_SIZE,
     MATRIX_SIZE, MATRIX_OFFSET,
 )
-from agent.routing.geometry import _snap, _pin_direction
+from agent.routing.geometry import (
+    _snap, _pin_direction, _absolute_pin_position,
+    _stub_point, _orthogonal_segments_intersect,
+)
 from agent.routing.path_utils import _clean_path, _is_orthogonal, _path_length
 from agent.routing.collision import _path_collisions
 from agent.routing.make_path import make_path
@@ -235,12 +238,9 @@ def _resolve_pin(pin_matrix: dict, pin_lookup: dict[str, str], key: str) -> Opti
     return pin_matrix.get(alt)
 
 
-def _placement_map(component_placements: list[dict]) -> dict[str, tuple[float, float]]:
+def _placement_map(component_placements: list[dict]) -> dict[str, dict]:
     return {
-        str(comp.get('ref_des', '')): (
-            float(comp.get('x', 0.0)),
-            float(comp.get('y', 0.0)),
-        )
+        str(comp.get('ref_des', '')): comp
         for comp in component_placements
         if comp.get('ref_des')
     }
@@ -254,24 +254,67 @@ def _abs_pin_position(pin_key: str, pin_matrix: dict,
     if not ref:
         return None
     pin = _resolve_pin(pin_matrix, pin_lookup, pin_key)
-    origin = placements.get(ref)
-    if pin is None or origin is None:
+    component = placements.get(ref)
+    if pin is None or component is None:
         return None
-    return (_snap(float(pin.get('x', 0.0)) + origin[0]),
-            _snap(float(pin.get('y', 0.0)) + origin[1]))
+    return _absolute_pin_position(pin, component)
 
 
-def _canonical_manhattan_path(start: tuple[float, float],
-                              end: tuple[float, float]) -> list[dict]:
-    sx, sy = start
-    ex, ey = end
-    points: list[tuple[float, float]] = [(sx, sy)]
-    if abs(sx - ex) > 1e-3 and abs(sy - ey) > 1e-3:
-        mid_x = _snap((sx + ex) / 2.0)
-        points.extend([(mid_x, sy), (mid_x, ey)])
-    points.append((ex, ey))
+def _pin_exit_direction(pin_key: str, pin_matrix: dict,
+                         placements: dict[str, dict]) -> str:
+    """Return the cardinal direction a wire should leave a pin anchor.
+
+    In KiCad the pin angle defines which way the pin STUB points
+    (0=right, 90=up, 180=left, 270=down).  The wire should exit in
+    the SAME direction that the pin stub points — first segment runs
+    alongside the pin line so it clears the component body before
+    making any turns.
+    """
+    ref = str(pin_key or '').split(':')[0]
+    if not ref:
+        return 'right'
+    pin_lookup = _pin_lookup(pin_matrix)
+    pin = _resolve_pin(pin_matrix, pin_lookup, pin_key)
+    if pin is None:
+        return 'right'
+    ang = float(pin.get('angle', 0))
+    comp = placements.get(ref)
+    if comp:
+        ang = (ang + float(comp.get('rotation', 0))) % 360
+    a = int(round(ang)) % 360
+    if 45 <= a < 135:
+        return 'up'
+    if 135 <= a < 225:
+        return 'left'
+    if 225 <= a < 315:
+        return 'down'
+    return 'right'
+
+
+def _route_via_stubs(s_pos: tuple[float, float], s_stub: tuple[float, float],
+                     t_pos: tuple[float, float], t_stub: tuple[float, float],
+                     ) -> list[dict]:
+    """Orthogonal path from s_pos through stub points to t_pos.
+
+    Path topology: s_pos → s_stub → (midpoint routing) → t_stub → t_pos
+
+    This ensures every wire exits the source pin in the correct direction
+    and approaches the target pin from the correct direction, with no
+    path segments overlapping the component body.
+    """
+    sa, sb = _snap(s_pos[0]), _snap(s_pos[1])
+    ta, tb = _snap(t_pos[0]), _snap(t_pos[1])
+
+    if abs(s_stub[0] - t_stub[0]) < 1e-3 or abs(s_stub[1] - t_stub[1]) < 1e-3:
+        points = [(sa, sb), s_stub, t_stub, (ta, tb)]
+    else:
+        mid_x = _snap((s_stub[0] + t_stub[0]) / 2.0)
+        points = [(sa, sb), s_stub, (mid_x, s_stub[1]),
+                  (mid_x, t_stub[1]), t_stub, (ta, tb)]
     cleaned = _clean_path(points)
-    return [{'x': x, 'y': y} for x, y in cleaned]
+    if len(cleaned) < 2:
+        cleaned = [(sa, sb), (ta, tb)]
+    return [{'x': p[0], 'y': p[1]} for p in cleaned]
 
 
 def _canonicalize_wire(wire: dict, pin_matrix: dict,
@@ -283,7 +326,12 @@ def _canonicalize_wire(wire: dict, pin_matrix: dict,
     if start is None or end is None:
         path = wire.get('path', [])
     else:
-        path = _canonical_manhattan_path(start, end)
+        placements = _placement_map(component_placements)
+        s_dir = _pin_exit_direction(source, pin_matrix, placements)
+        t_dir = _pin_exit_direction(target, pin_matrix, placements)
+        s_stub = _stub_point(*start, s_dir)
+        t_stub = _stub_point(*end, t_dir)
+        path = _route_via_stubs(start, s_stub, end, t_stub)
     out = dict(wire)
     out['path'] = path
     return out
@@ -335,10 +383,48 @@ def apply_schematic_edit(wire_paths: list[dict], event: dict, netlist: list[dict
     return wire_paths
 
 
+def _segment_points(a: tuple[float, float], b: tuple[float, float]) -> set[tuple[float, float]]:
+    """Return every grid vertex occupied by an orthogonal wire segment."""
+    points = set()
+    if abs(a[0] - b[0]) < 1e-6:
+        step = GRID_SIZE if b[1] >= a[1] else -GRID_SIZE
+        y = a[1]
+        while (y <= b[1] + 1e-6 if step > 0 else y >= b[1] - 1e-6):
+            points.add((_snap(a[0]), _snap(y)))
+            y += step
+    elif abs(a[1] - b[1]) < 1e-6:
+        step = GRID_SIZE if b[0] >= a[0] else -GRID_SIZE
+        x = a[0]
+        while (x <= b[0] + 1e-6 if step > 0 else x >= b[0] - 1e-6):
+            points.add((_snap(x), _snap(a[1])))
+            x += step
+    return points
+
+
+def _path_vertices(path: list[tuple[float, float]]) -> set[tuple[float, float]]:
+    vertices = set()
+    for a, b in zip(path, path[1:]):
+        vertices.update(_segment_points(a, b))
+    return vertices
+
+
+def _path_segments(path: list[tuple[float, float]]):
+    return list(zip(path, path[1:]))
+
+
+def _paths_intersect(first: list[tuple[float, float]], second: list[tuple[float, float]]) -> bool:
+    """Different nets may not cross or share any schematic wire geometry."""
+    return any(
+        _orthogonal_segments_intersect(a, b)
+        for a in _path_segments(first)
+        for b in _path_segments(second)
+    )
+
+
 def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
-                 erc_retries: int = 0,
-                 ) -> tuple[list[dict], list[tuple[str, str]]]:
-    pos = {c['ref_des']: (c['x'], c['y']) for c in components}
+                  erc_retries: int = 0, existing_traces: Optional[list[dict]] = None,
+                  ) -> tuple[list[dict], list[tuple[str, str]]]:
+    components_by_ref = {c['ref_des']: c for c in components}
     traces: list[dict] = []
     dropped_pairs: list[tuple[str, str]] = []
 
@@ -360,13 +446,17 @@ def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
         if not ref:
             return None
         pin = _resolve_pin(key)
-        off = pos.get(ref)
-        if pin is None or off is None:
+        component = components_by_ref.get(ref)
+        if pin is None or component is None:
             return None
-        return (_snap(pin['x'] + off[0]), _snap(pin['y'] + off[1]))
+        return _absolute_pin_position(pin, component)
 
     def _dir(key: str) -> str:
-        return _pin_direction(_resolve_pin(key) or {})
+        pin = dict(_resolve_pin(key) or {})
+        ref = key.split(':')[0]
+        component = components_by_ref.get(ref, {})
+        pin['angle'] = (float(pin.get('angle', 0)) + float(component.get('rotation', 0))) % 360
+        return _pin_direction(pin)
 
     def _mhd(conn) -> float:
         s = _abs(conn['source'])
@@ -375,8 +465,9 @@ def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
             return float('inf')
         return abs(s[0] - t[0]) + abs(s[1] - t[1])
 
-    # Progressive relaxation: on retries, allow longer wires and more collisions
-    max_collisions = MAX_COLLISIONS + erc_retries * 2
+    # Never trade electrical/geometric safety for retry progress. Retries may
+    # search farther, but a route through a symbol remains invalid.
+    max_collisions = MAX_COLLISIONS
     max_wire = MAX_WIRE_MANHATTAN * (1.5 + erc_retries * 0.5)
 
     max_allowed = max_wire
@@ -388,6 +479,7 @@ def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
                 c['target'].split(':')[0],
             ))
 
+    occupied = list(existing_traces or [])
     for conn in sorted(routable, key=_mhd):
         s_pos = _abs(conn['source'])
         t_pos = _abs(conn['target'])
@@ -404,8 +496,16 @@ def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
         src_ref = conn['source'].split(':')[0]
         tgt_ref = conn['target'].split(':')[0]
 
-        path = make_path(s_pos, s_dir, t_pos, t_dir,
-                         components, src_ref, tgt_ref)
+        blocked_vertices = set()
+        forbidden_segments = []
+        for trace in occupied:
+            if trace.get('net', '') != conn.get('net', ''):
+                prior = [(p['x'], p['y']) for p in trace.get('path', [])]
+                blocked_vertices.update(_path_vertices(prior))
+                forbidden_segments.extend(_path_segments(prior))
+        path = make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
+                         blocked_vertices=blocked_vertices,
+                         forbidden_segments=forbidden_segments)
 
         dropped = False
         if not path:
@@ -418,17 +518,25 @@ def route_traces(components: list[dict], netlist: list, pin_matrix: dict,
             dropped = True
         elif _path_collisions(path, components, src_ref, tgt_ref) > max_collisions:
             dropped = True
+        elif any(
+            trace.get('net', '') != conn.get('net', '') and
+            _paths_intersect(path, [(p['x'], p['y']) for p in trace.get('path', [])])
+            for trace in occupied
+        ):
+            dropped = True
 
         if dropped:
             dropped_pairs.append((src_ref, tgt_ref))
             continue
 
-        traces.append({
+        trace = {
             'source': conn['source'],
             'target': conn['target'],
             'net': conn.get('net', ''),
             'path': [{'x': p[0], 'y': p[1]} for p in path],
-        })
+        }
+        traces.append(trace)
+        occupied.append(trace)
 
     traces, pruned_pairs = _prune_disconnected_net_islands(traces, netlist)
     dropped_pairs.extend(pruned_pairs)

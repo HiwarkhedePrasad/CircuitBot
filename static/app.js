@@ -37,10 +37,63 @@ document.addEventListener('DOMContentLoaded', () => {
     let agentBusy = false;
     let currentSchematic = new Schematic();
     let schematicWireStart = null;
+    let activeCanvasTool = 'pointer';
+    let pendingImagePlacement = null;
+
+    // Schematic grid snap (1.27mm) — distinct from PCB grid snap (0.254mm) in utils.js
+    const snapToSchematicGrid = (v) => Math.round(v / 1.27) * 1.27;
     let schematicEditorMode = 'wire'; // 'wire' | 'netlabel'
     const MAX_CONVERSATION_MESSAGES = 2000;
     const MAX_CONVERSATION_ITEMS = 2000;
     const MAX_APPROVAL_BUTTONS = 10;
+
+    // ── Canonical State Sync ──────────────────────────────────────────────────
+    // Tracks the last acknowledged revision from the backend.
+    // Used for optimistic locking on full-snapshot syncs.
+    let lastSyncedRevision = 0;
+    let _flushTimer = null;
+
+    /**
+     * Serialize the current schematic and POST to /api/sync_schematic_state.
+     * Returns the new revision on success, null on failure/conflict.
+     */
+    async function flushSchematicState() {
+        if (!currentSchematic) return null;
+        const snapshot = currentSchematic.toDesignSnapshot(lastSyncedRevision);
+        try {
+            const res = await fetch(apiUrl('/api/sync_schematic_state'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    snapshot,
+                    expected_revision: lastSyncedRevision,
+                }),
+            });
+            const result = await res.json();
+            if (res.status === 409) {
+                // Stale revision — fetch current state from server
+                lastSyncedRevision = result.current_revision || 0;
+                return null;
+            }
+            if (result.ok) {
+                lastSyncedRevision = result.revision;
+                return result.revision;
+            }
+        } catch (e) {
+            console.warn('[CircuitBot] Schematic sync failed:', e.message);
+        }
+        return null;
+    }
+
+    /**
+     * Debounced flush — batches rapid edits into a single sync.
+     * Call this after any local canvas mutation (add, remove, label change).
+     */
+    function scheduleSchematicFlush() {
+        if (_flushTimer) clearTimeout(_flushTimer);
+        _flushTimer = setTimeout(() => flushSchematicState(), 150);
+    }
 
     // ── Tab Management ────────────────────────────────────────────────────────
 
@@ -180,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setActiveTab('viewSchematicBtn');
             enterSchematicView();
             setPcbToolbarVisibility(false);
-            pcbUploadArea.classList.add('hidden');
+            if (pcbUploadArea) pcbUploadArea.classList.add('hidden');
             document.getElementById('routePrompt').classList.remove('hidden');
         });
     }
@@ -320,6 +373,51 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                     applySchematicEditEvents([event]);
                 },
+                onContextMenu: (screenX, screenY, world) => {
+                    openSchematicContextMenu(screenX, screenY, world);
+                },
+                onImageMarkerToggle: (marker) => {
+                    if (marker._imageRevealed) {
+                        showToast(`Marker #${marker.markerNumber} shown`, 'info', 1500);
+                    } else {
+                        showToast(`Marker #${marker.markerNumber} hidden`, 'info', 1000);
+                    }
+                    scheduleSchematicFlush();
+                    updateMarkerList();
+                },
+                onImageMarkerDelete: (marker) => {
+                    deleteImageMarker(marker);
+                },
+                onImageMarkerToolbarAction: (marker, action) => {
+                    if (action === 'inspect') {
+                        showImageInspector(marker);
+                    } else if (action === 'toggle') {
+                        marker._imageRevealed = !marker._imageRevealed;
+                        getRenderer().refresh();
+                        scheduleSchematicFlush();
+                        updateMarkerList();
+                    } else if (action === 'delete') {
+                        deleteImageMarker(marker);
+                    }
+                },
+                onImageMarkerDblClick: (marker) => {
+                    showImageInspector(marker);
+                },
+                onMarkerMoved: (marker, dx, dy) => {
+                    // Save original position for undo
+                    const origX = marker.x - dx;
+                    const origY = marker.y + dy;
+                    scheduleSchematicFlush();
+                    showToast(`Marker ${marker.markerNumber} moved`, 'info', 3000, {
+                        label: 'Undo',
+                        onClick: () => {
+                            marker.x = origX;
+                            marker.y = origY;
+                            getRenderer().refresh();
+                            scheduleSchematicFlush();
+                        },
+                    });
+                },
             });
             _initialRenderZoom = renderer.zoom;
         }
@@ -424,10 +522,10 @@ document.addEventListener('DOMContentLoaded', () => {
      * Returns array of waypoints [{x, y}, ...]
      */
     function smartWireRoute(startPin, endPin, components = []) {
-        const sx = snapToGrid(startPin.x);
-        const sy = snapToGrid(startPin.y);
-        const ex = snapToGrid(endPin.x);
-        const ey = snapToGrid(endPin.y);
+        const sx = snapToSchematicGrid(startPin.x);
+        const sy = snapToSchematicGrid(startPin.y);
+        const ex = snapToSchematicGrid(endPin.x);
+        const ey = snapToSchematicGrid(endPin.y);
 
         // Simple case: same X or same Y - direct orthogonal path
         if (Math.abs(sx - ex) < 0.001 || Math.abs(sy - ey) < 0.001) {
@@ -528,7 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             // Fallback: Z-path
-            const midX = snapToGrid((sx + ex) / 2);
+            const midX = snapToSchematicGrid((sx + ex) / 2);
             waypoints.push({ x: midX, y: sy });
             waypoints.push({ x: midX, y: ey });
         }
@@ -550,12 +648,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Legacy function kept for backward compatibility
     function orthogonalWirePath(a, b) {
-        const midX = snapToGrid((a.x + b.x) / 2);
+        const midX = snapToSchematicGrid((a.x + b.x) / 2);
         return [
-            { x: snapToGrid(a.x), y: snapToGrid(a.y) },
-            { x: midX, y: snapToGrid(a.y) },
-            { x: midX, y: snapToGrid(b.y) },
-            { x: snapToGrid(b.x), y: snapToGrid(b.y) },
+            { x: snapToSchematicGrid(a.x), y: snapToSchematicGrid(a.y) },
+            { x: midX, y: snapToSchematicGrid(a.y) },
+            { x: midX, y: snapToSchematicGrid(b.y) },
+            { x: snapToSchematicGrid(b.x), y: snapToSchematicGrid(b.y) },
         ].filter((pt, index, arr) => {
             if (index === 0) return true;
             const prev = arr[index - 1];
@@ -870,7 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create new wire path through the join point
         const newPath = [
             { x: freeEnd1.x, y: freeEnd1.y },
-            { x: snapToGrid(worldX), y: snapToGrid(worldY) },
+            { x: snapToSchematicGrid(worldX), y: snapToSchematicGrid(worldY) },
             { x: freeEnd2.x, y: freeEnd2.y }
         ].filter((pt, i, arr) => {
             if (i === 0) return true;
@@ -964,6 +1062,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const lbl = currentSchematic.addNetLabel(netName, pin.x, pin.y, orientation, pin.key);
         renderer.refresh();
+        scheduleSchematicFlush();
         addLogEntry(`Net label ${netName} created for ${pin.key}`, 'log');
         showNetLabelRenameInput(lbl);
     }
@@ -1024,9 +1123,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Empty name → delete the label
             currentSchematic.removeNetLabel(labelId);
             renderer.setActiveNetLabel(null);
+            scheduleSchematicFlush();
         } else if (newName !== label.net) {
             const oldName = label.net;
             currentSchematic.renameNet(oldName, newName);
+            scheduleSchematicFlush();
             addLogEntry(`Net ${oldName} → ${newName}`, 'log');
         }
         if (renderer) {
@@ -1051,6 +1152,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSchematic.removeNetLabel(labelId);
             renderer.setActiveNetLabel(null);
             renderer.refresh();
+            scheduleSchematicFlush();
         }
     }
 
@@ -1223,14 +1325,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('canvasContainer');
         const pcbCanvas = document.getElementById('pcbCanvas');
         const symbolCanvas = document.getElementById('symbolCanvas');
+        const view3DContainer = document.getElementById('view3DContainer');
         const tscircuitContainer = document.getElementById('tscircuit-container');
         const completenessBadge = document.getElementById('completenessBadge');
         const pcbUploadArea = document.getElementById('pcbUploadArea');
+        const pcb3dToolbar = document.getElementById('pcb3dToolbar');
         const routePromptContainer = routePrompt ? routePrompt.closest('.floating-route-input') : null;
 
         setViewportSurfaceState(container, false);
         setViewportSurfaceState(pcbCanvas, false);
         setViewportSurfaceState(symbolCanvas, false);
+        setViewportSurfaceState(view3DContainer, false);
         setViewportSurfaceState(tscircuitContainer, false);
 
         if (modeIndicator) {
@@ -1245,6 +1350,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pcbUploadArea) {
             pcbUploadArea.classList.add('hidden');
         }
+        if (pcb3dToolbar) {
+            pcb3dToolbar.classList.toggle('hidden', active !== '3d');
+        }
 
         if (active === 'schematic') {
             setViewportSurfaceState(container, true);
@@ -1253,6 +1361,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!window.pcbState || !pcbState.boardModel) {
                 showPcbUploadOverlay();
             }
+        } else if (active === '3d') {
+            setViewportSurfaceState(view3DContainer, true);
         } else if (active === 'symbol') {
             setViewportSurfaceState(symbolCanvas, true);
         }
@@ -1362,8 +1472,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const gridSpacing = 10;
 
         return {
-            x: snapToGrid(col * gridSpacing),
-            y: snapToGrid(maxY + gridSpacing + row * gridSpacing),
+            x: snapToSchematicGrid(col * gridSpacing),
+            y: snapToSchematicGrid(maxY + gridSpacing + row * gridSpacing),
         };
     }
 
@@ -1438,6 +1548,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         socket = io();
         window.socket = socket;
+        document.dispatchEvent(new CustomEvent('circuitbot:socket-ready', {
+            detail: { socket: window.socket },
+        }));
         // Set initial connection status
         const initStatus = document.getElementById('connectionStatus');
         if (initStatus) initStatus.className = 'connection-status connected';
@@ -1570,12 +1683,153 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             agentConversation.scrollTop = agentConversation.scrollHeight;
         });
+
+        // Clarification questions from clarify node
+        socket.on('agent:clarify', (data) => {
+            const questions = data.questions || [];
+            if (!questions.length) return;
+
+            const answers = {};
+            let containerEl = null;
+
+            function renderClarificationUI() {
+                if (containerEl) containerEl.remove();
+
+                containerEl = document.createElement('div');
+                containerEl.className = 'conv-clarify-card';
+                containerEl.style.cssText = 'margin: 8px 0; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; overflow: hidden; background: rgba(20,20,20,0.9); max-height: 70vh; display: flex; flex-direction: column;';
+
+                // Header
+                const header = document.createElement('div');
+                header.style.cssText = 'padding: 10px 14px; background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 8px; flex-shrink: 0;';
+                const icon = document.createElement('span');
+                icon.textContent = '\u2728';
+                icon.style.fontSize = '14px';
+                const title = document.createElement('span');
+                title.style.cssText = 'color: #e0e0e0; font-weight: 600; font-size: 13px;';
+                title.textContent = data.message || 'A few quick questions to get the design right';
+                header.appendChild(icon);
+                header.appendChild(title);
+                containerEl.appendChild(header);
+
+                // Questions (scrollable)
+                const body = document.createElement('div');
+                body.style.cssText = 'padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1; min-height: 0;';
+
+                for (const q of questions) {
+                    const qBlock = document.createElement('div');
+                    qBlock.className = 'clarify-q';
+
+                    const qLabel = document.createElement('div');
+                    qLabel.style.cssText = 'color: #aaaaaa; font-size: 12px; margin-bottom: 6px; font-weight: 500;';
+                    qLabel.textContent = q.question;
+                    qBlock.appendChild(qLabel);
+
+                    const optRow = document.createElement('div');
+                    optRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px;';
+
+                    const options = q.options || ['Yes', 'No', 'No preference'];
+                    for (const opt of options) {
+                        const chip = document.createElement('button');
+                        chip.textContent = opt;
+                        chip.style.cssText = 'font-size: 11px; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: transparent; color: #aaaaaa; cursor: pointer; transition: all 0.15s;';
+
+                        if (answers[q.id] === opt) {
+                            chip.style.background = 'rgba(255,255,255,0.1)';
+                            chip.style.borderColor = 'rgba(255,255,255,0.5)';
+                            chip.style.color = '#ffffff';
+                        }
+
+                        chip.addEventListener('mouseenter', () => {
+                            if (answers[q.id] !== opt) chip.style.borderColor = 'rgba(255,255,255,0.35)';
+                        });
+                        chip.addEventListener('mouseleave', () => {
+                            if (answers[q.id] !== opt) chip.style.borderColor = 'rgba(255,255,255,0.15)';
+                        });
+                        chip.addEventListener('click', () => {
+                            answers[q.id] = opt;
+                            optRow.querySelectorAll('button').forEach(b => {
+                                b.style.background = 'transparent';
+                                b.style.borderColor = 'rgba(255,255,255,0.15)';
+                                b.style.color = '#aaaaaa';
+                            });
+                            chip.style.background = 'rgba(255,255,255,0.1)';
+                            chip.style.borderColor = 'rgba(255,255,255,0.5)';
+                            chip.style.color = '#ffffff';
+                            updateSubmitBtn();
+                        });
+                        optRow.appendChild(chip);
+                    }
+                    qBlock.appendChild(optRow);
+                    body.appendChild(qBlock);
+                }
+
+                containerEl.appendChild(body);
+
+                // Footer with submit button (sticky at bottom)
+                const footer = document.createElement('div');
+                footer.style.cssText = 'padding: 10px 14px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: flex-end; flex-shrink: 0; background: rgba(20,20,20,0.95);';
+
+                const submitBtn = document.createElement('button');
+                submitBtn.className = 'btn-approve';
+                submitBtn.textContent = 'Submit Answers';
+                submitBtn.style.cssText = 'padding: 8px 20px; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; opacity: 0.35; pointer-events: none; transition: all 0.15s;';
+                submitBtn.dataset.btnId = 'clarify-submit';
+                footer.appendChild(submitBtn);
+                containerEl.appendChild(footer);
+
+                agentConversation.appendChild(containerEl);
+                agentConversation.scrollTop = agentConversation.scrollHeight;
+
+                return submitBtn;
+            }
+
+            function updateSubmitBtn() {
+                const btn = containerEl?.querySelector('[data-btn-id="clarify-submit"]');
+                if (!btn) return;
+                const allAnswered = questions.every(q => answers[q.id]);
+                btn.style.opacity = allAnswered ? '1' : '0.35';
+                btn.style.pointerEvents = allAnswered ? 'auto' : 'none';
+                btn.style.background = allAnswered ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)';
+                btn.style.borderColor = allAnswered ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)';
+            }
+
+            const submitBtn = renderClarificationUI();
+            submitBtn.addEventListener('click', () => {
+                // Send all answers at once
+                window.socket.emit('agent:clarify_response', { answers });
+
+                // Replace the card with a compact summary
+                if (containerEl) containerEl.remove();
+
+                const summary = document.createElement('div');
+                summary.className = 'conv-clarify-summary';
+                summary.style.cssText = 'margin: 8px 0; padding: 8px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;';
+
+                const sumTitle = document.createElement('div');
+                sumTitle.style.cssText = 'color: #ffffff; font-size: 12px; font-weight: 600; margin-bottom: 6px;';
+                sumTitle.textContent = '\u2714 Preferences submitted';
+                summary.appendChild(sumTitle);
+
+                for (const q of questions) {
+                    const a = answers[q.id] || '(skipped)';
+                    const row = document.createElement('div');
+                    row.style.cssText = 'font-size: 11px; color: #aab8c8; padding: 2px 0;';
+                    row.innerHTML = `<span style="color:#6a8a7a;">${q.question.replace(/\?$/, ':')}</span> <span style="color:#e0f0ed; font-weight:500;">${a}</span>`;
+                    summary.appendChild(row);
+                }
+
+                agentConversation.appendChild(summary);
+                agentConversation.scrollTop = agentConversation.scrollHeight;
+            });
+        });
+
         socket.on('agent:pcb_ready', (data) => {
             if (data.board_model) {
                 setActiveTab('viewPCBBtn');
                 showViewport('pcb');
-                pcbLoadBoard(data.board_model);
                 pcbSetupCanvas();
+                pcbLoadBoard(data.board_model);
                 pcbDraw();
                 renderPcbLayersPanel();
                 refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
@@ -1752,12 +2006,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
-    function showToast(message, type = 'info', duration = 3000) {
+    function showToast(message, type = 'info', duration = 3000, action = null) {
         const container = document.getElementById('toastContainer');
         if (!container) return;
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
-        toast.textContent = message;
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = message;
+        toast.appendChild(msgSpan);
+        if (action && action.label) {
+            const btn = document.createElement('button');
+            btn.className = 'toast-action';
+            btn.textContent = action.label;
+            btn.addEventListener('click', () => {
+                if (action.onClick) action.onClick();
+                toast.remove();
+            });
+            toast.appendChild(btn);
+        }
         container.appendChild(toast);
         setTimeout(() => {
             toast.classList.add('fade-out');
@@ -2112,14 +2378,9 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSchematic.removeComponent(li.dataset.compId);
             updateComponentListUI();
             updateSchematicButtons();
+            scheduleSchematicFlush();
             if (currentSchematic.mode === 'schematic') enterSchematicView();
         });
-    }
-
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
     }
 
     function handleAgentComponent(data) {
@@ -2386,18 +2647,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
                 if (data.error) {
                     addLogEntry(`Import failed: ${data.error}`, 'error');
+                    showToast('PCB import failed: ' + data.error, 'error', 5000);
                     return;
                 }
-                pcbLoadBoard(data.board_model, { fetchRatsnest: false });
-                updatePcbToolbar({ toolsEnabled: true });
-                exportPCBBtn.disabled = false;
-                importPCBBtn.disabled = false;
                 setActiveTab('viewPCBBtn');
                 showViewport('pcb');
                 setPcbToolbarVisibility(true);
                 document.getElementById('routePrompt').classList.add('hidden');
                 pcbUploadArea.classList.add('hidden');
                 pcbSetupCanvas();
+                pcbLoadBoard(data.board_model, { fetchRatsnest: false });
+                updatePcbToolbar({ toolsEnabled: true });
+                exportPCBBtn.disabled = false;
+                importPCBBtn.disabled = false;
                 pcbDraw();
                 renderPcbLayersPanel();
                 refreshPcbGeometryFromBackend().catch((err) => addLogEntry(`PCB geometry refresh failed: ${err.message}`, 'error'));
@@ -2441,6 +2703,138 @@ document.addEventListener('DOMContentLoaded', () => {
     if (searchInput) searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') performSearch();
     });
+
+    // ── Sidebar Add Component Section ──────────────────────────────────────────
+
+    const toggleAddSection = document.getElementById('toggleAddSection');
+    const addComponentBody = document.getElementById('addComponentBody');
+    const manualSearchInput = document.getElementById('manualSearchInput');
+    const manualSearchBtn = document.getElementById('manualSearchBtn');
+    const manualSearchResults = document.getElementById('manualSearchResults');
+
+    if (toggleAddSection && addComponentBody) {
+        toggleAddSection.addEventListener('click', () => {
+            addComponentBody.classList.toggle('hidden');
+            toggleAddSection.textContent = addComponentBody.classList.contains('hidden') ? '+' : '−';
+            if (!addComponentBody.classList.contains('hidden') && manualSearchInput) {
+                manualSearchInput.focus();
+            }
+        });
+    }
+
+    if (manualSearchBtn) {
+        manualSearchBtn.addEventListener('click', performManualSearch);
+    }
+    if (manualSearchInput) {
+        manualSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') performManualSearch();
+        });
+    }
+
+    async function performManualSearch() {
+        if (!manualSearchInput || !manualSearchResults) return;
+        const query = manualSearchInput.value.trim();
+        if (!query) return;
+
+        manualSearchResults.innerHTML = '<div class="search-loading">Searching...</div>';
+
+        try {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            if (data.length === 0) {
+                manualSearchResults.innerHTML = '<div class="search-empty">No results found</div>';
+            } else {
+                manualSearchResults.innerHTML = '';
+                // Fetch s-expressions and render thumbnails in parallel
+                const cards = await Promise.all(data.map(async (item) => {
+                    const card = document.createElement('div');
+                    card.className = 'comp-card';
+                    card.dataset.idStr = item.id_str;
+                    card.dataset.text = item.text;
+
+                    const name = item.id_str.split(':').pop();
+                    const category = item.id_str.split(':')[0];
+                    // Extract description from text field
+                    const descMatch = item.text.match(/Description:\s*(.+?)(?:\.\s*Keywords|$)/i);
+                    const desc = descMatch ? descMatch[1].trim() : item.text;
+
+                    let thumbnailDataUrl = null;
+                    try {
+                        const sexpr = await fetchSExpr(item.id_str);
+                        const ops = await resolveAndParse(sexpr, category);
+                        if (ops && ops.length > 0) {
+                            thumbnailDataUrl = renderSymbolThumbnail(ops, 80, 60);
+                        }
+                    } catch (e) { /* thumbnail optional */ }
+
+                    card.innerHTML = `
+                        <div class="comp-card-thumb">
+                            ${thumbnailDataUrl
+                                ? `<img src="${thumbnailDataUrl}" alt="${name}">`
+                                : `<div class="comp-card-thumb-placeholder">${name.charAt(0)}</div>`}
+                        </div>
+                        <div class="comp-card-info">
+                            <div class="comp-card-name">${escapeHtml(name)}</div>
+                            <div class="comp-card-category">${escapeHtml(category)}</div>
+                            <div class="comp-card-desc">${escapeHtml(desc)}</div>
+                        </div>
+                        <button class="comp-card-add" title="Add to schematic">+</button>
+                    `;
+                    return card;
+                }));
+
+                cards.forEach(card => manualSearchResults.appendChild(card));
+            }
+        } catch (err) {
+            manualSearchResults.innerHTML = `<div class="search-error">Error: ${err.message}</div>`;
+        }
+    }
+
+    if (manualSearchResults) {
+        manualSearchResults.addEventListener('click', (e) => {
+            // Handle "Add" button click — directly add to schematic
+            const addBtn = e.target.closest('.comp-card-add');
+            if (addBtn) {
+                const card = addBtn.closest('.comp-card');
+                if (!card) return;
+                e.stopPropagation();
+                const idStr = card.dataset.idStr;
+                const text = card.dataset.text;
+                addComponentFromSearch(idStr, text);
+                return;
+            }
+            // Handle card click — select and preview
+            const card = e.target.closest('.comp-card');
+            if (!card || !manualSearchResults.contains(card)) return;
+            document.querySelectorAll('#manualSearchResults .comp-card').forEach(el => el.classList.remove('selected'));
+            card.classList.add('selected');
+            const idStr = card.dataset.idStr || '';
+            const text = card.dataset.text || '';
+            selectedComponent = null;
+            previewComponent(idStr, text);
+        });
+    }
+
+    function addComponentFromSearch(idStr, textDesc) {
+        const category = idStr.split(':')[0];
+        // Fetch and add directly
+        (async () => {
+            try {
+                const sexpr = await fetchSExpr(idStr);
+                const ops = await resolveAndParse(sexpr, category);
+                if (!currentSchematic) currentSchematic = new Schematic();
+                const comp = currentSchematic.addComponent(idStr, idStr.split(':').pop(), ops, category, textDesc);
+                setActiveTab('viewSchematicBtn');
+                enterSchematicView();
+                updateComponentListUI();
+                updateSchematicButtons();
+                scheduleSchematicFlush();
+                showToast(`Added ${idStr.split(':').pop()} to schematic`, 'success');
+            } catch (err) {
+                showToast(`Failed to add component: ${err.message}`, 'error');
+            }
+        })();
+    }
 
     async function performSearch() {
         if (!searchInput || !searchResults || !loading) return;
@@ -2493,7 +2887,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateAddButton() {
-        addBtn.disabled = !selectedComponent;
+        if (selectedComponent) {
+            addBtn.style.opacity = '1';
+            addBtn.style.pointerEvents = 'auto';
+            addBtn.title = `Add ${selectedComponent.id_str.split(':').pop()} to schematic`;
+        } else {
+            addBtn.style.opacity = '0.5';
+            addBtn.title = 'Search for a component first, then click a result to select it';
+        }
         updateSchematicButtons();
     }
 
@@ -2508,23 +2909,60 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentSchematic) return;
         currentSchematic.components.forEach(comp => {
             const li = document.createElement('li');
-            li.className = `col-${comp.column}`;
+            li.className = `placed-comp-card`;
             li.dataset.compId = comp.id;
+
+            // Generate thumbnail from stored ops
+            let thumbHtml = '';
+            try {
+                if (comp.ops && comp.ops.length > 0) {
+                    const dataUrl = renderSymbolThumbnail(comp.ops, 56, 42);
+                    if (dataUrl) thumbHtml = `<img src="${dataUrl}" alt="${comp.name}">`;
+                }
+            } catch (e) { /* thumbnail optional */ }
+
+            if (!thumbHtml) {
+                const initial = (comp.refDesignator || comp.name || '?').charAt(0);
+                thumbHtml = `<div class="placed-thumb-placeholder">${initial}</div>`;
+            }
+
+            const categoryLabel = comp.category || '';
+            const descText = comp.description || '';
+            const footprintText = comp.footprint || '';
+            const valueText = comp.value || '';
+
             li.innerHTML = `
-                <div class="comp-label">
-                    <div class="comp-name">${comp.refDesignator} - ${comp.name.split(':').pop()}</div>
-                    <div class="comp-id">${comp.id}</div>
+                <div class="placed-card-thumb">${thumbHtml}</div>
+                <div class="placed-card-info">
+                    <div class="placed-card-header">
+                        <span class="placed-card-ref">${escapeHtml(comp.refDesignator)}</span>
+                        <span class="placed-card-name">${escapeHtml(comp.name.split(':').pop())}</span>
+                    </div>
+                    ${categoryLabel ? `<div class="placed-card-category">${escapeHtml(categoryLabel)}</div>` : ''}
+                    ${descText ? `<div class="placed-card-desc">${escapeHtml(descText)}</div>` : ''}
+                    <div class="placed-card-meta">
+                        ${valueText ? `<span class="placed-card-value">${escapeHtml(valueText)}</span>` : ''}
+                        ${footprintText ? `<span class="placed-card-footprint">${escapeHtml(footprintText)}</span>` : ''}
+                    </div>
                 </div>
                 <button class="comp-remove" title="Remove">&times;</button>
             `;
             componentList.appendChild(li);
         });
+        document.getElementById('componentCountStatus').textContent = `Components: ${currentSchematic.components.length}`;
     }
 
     // ── Add to Schematic ─────────────────────────────────────────────────────
 
     addBtn.addEventListener('click', () => {
-        if (!selectedComponent) return;
+        if (!selectedComponent) {
+            if (addComponentBody) {
+                addComponentBody.classList.remove('hidden');
+                if (toggleAddSection) toggleAddSection.textContent = '−';
+                if (manualSearchInput) manualSearchInput.focus();
+            }
+            return;
+        }
         const { id_str, textDesc, ops, category } = selectedComponent;
         if (!currentSchematic) currentSchematic = new Schematic();
         const comp = currentSchematic.addComponent(id_str, id_str.split(':').pop(), ops, category, textDesc);
@@ -2532,6 +2970,7 @@ document.addEventListener('DOMContentLoaded', () => {
         enterSchematicView();
         updateComponentListUI();
         updateSchematicButtons();
+        showToast(`Added ${id_str.split(':').pop()} to schematic`, 'success');
     });
 
     // ── AI Agent ──────────────────────────────────────────────────────────────
@@ -2602,7 +3041,7 @@ document.addEventListener('DOMContentLoaded', () => {
             schematicComp.x = pos.x;
             schematicComp.y = pos.y;
 
-            if (renderer) renderer.refresh();
+            enterSchematicView();
             updateComponentListUI();
             showToast(`Added ${refDes} to schematic at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`, 'success');
         } else {
@@ -2611,9 +3050,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getCurrentView() {
-        if (typeof isSchematicView === 'function' && isSchematicView()) return 'schematic';
-        if (typeof isPCBView === 'function' && isPCBView()) return 'pcb';
-        if (typeof isSymbolPreviewMode === 'function' && isSymbolPreviewMode()) return 'symbol';
+        if (isPCBMode()) return 'pcb';
+        if (isSymbolPreviewMode()) return 'symbol';
         return 'schematic';
     }
 
@@ -2725,7 +3163,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    agentBtn.addEventListener('click', () => {
+    agentBtn.addEventListener('click', async () => {
         const text = agentPrompt.value.trim();
         if (!text || agentBusy) return;
 
@@ -2748,7 +3186,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         agentConversation.scrollTop = agentConversation.scrollHeight;
         showAgentStatus('Thinking...', 'thinking');
-        socket.emit('chat:message', { session_id: sessionId, text: text });
+
+        // Flush pending schematic edits before sending chat message
+        await flushSchematicState();
+        socket.emit('chat:message', { session_id: sessionId, text: text, design_revision: lastSyncedRevision });
     });
 
     socket.on('chat:reply', (data) => {
@@ -2788,17 +3229,171 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('chat:resume', { session_id: sessionId });
     }
 
-    agentPrompt.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            agentBtn.click();
+    // ── Command Palette (Professional Command Menu) ──────────────────────────
+
+    const COMMANDS = [
+        { name: '/design', desc: 'Full PCB design pipeline', icon: '⚡' },
+        { name: '/add', desc: 'Add a component to the board', icon: '+' },
+        { name: '/modify', desc: 'Modify existing component', icon: '✎' },
+        { name: '/remove', desc: 'Remove a component', icon: '×' },
+        { name: '/status', desc: 'Show current design status', icon: '●' },
+        { name: '/export', desc: 'Export the design', icon: '↓' },
+        { name: '/help', desc: 'Show available commands', icon: '?' },
+    ];
+
+    const commandPalette = document.getElementById('commandPalette');
+    const commandPaletteList = document.getElementById('commandPaletteList');
+    let commandMode = false;
+    let activeCommandIndex = 0;
+    let filteredCommands = [];
+
+    function showCommandPalette() {
+        commandPalette.classList.remove('hidden');
+        commandMode = true;
+        updateFilteredCommands();
+    }
+
+    function hideCommandPalette() {
+        commandPalette.classList.add('hidden');
+        commandMode = false;
+        activeCommandIndex = 0;
+    }
+
+    function updateFilteredCommands() {
+        const text = agentPrompt.value;
+
+        if (text === '/') {
+            filteredCommands = [...COMMANDS];
+        } else {
+            const query = text.toLowerCase();
+            filteredCommands = COMMANDS.filter(cmd => cmd.name.startsWith(query));
         }
-    });
-    agentPrompt.addEventListener('input', () => {
+
+        if (filteredCommands.length === 0) {
+            hideCommandPalette();
+            return;
+        }
+
+        activeCommandIndex = Math.min(activeCommandIndex, filteredCommands.length - 1);
+        activeCommandIndex = Math.max(activeCommandIndex, 0);
+
+        renderCommandPalette();
+    }
+
+    function renderCommandPalette() {
+        commandPaletteList.innerHTML = '';
+
+        filteredCommands.forEach((cmd, index) => {
+            const item = document.createElement('div');
+            item.className = 'command-item' + (index === activeCommandIndex ? ' active' : '');
+
+            const isExactMatch = agentPrompt.value.toLowerCase() === cmd.name;
+
+            item.innerHTML = `
+                <span class="command-icon">${cmd.icon}</span>
+                <span class="command-name">${cmd.name}</span>
+                <span class="command-desc">${cmd.desc}</span>
+                ${isExactMatch ? '<span class="command-shortcut">Enter ↵</span>' : ''}
+            `;
+
+            item.addEventListener('click', () => executeCommand(cmd));
+            item.addEventListener('mouseenter', () => {
+                activeCommandIndex = index;
+                renderCommandPalette();
+            });
+
+            commandPaletteList.appendChild(item);
+        });
+    }
+
+    function executeCommand(cmd) {
+        agentPrompt.value = cmd.name + ' ';
+        hideCommandPalette();
+        agentPrompt.focus();
         updateAgentButton();
-        // Auto-resize textarea to fit content
+    }
+
+    function handleInput() {
+        const text = agentPrompt.value;
+
+        if (text.startsWith('/') && !commandMode) {
+            showCommandPalette();
+        } else if (commandMode) {
+            if (!text.startsWith('/')) {
+                hideCommandPalette();
+            } else {
+                updateFilteredCommands();
+            }
+        }
+
+        updateAgentButton();
+
         agentPrompt.style.height = 'auto';
         agentPrompt.style.height = Math.min(agentPrompt.scrollHeight, 120) + 'px';
+    }
+
+    function handleKeydown(e) {
+        if (!commandMode) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                agentBtn.click();
+            }
+            return;
+        }
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                activeCommandIndex = Math.min(activeCommandIndex + 1, filteredCommands.length - 1);
+                renderCommandPalette();
+                const activeItem = commandPaletteList.querySelector('.active');
+                if (activeItem) activeItem.scrollIntoView({ block: 'nearest' });
+                break;
+
+            case 'ArrowUp':
+                e.preventDefault();
+                activeCommandIndex = Math.max(activeCommandIndex - 1, 0);
+                renderCommandPalette();
+                const activeItemUp = commandPaletteList.querySelector('.active');
+                if (activeItemUp) activeItemUp.scrollIntoView({ block: 'nearest' });
+                break;
+
+            case 'Enter':
+                e.preventDefault();
+                if (filteredCommands.length > 0) {
+                    executeCommand(filteredCommands[activeCommandIndex]);
+                }
+                break;
+
+            case 'Escape':
+                e.preventDefault();
+                hideCommandPalette();
+                break;
+
+            case 'Tab':
+                e.preventDefault();
+                if (filteredCommands.length > 0) {
+                    const cmd = filteredCommands[activeCommandIndex];
+                    agentPrompt.value = cmd.name + ' ';
+                    updateFilteredCommands();
+                }
+                break;
+        }
+    }
+
+    agentPrompt.addEventListener('keydown', handleKeydown);
+    agentPrompt.addEventListener('input', handleInput);
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.agent-composer')) {
+            hideCommandPalette();
+        }
+    });
+
+    agentPrompt.addEventListener('focus', () => {
+        if (agentPrompt.value.startsWith('/')) {
+            showCommandPalette();
+        }
     });
 
     // ── Agent Prompt Suggestions ─────────────────────────────────────────────
@@ -2831,8 +3426,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     // Hide suggestion chips when conversation gets messages
-    const _origAppendChild = agentConversation.appendChild.bind(agentConversation);
-    let _chipsHidden = false;
 
     // ── Zoom & UI ─────────────────────────────────────────────────────────────
 
@@ -2840,21 +3433,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isPCBMode()) {
             pcbZoomBy(1.18);
         }
-        else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
+        else if (isSymbolPreviewMode() && currentPreviewOps) { zoomLevel = Math.min(zoomLevel * 1.3, 20); drawSymbol(); if (zoomLevelDisplay) zoomLevelDisplay.textContent = `${Math.round(zoomLevel * 100)}%`; }
         else if (renderer) renderer.setZoom(renderer.zoom * 1.3);
     });
     document.getElementById('zoomOutBtn').addEventListener('click', () => {
         if (isPCBMode()) {
             pcbZoomBy(1 / 1.18);
         }
-        else if (isSymbolPreviewMode() && currentPreviewOps) { zoomLevel = Math.max(zoomLevel / 1.3, 0.05); drawSymbol(); }
+        else if (isSymbolPreviewMode() && currentPreviewOps) { zoomLevel = Math.max(zoomLevel / 1.3, 0.05); drawSymbol(); if (zoomLevelDisplay) zoomLevelDisplay.textContent = `${Math.round(zoomLevel * 100)}%`; }
         else if (renderer) renderer.setZoom(renderer.zoom / 1.3);
     });
     document.getElementById('zoomResetBtn').addEventListener('click', () => {
         if (isPCBMode()) {
             pcbResetView();
         }
-        else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); }
+        else if (isSymbolPreviewMode() && currentPreviewOps) { renderOps(currentPreviewOps); if (zoomLevelDisplay) zoomLevelDisplay.textContent = '100%'; }
         else if (currentSchematic && currentSchematic.components.length > 0) { enterSchematicView(); }
     });
 
@@ -2876,7 +3469,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchSExpr(id_str) {
         const res = await fetch(`/api/sexpr?id_str=${encodeURIComponent(id_str)}`);
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+            const errText = await res.text().catch(() => res.statusText);
+            showToast('Symbol fetch failed: ' + errText.slice(0, 100), 'error', 4000);
+            throw new Error(errText);
+        }
         return await res.text();
     }
 
@@ -2978,6 +3575,603 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setupCollapse('leftToggle', 'leftPanel', 'leftExpand', 'leftResize', 'left');
     setupCollapse('rightToggle', 'rightPanel', 'rightExpand', 'rightResize', 'right');
+
+    // ── Import Schematic Button ────────────────────────────────────────────────
+
+    const importSchBtn = document.getElementById('importSchBtn');
+    const schFileInput = document.getElementById('schFileInput');
+
+    if (importSchBtn) {
+        importSchBtn.disabled = false;
+        importSchBtn.addEventListener('click', () => {
+            if (schFileInput) schFileInput.click();
+        });
+    }
+
+    if (schFileInput) {
+        schFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            addLogEntry(`Importing schematic ${file.name}...`, 'log');
+            const formData = new FormData();
+            formData.append('sch_file', file);
+            try {
+                const res = await fetch(apiUrl('/api/import_sch'), { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.error) {
+                    addLogEntry(`Import failed: ${data.error}`, 'error');
+                    showToast('Schematic import failed: ' + data.error, 'error', 5000);
+                    return;
+                }
+                if (!currentSchematic) currentSchematic = new Schematic();
+                if (data.components && data.components.length > 0) {
+                    data.components.forEach(c => {
+                        currentSchematic.addComponent(c.id_str, c.ref_des || c.id_str.split(':').pop(), c.ops || [], c.category || '', c.description || '');
+                    });
+                }
+                if (data.wires) currentSchematic.wires = data.wires;
+                if (data.net_labels) currentSchematic.netLabels = data.net_labels;
+                setActiveTab('viewSchematicBtn');
+                enterSchematicView();
+                updateComponentListUI();
+                updateSchematicButtons();
+                addLogEntry(`Imported ${file.name}: ${data.components ? data.components.length : 0} components.`, 'success');
+                showToast(`Imported ${file.name}`, 'success');
+            } catch (err) {
+                addLogEntry(`Import error: ${err.message}`, 'error');
+            } finally {
+                schFileInput.value = '';
+            }
+        });
+    }
+
+    // ── 3D View Tab ────────────────────────────────────────────────────────────
+
+    const view3DBtn = document.getElementById('view3DBtn');
+
+    if (view3DBtn) {
+        view3DBtn.addEventListener('click', () => {
+            if (!window.pcbState || !pcbState.boardModel) {
+                showToast('Load a PCB first to use 3D view', 'info', 3000);
+                return;
+            }
+            setActiveTab('view3DBtn');
+            showViewport('3d');
+            setPcbToolbarVisibility(false);
+            const routePromptContainer = routePrompt ? routePrompt.closest('.floating-route-input') : null;
+            if (routePromptContainer) routePromptContainer.classList.add('hidden');
+            if (typeof window._load3DScripts === 'function') {
+                window._load3DScripts().then(() => {
+                    if (typeof window.init3DViewer === 'function') {
+                        window.init3DViewer(pcbState.boardModel);
+                    } else {
+                        showToast('3D viewer not ready', 'info', 2000);
+                    }
+                });
+            }
+        });
+    }
+
+    // 3D Toolbar Controls
+    const view3dTopBtn = document.getElementById('view3dTopBtn');
+    const view3dFrontBtn = document.getElementById('view3dFrontBtn');
+    const view3dBottomBtn = document.getElementById('view3dBottomBtn');
+    const view3dFitBtn = document.getElementById('view3dFitBtn');
+    const view3dWireframeBtn = document.getElementById('view3dWireframeBtn');
+    const view3dExplodeBtn = document.getElementById('view3dExplodeBtn');
+    const view3dBoardOpacity = document.getElementById('view3dBoardOpacity');
+
+    if (view3dTopBtn) view3dTopBtn.addEventListener('click', () => window.pcbViewer3DInstance?.viewTop());
+    if (view3dFrontBtn) view3dFrontBtn.addEventListener('click', () => window.pcbViewer3DInstance?.viewFront());
+    if (view3dBottomBtn) view3dBottomBtn.addEventListener('click', () => window.pcbViewer3DInstance?.viewBottom());
+    if (view3dFitBtn) view3dFitBtn.addEventListener('click', () => window.pcbViewer3DInstance?.fitToBoard());
+    if (view3dWireframeBtn) view3dWireframeBtn.addEventListener('click', () => window.pcbViewer3DInstance?.toggleWireframe());
+    if (view3dExplodeBtn) view3dExplodeBtn.addEventListener('click', () => window.pcbViewer3DInstance?.toggleExplode());
+    if (view3dBoardOpacity) {
+        view3dBoardOpacity.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) / 100;
+            window.pcbViewer3DInstance?.setBoardOpacity(val);
+        });
+    }
+
+    // ── Component Detail Panel ─────────────────────────────────────────────────
+
+    const compDetailPanel = document.getElementById('compDetailPanel');
+    const compDetailClose = document.getElementById('compDetailClose');
+    const compDetailBody = document.getElementById('compDetailBody');
+
+    if (compDetailClose && compDetailPanel) {
+        compDetailClose.addEventListener('click', () => {
+            compDetailPanel.classList.add('hidden');
+        });
+    }
+
+    if (componentList) {
+        componentList.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.comp-remove');
+            if (removeBtn) return;
+            const li = e.target.closest('li[data-comp-id]');
+            if (!li || !compDetailPanel || !compDetailBody || !currentSchematic) return;
+            const comp = currentSchematic.components.find(c => c.id === li.dataset.compId);
+            if (!comp) return;
+            compDetailBody.innerHTML = `
+                <div class="comp-detail-field"><strong>ID:</strong> ${escapeHtml(comp.id)}</div>
+                <div class="comp-detail-field"><strong>Name:</strong> ${escapeHtml(comp.name)}</div>
+                <div class="comp-detail-field"><strong>Ref:</strong> ${escapeHtml(comp.refDesignator)}</div>
+                ${comp.category ? `<div class="comp-detail-field"><strong>Category:</strong> ${escapeHtml(comp.category)}</div>` : ''}
+                ${comp.description ? `<div class="comp-detail-field"><strong>Description:</strong> ${escapeHtml(comp.description)}</div>` : ''}
+            `;
+            compDetailPanel.classList.remove('hidden');
+        });
+    }
+
+    // ── Context Menu (right-click on canvas) ──────────────────────────────────
+    // The renderer fires onContextMenu with world coordinates.
+    // This function positions the menu and stores the placement target.
+
+    const contextMenu = document.getElementById('contextMenu');
+    const markerContextMenu = document.getElementById('markerContextMenu');
+    const imageFileInput = document.getElementById('imageFileInput');
+    let _contextMenuWorld = null;
+    let _contextMenuMarker = null;
+
+    function openSchematicContextMenu(screenX, screenY, world, marker) {
+        _contextMenuMarker = marker || null;
+        if (marker) {
+            // Marker-specific context menu
+            if (!markerContextMenu) return;
+            _contextMenuWorld = world;
+            const menuW = 180;
+            const menuH = 120;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            let left = Math.min(screenX, vw - menuW - 10);
+            let top = Math.min(screenY, vh - menuH - 10);
+            left = Math.max(10, left);
+            top = Math.max(10, top);
+            markerContextMenu.style.left = left + 'px';
+            markerContextMenu.style.top = top + 'px';
+            markerContextMenu.classList.remove('hidden');
+            if (contextMenu) contextMenu.classList.add('hidden');
+        } else {
+            // Generic canvas context menu
+            if (!contextMenu) return;
+            _contextMenuWorld = world;
+            pendingImagePlacement = {
+                worldX: world.x,
+                worldY: world.y,
+                screenX: screenX,
+                screenY: screenY,
+            };
+            const menuW = 220;
+            const menuH = 130;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            let left = Math.min(screenX, vw - menuW - 10);
+            let top = Math.min(screenY, vh - menuH - 10);
+            left = Math.max(10, left);
+            top = Math.max(10, top);
+            contextMenu.style.left = left + 'px';
+            contextMenu.style.top = top + 'px';
+            contextMenu.classList.remove('hidden');
+            if (markerContextMenu) markerContextMenu.classList.add('hidden');
+        }
+    }
+
+    document.addEventListener('click', () => {
+        if (contextMenu) contextMenu.classList.add('hidden');
+        if (markerContextMenu) markerContextMenu.classList.add('hidden');
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (contextMenu) contextMenu.classList.add('hidden');
+            if (markerContextMenu) markerContextMenu.classList.add('hidden');
+        }
+    });
+
+    if (contextMenu) {
+        contextMenu.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            contextMenu.classList.add('hidden');
+            if (action === 'add-image' && imageFileInput) {
+                imageFileInput.click();
+            } else if (action === 'paste-image') {
+                navigator.clipboard.read().then(items => {
+                    for (const item of items) {
+                        const imgType = item.types.find(t => t.startsWith('image/'));
+                        if (imgType) {
+                            item.getType(imgType).then(blob => {
+                                placeImageFromBlob(blob, 'Pasted Image');
+                            });
+                            return;
+                        }
+                    }
+                    showToast('No image found in clipboard', 'info', 2000);
+                }).catch(() => showToast('Clipboard access denied', 'error', 2000));
+            } else if (action === 'fit-view') {
+                if (currentSchematic && currentSchematic.components.length > 0) {
+                    getRenderer().zoomToFit();
+                }
+            }
+        });
+    }
+
+    // Marker-specific context menu
+    if (markerContextMenu) {
+        markerContextMenu.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn || !_contextMenuMarker) return;
+            const action = btn.dataset.action;
+            markerContextMenu.classList.add('hidden');
+            const marker = _contextMenuMarker;
+            if (action === 'marker-toggle') {
+                marker._imageRevealed = !marker._imageRevealed;
+                getRenderer().refresh();
+                if (marker._imageRevealed) {
+                    showToast(`Marker #${marker.markerNumber}: image on canvas`, 'info', 1500);
+                }
+            } else if (action === 'marker-inspect') {
+                showImageInspector(marker);
+            } else if (action === 'marker-rename') {
+                const name = prompt('Label for marker #' + marker.markerNumber + ':', marker.label || '');
+                if (name !== null) {
+                    marker.label = name;
+                    getRenderer().refresh();
+                    scheduleSchematicFlush();
+                    showImageInspector(marker);
+                }
+            } else if (action === 'marker-resize') {
+                const w = prompt('Width (world units):', marker.width);
+                const h = prompt('Height (world units):', marker.height);
+                if (w && h) {
+                    marker.width = parseFloat(w) || 20;
+                    marker.height = parseFloat(h) || 15;
+                    getRenderer().refresh();
+                    scheduleSchematicFlush();
+                    showImageInspector(marker);
+                }
+            } else if (action === 'marker-rotate') {
+                const deg = prompt('Rotation (degrees):', marker.rotation * 180 / Math.PI);
+                if (deg !== null) {
+                    marker.rotation = (parseFloat(deg) || 0) * Math.PI / 180;
+                    getRenderer().refresh();
+                    scheduleSchematicFlush();
+                }
+            } else if (action === 'marker-delete') {
+                deleteImageMarker(marker);
+            }
+            _contextMenuMarker = null;
+        });
+    }
+
+    // ── Image Placement Flow ───────────────────────────────────────────────────
+
+    async function placeImageFromBlob(blob, label) {
+        let worldX, worldY;
+        if (pendingImagePlacement) {
+            worldX = pendingImagePlacement.worldX;
+            worldY = pendingImagePlacement.worldY;
+        } else if (getRenderer()) {
+            const center = getRenderer().getCanvasCenterWorld();
+            worldX = center.x;
+            worldY = center.y;
+        } else {
+            showToast('Cannot place image: no canvas', 'error', 2000);
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const dataUrl = reader.result;
+            // Upload as asset to the backend
+            let assetId = null;
+            try {
+                const resp = await fetch('/api/schematic_assets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_data: dataUrl, mime_type: blob.type || 'image/png' }),
+                });
+                const result = await resp.json();
+                if (result.ok) assetId = result.asset_id;
+            } catch (err) {
+                console.warn('Asset upload failed, storing inline:', err);
+            }
+            // Create marker — image is visible immediately
+            const marker = currentSchematic.addImageMarkerAt(worldX, worldY, dataUrl, label, 20, 15, assetId);
+            marker._imageRevealed = true;
+            getRenderer().refresh();
+            scheduleSchematicFlush();
+            updateMarkerList();
+            showToast(`Marker #${marker.markerNumber} placed`, 'success', 2500);
+            pendingImagePlacement = null;
+            activeCanvasTool = 'pointer';
+        };
+        reader.readAsDataURL(blob);
+    }
+
+    // ── Image Inspector Overlay (marker-aware) ─────────────────────────────────
+
+    const imagePreviewOverlay = document.getElementById('imagePreviewOverlay');
+    const imagePreviewClose = document.getElementById('imagePreviewClose');
+    const imagePreviewDelete = document.getElementById('imagePreviewDelete');
+    const imagePreviewImg = document.getElementById('imagePreviewImg');
+    let _inspectedMarker = null;
+
+    function showImageInspector(marker) {
+        if (!imagePreviewOverlay || !imagePreviewImg || !marker) return;
+        _inspectedMarker = marker;
+        imagePreviewImg.src = marker.imageDataUrl || '';
+        const labelEl = document.getElementById('imagePreviewLabel');
+        if (labelEl) {
+            labelEl.value = marker.label || '';
+            labelEl.placeholder = `Marker #${marker.markerNumber}`;
+        }
+        const numEl = document.getElementById('imagePreviewMarkerNum');
+        if (numEl) numEl.textContent = marker.markerNumber;
+        // Populate controls
+        const wInput = document.getElementById('markerWidthInput');
+        const hInput = document.getElementById('markerHeightInput');
+        const sInput = document.getElementById('markerScaleInput');
+        const rInput = document.getElementById('markerRotationInput');
+        if (wInput) wInput.value = marker.width;
+        if (hInput) hInput.value = marker.height;
+        if (sInput) sInput.value = marker.scale;
+        if (rInput) rInput.value = Math.round(marker.rotation * 180 / Math.PI);
+        imagePreviewOverlay.classList.remove('hidden');
+    }
+
+    function hideImageInspector() {
+        if (imagePreviewOverlay) imagePreviewOverlay.classList.add('hidden');
+        _inspectedMarker = null;
+        getRenderer().clearImageMarkerSelection();
+        activeCanvasTool = 'pointer';
+    }
+
+    if (imagePreviewClose) {
+        imagePreviewClose.addEventListener('click', hideImageInspector);
+    }
+
+    if (imagePreviewDelete) {
+        imagePreviewDelete.addEventListener('click', () => {
+            if (_inspectedMarker) {
+                deleteImageMarker(_inspectedMarker);
+            }
+        });
+    }
+
+    if (imagePreviewOverlay) {
+        imagePreviewOverlay.addEventListener('click', (e) => {
+            if (e.target === imagePreviewOverlay) {
+                hideImageInspector();
+            }
+        });
+    }
+
+    // Label input live update
+    const labelInput = document.getElementById('imagePreviewLabel');
+    if (labelInput) {
+        labelInput.addEventListener('input', () => {
+            if (!_inspectedMarker) return;
+            _inspectedMarker.label = labelInput.value;
+            scheduleSchematicFlush();
+            updateMarkerList();
+        });
+    }
+
+    // Inspector control listeners
+    function _bindInspectorInput(id, prop, parseFn) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => {
+            if (!_inspectedMarker) return;
+            _inspectedMarker[prop] = parseFn(el.value);
+            getRenderer().refresh();
+            scheduleSchematicFlush();
+        });
+    }
+    _bindInspectorInput('markerWidthInput', 'width', parseFloat);
+    _bindInspectorInput('markerHeightInput', 'height', parseFloat);
+    _bindInspectorInput('markerScaleInput', 'scale', parseFloat);
+    _bindInspectorInput('markerRotationInput', 'rotation', (v) => (parseFloat(v) || 0) * Math.PI / 180);
+
+    // ── Image Marker Delete ────────────────────────────────────────────────────
+
+    async function deleteImageMarker(marker) {
+        if (!marker || !currentSchematic) return;
+        hideImageInspector();
+        const snapshot = {
+            markerNumber: marker.markerNumber,
+            label: marker.label,
+            x: marker.x,
+            y: marker.y,
+            width: marker.width,
+            height: marker.height,
+            scale: marker.scale,
+            rotation: marker.rotation,
+            imageDataUrl: marker.imageDataUrl,
+            assetId: marker.assetId,
+        };
+        currentSchematic.removeImageMarker(marker.id);
+        getRenderer().clearImageMarkerSelection();
+        getRenderer().refresh();
+        scheduleSchematicFlush();
+        updateMarkerList();
+        showToast(`Marker ${marker.markerNumber} deleted`, 'info', 4000, {
+            label: 'Undo',
+            onClick: () => {
+                const restored = currentSchematic.addImageMarkerAt(
+                    snapshot.x, snapshot.y, snapshot.imageDataUrl,
+                    snapshot.label, snapshot.width, snapshot.height, snapshot.assetId, snapshot.markerNumber
+                );
+                restored.scale = snapshot.scale;
+                restored.rotation = snapshot.rotation;
+                getRenderer().refresh();
+                scheduleSchematicFlush();
+                updateMarkerList();
+                showToast(`Marker ${restored.markerNumber} restored`, 'success', 1500);
+            },
+        });
+    }
+
+    // ── Marker List Panel Update ───────────────────────────────────────────────
+
+    function updateMarkerList() {
+        const list = document.getElementById('markerList');
+        const badge = document.getElementById('markerCountBadge');
+        if (!list) return;
+        if (!currentSchematic || !currentSchematic.imageMarkers || currentSchematic.imageMarkers.length === 0) {
+            list.innerHTML = '<div class="marker-list-empty">No image markers placed.</div>';
+            if (badge) badge.textContent = '0';
+            return;
+        }
+        if (badge) badge.textContent = String(currentSchematic.imageMarkers.length);
+        let html = '';
+        for (const m of currentSchematic.imageMarkers) {
+            const label = m.label || '';
+            html += `<div class="marker-list-item" data-marker-id="${m.id}">
+                <span class="marker-num">${m.markerNumber}</span>
+                <span class="marker-label">${label ? label : 'Marker #' + m.markerNumber}</span>
+                <button class="marker-zoom-btn" data-marker-id="${m.id}" title="Zoom to marker">\u{1F50D}</button>
+            </div>`;
+        }
+        list.innerHTML = html;
+        list.querySelectorAll('.marker-list-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (e.target.closest('.marker-zoom-btn')) return;
+                const id = item.dataset.markerId;
+                const marker = currentSchematic.getImageMarkerById(id);
+                if (marker && getRenderer()) {
+                    getRenderer().selectImageMarker(marker);
+                    marker._imageRevealed = !marker._imageRevealed;
+                    getRenderer().refresh();
+                    showImageInspector(marker);
+                }
+            });
+        });
+        list.querySelectorAll('.marker-zoom-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.markerId;
+                const marker = currentSchematic.getImageMarkerById(id);
+                if (marker && getRenderer()) {
+                    getRenderer().selectImageMarker(marker);
+                    getRenderer().zoomTo(marker.x, marker.y, 4);
+                }
+            });
+        });
+    }
+
+    // ── "Add Image" Tool Button ────────────────────────────────────────────────
+
+    const addImageToolBtn = document.querySelector('.sch-tool[data-tool="add-image"]');
+    if (addImageToolBtn) {
+        addImageToolBtn.addEventListener('click', () => {
+            if (imageFileInput) imageFileInput.click();
+        });
+    }
+
+    // ── Image File Input ───────────────────────────────────────────────────────
+
+    if (imageFileInput) {
+        imageFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            placeImageFromBlob(file, file.name);
+            imageFileInput.value = '';
+        });
+    }
+
+    // ── Drag-and-drop image placement on canvas ──────────────────────────────
+    const canvasContainer = document.getElementById('canvasContainer');
+    if (canvasContainer) {
+        canvasContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            canvasContainer.classList.add('drag-over');
+        });
+        canvasContainer.addEventListener('dragleave', () => {
+            canvasContainer.classList.remove('drag-over');
+        });
+        canvasContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            canvasContainer.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+            const file = files[0];
+            if (!file.type.startsWith('image/')) {
+                showToast('Only image files can be placed on the canvas', 'info', 2000);
+                return;
+            }
+            // Convert drop position to world coordinates
+            if (!renderer) return;
+            const rect = canvasContainer.getBoundingClientRect();
+            const sx = (e.clientX - rect.left) * (renderer._app.screen.width / rect.width);
+            const sy = (e.clientY - rect.top) * (renderer._app.screen.height / rect.height);
+            const world = renderer.screenToWorld(sx, sy);
+            if (!world) return;
+            pendingImagePlacement = { worldX: world.x, worldY: world.y, screenX: e.clientX, screenY: e.clientY };
+            placeImageFromBlob(file, file.name);
+        });
+    }
+
+    // ── PCB Floating HUD ───────────────────────────────────────────────────────
+
+    const hudLayerBtn = document.getElementById('hudLayerBtn');
+    const hudLayerText = document.getElementById('hudLayerText');
+    const hudAngleBtn = document.getElementById('hudAngleBtn');
+    const hudAngleText = document.getElementById('hudAngleText');
+    const hudPostureBtn = document.getElementById('hudPostureBtn');
+    const hudPostureText = document.getElementById('hudPostureText');
+    const hudWidthChips = document.getElementById('hudWidthChips');
+
+    let hudCurrentLayer = 'F.Cu';
+    let hudCurrentAngle = '45';
+    let hudCurrentPosture = 'H/V';
+
+    if (hudLayerBtn) {
+        hudLayerBtn.addEventListener('click', () => {
+            hudCurrentLayer = hudCurrentLayer === 'F.Cu' ? 'B.Cu' : 'F.Cu';
+            if (hudLayerText) hudLayerText.textContent = hudCurrentLayer === 'F.Cu' ? 'F.Cu (Top)' : 'B.Cu (Bottom)';
+            hudLayerBtn.classList.toggle('layer-fcu', hudCurrentLayer === 'F.Cu');
+            hudLayerBtn.classList.toggle('layer-bcu', hudCurrentLayer === 'B.Cu');
+            if (window.pcbState) pcbState.activeLayer = hudCurrentLayer;
+        });
+    }
+
+    if (hudAngleBtn) {
+        const angleModes = ['45', '90', 'Free'];
+        let angleIdx = 0;
+        hudAngleBtn.addEventListener('click', () => {
+            angleIdx = (angleIdx + 1) % angleModes.length;
+            hudCurrentAngle = angleModes[angleIdx];
+            if (hudAngleText) hudAngleText.textContent = hudCurrentAngle === 'Free' ? 'Free Angle' : `${hudCurrentAngle}° Octagonal`;
+            if (window.pcbState) pcbState.routeAngle = hudCurrentAngle;
+        });
+    }
+
+    if (hudPostureBtn) {
+        const postures = ['H/V', 'Diagonal'];
+        let postureIdx = 0;
+        hudPostureBtn.addEventListener('click', () => {
+            postureIdx = (postureIdx + 1) % postures.length;
+            hudCurrentPosture = postures[postureIdx];
+            if (hudPostureText) hudPostureText.textContent = hudCurrentPosture === 'H/V' ? 'H/V First' : 'Diagonal First';
+            if (window.pcbState) pcbState.routePosture = hudCurrentPosture;
+        });
+    }
+
+    if (hudWidthChips) {
+        hudWidthChips.addEventListener('click', (e) => {
+            const chip = e.target.closest('.hud-chip');
+            if (!chip) return;
+            hudWidthChips.querySelectorAll('.hud-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            const width = parseFloat(chip.dataset.width);
+            if (window.pcbState) pcbState.routeWidth = width;
+        });
+    }
 
     window.appContext = { fetchSExpr };
 });

@@ -1,5 +1,6 @@
 from agent.tools import fetch_sexpr, search_components
 from agent.utils import _emit, _parse_sexpr_to_ops, _extract_pins_from_ops, emit_thought, emit_tool_call, emit_tool_end, emit_step
+from agent.feature_flags import is_enabled
 from uuid import uuid4
 
 
@@ -11,8 +12,8 @@ def dispatch_node(state, config):
     component_ops = {}
     skipped_refs = []
     for comp in state.get("selected_components", []):
-        id_str = comp["id_str"]
-        ref_des = comp["ref_des"]
+        id_str = comp.get("id_str", "")
+        ref_des = comp.get("ref_des", "")
         emit_step(config, dispatch_id, f"Loading {ref_des}...", "running")
         ops = []
         try:
@@ -27,8 +28,13 @@ def dispatch_node(state, config):
                         sexpr = fetch_sexpr(r["id_str"])
                         ops = _parse_sexpr_to_ops(sexpr, r["id_str"].split(":")[0])
                         if ops:
-                            id_str = r["id_str"]
-                            comp["id_str"] = id_str
+                            # The selected component list is frozen before
+                            # dispatch. A description-based search result may
+                            # have a different pinout, so it cannot silently
+                            # replace the selected symbol at this stage.
+                            if r["id_str"] != id_str:
+                                ops = []
+                                continue
                             break
                     except Exception:
                         continue
@@ -88,8 +94,64 @@ def dispatch_node(state, config):
         "pin_matrix": pin_matrix,
         "component_ops": component_ops,
         "retry_count": 0,
-        "validation_errors": [],
     }
+    if skipped_refs:
+        result["error"] = (
+            "Symbol dispatch failed for required component(s): "
+            + ", ".join(f"{s['ref_des']} ({s['id_str']})" for s in skipped_refs)
+        )
+
+    # ── M1a: Build SynthesisGraph early (before netlist) ──────────────────
+    if is_enabled("SYNTHESIS_GRAPH_EARLY") and state.get("selected_components"):
+        try:
+            from agent.synthesis.graph import SynthesisGraph
+            from agent.synthesis.classifier import classify_all
+
+            graph = SynthesisGraph()
+            for c in state["selected_components"]:
+                if c["ref_des"] in component_ops:
+                    graph.add_component({
+                        "ref_des": c["ref_des"],
+                        "id_str": c["id_str"],
+                        "library": c["id_str"].split(":")[0] if ":" in c["id_str"] else "",
+                        "category": c.get("category", ""),
+                        "description": c.get("description", ""),
+                        "footprint": c.get("footprint", ""),
+                    })
+            for pin_key, pin_data in pin_matrix.items():
+                ref = pin_key.split(":")[0]
+                graph.add_pin(ref, pin_key, pin_data)
+            classify_all(graph)
+            result["synthesis_graph"] = graph
+            emit_thought(config, f"Synthesis graph built: {len(graph.components)} components, "
+                         f"{sum(len(c.pins) for c in graph.components.values())} pins classified")
+        except Exception as e:
+            _emit(config, "agent:log", {"message": f"  Warning: SynthesisGraph build failed: {e}"})
+            result["synthesis_graph_error"] = str(e)
+
+    # ── M1a: Live knowledge extraction ────────────────────────────────────
+    if is_enabled("KNOWLEDGE_EXTRACTION_LIVE") and state.get("selected_components"):
+        try:
+            from agent.knowledge_extractor import extract_knowledge
+            from agent.component_knowledge import lookup_device
+
+            knowledge_db = {}
+            for c in state["selected_components"]:
+                if c["ref_des"] not in component_ops:
+                    continue
+                comp_pins = {k: v for k, v in pin_matrix.items()
+                             if k.startswith(c["ref_des"] + ":")}
+                knowledge = extract_knowledge(c, comp_pins)
+                device_info = lookup_device(c["id_str"], c.get("description", ""))
+                if device_info:
+                    knowledge["device_info"] = device_info
+                knowledge_db[c["id_str"]] = knowledge
+            result["knowledge_db"] = knowledge_db
+            emit_thought(config, f"Knowledge extracted for {len(knowledge_db)} components")
+        except Exception as e:
+            _emit(config, "agent:log", {"message": f"  Warning: Knowledge extraction failed: {e}"})
+            result["knowledge_db_error"] = str(e)
+
     if skipped_refs:
         result["_skipped_components"] = skipped_refs
     return result

@@ -4,6 +4,7 @@ Emits agent:validation_help event, then blocks on a threading.Event
 until the user responds via the frontend. Returns state updates based on choice.
 """
 
+from agent.pipeline_tracker import update_pipeline_stage
 from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 
@@ -35,7 +36,9 @@ def ask_validation_help_node(state, config):
     emit_tool_event(config, "Validation Help", "running", "Awaiting user decision...")
 
     if help_event is not None:
+        update_pipeline_stage(config, "waiting", "Awaiting validation decision")
         help_event.wait(timeout=300)
+        update_pipeline_stage(config, "running", "Applying validation decision")
 
     action = "terminate"
     if help_result is not None:
@@ -47,21 +50,21 @@ def ask_validation_help_node(state, config):
             "retry_count": 1,
             "repair_failures": [],
         }
-    elif action == "skip":
-        emit_tool_event(config, "Validation Help", "completed", "User chose to skip problematic components")
-        comps = state.get("selected_components", [])
-        repair_failures = state.get("repair_failures", [])
-        comps = [c for c in comps if c.get("id_str", "") not in repair_failures]
+    elif action in ("skip", "force"):
+        # A user may cancel a failed design, but cannot turn missing required
+        # circuitry into a valid design by dismissing the errors. In the old
+        # flow this erased OLED/USB-C errors and let an invalid BOM freeze.
+        emit_tool_event(
+            config,
+            "Validation Help",
+            "failed",
+            "Cannot continue while required electrical validation errors remain",
+        )
         return {
-            "selected_components": comps,
-            "validation_errors": [],
-            "validation_warnings": [],
-        }
-    elif action == "force":
-        emit_tool_event(config, "Validation Help", "completed", "User chose to force continue despite errors")
-        return {
-            "validation_errors": [],
-            "validation_warnings": [],
+            "error": (
+                "Validation remains unresolved; refusing to generate a design with "
+                f"known electrical errors: {'; '.join(errors[:3])}"
+            ),
         }
     else:
         emit_tool_event(config, "Validation Help", "terminated", "User chose to terminate")

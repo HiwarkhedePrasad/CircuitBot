@@ -7,6 +7,15 @@ def snap(v: float) -> float:
     return round(v / GRID) * GRID
 
 
+def escape_sexpr_string(val: str) -> str:
+    """Escape a string for safe embedding into KiCad S-expression files."""
+    if val is None:
+        return '""'
+    s = str(val)
+    s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "")
+    return f'"{s}"'
+
+
 def pin_transform(pin_x: float, pin_y: float, rotation: int = 0) -> tuple:
     """Transform pin position from library Y-up space to schematic Y-down offset.
 
@@ -173,15 +182,19 @@ def _extract_pins_from_ops(ops: list, ref_des: str) -> dict:
         key = f"{ref_des}:{pin_num}"
         if key in pin_matrix:
             continue
-        pin_matrix[key] = {
-            "x": round(px / GRID_SIZE) * GRID_SIZE,
-            "y": round(py / GRID_SIZE) * GRID_SIZE,
-            "name": pin_name.strip(),
-            "ref_des": ref_des,
-            "pin_num": pin_num,
-            "angle": int(round(ang_deg)) % 360,
-            "etype": etype,
+        # Keep pin coordinates faithful to the symbol definition.  Moving
+        # coincident hidden pins here made backend wires terminate somewhere
+        # that neither the renderer nor KiCad considered a pin.
+        pin_matrix[key]={
+            "x":round(px/GRID_SIZE)*GRID_SIZE,
+            "y":round(py/GRID_SIZE)*GRID_SIZE,
+            "name":pin_name.strip(),
+            "ref_des":ref_des,
+            "pin_num":pin_num,
+            "angle":int(round(ang_deg))%360,
+            "etype":etype,
         }
+
     return pin_matrix
 
 

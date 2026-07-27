@@ -8,7 +8,7 @@ def load():
         "components": [
             {
                 "ref_des": "J1",
-                "id_str": "Connector_USB:USB_C_Receptacle_USB2.0",
+                "id_str": "Connector:USB_C_Receptacle_USB2.0_16P",
                 "category": "Connector_USB",
                 "description": "USB-C connector",
                 "for_component": "",

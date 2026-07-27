@@ -72,7 +72,8 @@ class KicadRAG:
 
     def search(self, query: str, k: int = 5,
                mode: Optional[str] = None,
-               fanout: int = FANOUT) -> List[Result]:
+               fanout: int = FANOUT,
+               library_filter: Optional[str] = None) -> List[Result]:
         """Ranked results from the chosen retriever.
 
         Parameters
@@ -87,14 +88,16 @@ class KicadRAG:
             mode passed to ``__init__``.
         fanout:
             Per-retriever depth fed into the RRF fuser (hybrid only).
+        library_filter:
+            Optional library prefix or pipe-separated filters (e.g. "Connector_USB|Connector").
         """
         mode = mode or self._mode
         if mode == "dense":
             ranked = dense_search(query, k)
         elif mode == "bm25":
-            ranked = bm25_search(query, k)
+            ranked = bm25_search(query, k, library_filter=library_filter)
         else:
-            ranked = hybrid_search(query, k, fanout)
+            ranked = hybrid_search(query, k, fanout, library_filter=library_filter)
 
         if not ranked:
             return []

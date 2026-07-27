@@ -1,4 +1,5 @@
 import json
+import logging
 from functools import lru_cache
 
 from agent.bus_checker import check_bus_topology
@@ -11,6 +12,8 @@ from agent.utils import (
     _is_gnd_net, _is_power_net, _canonical_signal_name, _resolve_hallucinated_pin,
     PIN_ALIASES, POWER_ETYPES, MAX_BATCH_PINS, _parse_sexpr_to_ops, _extract_pins_from_ops,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _pin_anchor_priority(pin_key: str, pin_matrix: dict, passive_refs: set[str]) -> tuple[int, str]:
@@ -111,7 +114,16 @@ def _format_comp_for_netlist(
     if ps:
         lines.append(f"    pin_summary: {ps}")
 
-    # Structured knowledge from pre-built DB — much smaller than raw datasheet text
+    comp_pins = []
+    for key, pinfo in pin_matrix.items():
+        if key.split(":")[0] == ref:
+            pnum = pinfo.get("num") or pinfo.get("number") or (key.split(":")[-1] if ":" in key else "")
+            pname = pinfo.get("name", "")
+            petype = pinfo.get("etype", "passive")
+            comp_pins.append(f"{pnum}:{pname}({petype})")
+    if comp_pins:
+        lines.append(f"    pins: [{', '.join(comp_pins[:20])}]")
+
     id_str = comp.get("id_str", "")
     if id_str:
         try:
@@ -128,16 +140,8 @@ def _format_comp_for_netlist(
     return "\n".join(lines)
 
 
-def netlist_node(state, config):
-    _emit(config, "agent:thinking", {"message": "Planning pin connections..."})
-    emit_assistant_message(config, "Generating the netlist — connecting all selected components into a wiring topology...")
-    emit_tool_event(config, "Netlist Generation", "running", "Connecting pins...")
-    comps = state.get("selected_components", [])
-    pins = state.get("pin_matrix", {})
-    if not comps or not pins:
-        _emit(config, "agent:log", {"message": "No components or pins to route."})
-        return {"netlist": [], "nets": [], "power_pins": []}
-    # ── Build research context from web research, datasheets, and connection guidance ──
+def _build_research_context(state: dict) -> str:
+    """Build research context from web research, datasheets, and connection guidance."""
     research_parts = []
 
     web_research = state.get("web_research_results", [])
@@ -177,27 +181,31 @@ def netlist_node(state, config):
     research_context = "\n\n".join(research_parts)
     if research_context:
         research_context += "\n\nUse the above research to guide your wiring decisions."
-        _emit(config, "agent:log", {
-            "message": f"  Injecting {len(research_parts)} research section(s) into netlist prompt"
-        })
+    return research_context
 
-    comps_desc = "\n".join(
-        f'  {c["ref_des"]}: {c["id_str"]} ({c["category"]})'
-        for c in comps
+
+def _preassign_power_nets(pins: dict, comps: list[dict]) -> tuple[list[dict], set[str], dict[str, list[str]]]:
+    """Pre-assign power/GND pins deterministically. Returns (nets, assigned, power_groups)."""
+    from agent.power_domains import classify as _classify_rail, is_gnd as _is_gnd, is_power as _is_power
+
+    has_usb_c_input = any(
+        "USB_C" in (comp.get("id_str", "") or "").upper()
+        or "USB-C" in (comp.get("id_str", "") or "").upper()
+        for comp in comps
     )
+    has_3v3_regulator = any(
+        (comp.get("id_str", "") or "").startswith("Regulator_")
+        and any(token in (comp.get("id_str", "") or "").upper() for token in ("3.3", "_33", "-33"))
+        for comp in comps
+    )
+
     existing_flag_nets_by_ref = {
         c.get("ref_des", ""): _flag_net_name(c)
         for c in comps
         if c.get("id_str") == "power:PWR_FLAG"
     }
-    passive_refs = {
-        c.get("ref_des", "") for c in comps
-        if str(c.get("category", "") or "").upper() in ("DEVICE", "RESISTOR", "CAPACITOR", "INDUCTOR", "DIODE")
-        or str(c.get("id_str", "") or "").startswith("Device:")
-    }
-    from agent.power_domains import classify as _classify_rail, is_gnd as _is_gnd, is_power as _is_power
     assigned = set()
-    power_groups = {}
+    power_groups: dict[str, list[str]] = {}
     for key, pin in pins.items():
         ref = key.split(":")[0] if ":" in key else key
         pname = pin.get("name", "").strip().upper()
@@ -206,18 +214,26 @@ def netlist_node(state, config):
             assigned.add(key)
         elif _is_power(pname):
             canon = _classify_rail(pname) or pname.lstrip("+")
+            # These are explicit topology rules, not a generic rail merge.
+            # A USB-C sink feeds the regulator input from VBUS; a known 3.3V
+            # regulator feeds generic VDD consumers on its regulated rail.
+            if pname == "VIN" and has_usb_c_input:
+                canon = "VBUS"
+            elif pname == "VDD" and has_3v3_regulator:
+                canon = "3V3"
             power_groups.setdefault(canon, []).append(key)
             assigned.add(key)
         elif ref in existing_flag_nets_by_ref:
             power_groups.setdefault(existing_flag_nets_by_ref[ref], []).append(key)
             assigned.add(key)
     nets = [{"net": n, "pins": p} for n, p in power_groups.items()]
-    _emit(config, "agent:log", {
-        "message": f"  Power/GND pre-assigned deterministically: {len(assigned)} pins -> "
-                   f"{', '.join(power_groups) or 'none'}"
-    })
+    return nets, assigned, power_groups
 
-    # ── Deterministic pin matcher ──────────────────────────────────────
+
+def _run_deterministic_pin_matcher(
+    config, comps, pins, nets, assigned
+) -> None:
+    """Run the deterministic pin matcher and merge results into nets/assigned."""
     try:
         from agent.pin_matcher import match_pins
         match_result = match_pins(comps, pins, nets, assigned=assigned)
@@ -233,22 +249,21 @@ def netlist_node(state, config):
     except Exception:
         _emit(config, "agent:log", {"message": "  Pin matcher skipped (error)"})
 
-    signal_keys = [k for k in pins if k not in assigned]
-    # Use default MAX_BATCH_PINS (24) to avoid overwhelming the LLM with too many pins at once
-    batches = _make_signal_batches(signal_keys)
-    if signal_keys:
-        _emit(config, "agent:log", {
-            "message": f"  Wiring {len(signal_keys)} signal pins in {len(batches)} batch(es)"
-        })
+
+def _process_signal_batches(
+    config, state, comps, pins, nets, assigned, batches, signal_keys,
+    research_context, passive_refs
+) -> tuple[dict, list[dict]]:
+    """Process signal pins in batches via LLM. Returns (trace_constraints, explicit_signal_edges)."""
     trace_constraints: dict = {}
     explicit_signal_edges: list[dict] = []
 
-    # Ensure LLM proxy is alive before starting batch processing
     try:
         from config import ensure_proxy
         ensure_proxy(timeout=15)
     except Exception:
         pass
+
     for bi, batch_refs in enumerate(batches, 1):
         batch_tc = {}
         batch_keys = sorted(
@@ -264,7 +279,7 @@ def netlist_node(state, config):
         batch_comps_desc = "\n".join(
             _format_comp_for_netlist(c, pins, batch_refs_set)
             for c in comps
-            if c["ref_des"] in batch_refs_set
+            if c.get("ref_des") in batch_refs_set
         )
         pins_desc = "\n".join(
             f'  {k}: pin_name="{pins[k]["name"]}"  etype="{pins[k]["etype"]}"'
@@ -286,7 +301,7 @@ def netlist_node(state, config):
         try:
             batch_data = json.loads(text) if text else []
         except json.JSONDecodeError:
-            print(f"Batch {bi}: failed to parse nets JSON: {text[:200]}")
+            logger.warning(f"Batch {bi}: failed to parse nets JSON: {text[:200]}")
             batch_data = []
         if isinstance(batch_data, dict):
             batch_tc = batch_data.get("trace_constraints", {})
@@ -296,8 +311,6 @@ def netlist_node(state, config):
         if not isinstance(batch_data, list):
             continue
         batch_nets = batch_data
-        # Normalize list-of-lists format (e.g. [["GND", ["p1","p2"]]])
-        # into dict format (e.g. [{"net": "GND", "pins": ["p1","p2"]}])
         normalized = []
         for entry in batch_nets:
             if isinstance(entry, dict):
@@ -342,68 +355,19 @@ def netlist_node(state, config):
                 "message": f"  Batch {bi}: {n_resolved} fuzzy-resolved, {n_dropped} dropped (of {total_unmatched} unmatched)"
             })
 
-    # ── Bus topology check ─────────────────────────────────────────
-    nets, bus_warnings, bus_removed_pins = check_bus_topology(nets, pins, comps)
-    if bus_removed_pins:
-        # Power isolation ejected signal-etype pins from power/GND nets.
-        # Remove them from assigned so the fallback can process them.
-        old_count = len(assigned)
-        for p in bus_removed_pins:
-            assigned.discard(p)
-        _emit(config, "agent:log", {
-            "message": f"  Bus check: freed {old_count - len(assigned)} pin(s) from assigned "
-                       f"for fallback recovery"
-        })
-    for w in bus_warnings:
-        _emit(config, "agent:log", {"message": w})
+    return trace_constraints, explicit_signal_edges
 
-    # ── M1b: Surface bus warnings to user ──────────────────────────
-    _bus_warnings_for_result = list(bus_warnings) if is_enabled("BUS_WARNINGS_SURFACED") else []
 
-    # ── Power rail merging ─────────────────────────────────────────────
-    # Merge power nets that share a voltage rail.  If net A has a power_out
-    # pin (the source) and net B has only power_in/passive pins (consumers),
-    # merge B into A.  This handles cases where VDD/VCC/VOUT are the same
-    # 3.3V rail from a regulator but got distinct net names.
-    def _pin_etype(pk: str) -> str:
-        return (pins.get(pk, {}) or {}).get("etype", "") or ""
-
-    power_nets = [n for n in nets
-                  if (_is_power_net(n["net"]) or _is_gnd_net(n["net"]))
-                  and n["net"].upper() != "GND"]
-    net_has_source: dict[str, bool] = {}
-    for n in power_nets:
-        net_has_source[n["net"]] = any(
-            _pin_etype(p).lower() == "power_out" for p in n.get("pins", [])
-        )
-    source_nets = {n for n, has in net_has_source.items() if has}
-    consumer_nets = [n for n in power_nets if not net_has_source.get(n["net"], False)]
-    for cn in consumer_nets:
-        cname = cn["net"]
-        if not cn.get("pins"):
-            continue
-        best_source = None
-        for sn in source_nets:
-            if sn.upper() == cname.upper():
-                continue
-            best_source = sn
-            break
-        if best_source:
-            c_pins = list(cn["pins"])
-            _merge_net(nets, best_source, c_pins)
-            for p in c_pins:
-                assigned.add(p)
-            _emit(config, "agent:log", {
-                "message": f"  Power merge: merged '{cname}' ({len(c_pins)} pins) into '{best_source}'"
-            })
-
+def _validate_and_clean_nets(config, nets, pins, assigned) -> list[dict]:
+    """Validate nets, remove duplicates/invalids, fix ERC issues. Returns valid_nets."""
     leftover = {k: pins[k] for k in pins if k not in assigned}
     if leftover:
-        for net in _generate_nets_fallback(leftover, comps, nets):
+        for net in _generate_nets_fallback(leftover, {}, nets):
             _merge_net(nets, net["net"], net["pins"])
         _emit(config, "agent:log", {
             "message": f"  Name-match fallback assigned {len(leftover)} leftover pins"
         })
+
     used_pins = set()
     valid_nets = []
     for net in nets:
@@ -426,11 +390,10 @@ def netlist_node(state, config):
         if len(clean) >= 2 or (_is_gnd_net(name) or _is_power_net(name)) and len(clean) >= 1:
             valid_nets.append({"net": name, "pins": clean})
         else:
-            # Single-pin signal net — drop the pins from assigned so they
-            # surface as PCV001 (uncovered) rather than silently vanishing.
             for p in clean:
                 assigned.discard(p)
                 used_pins.discard(p)
+
     erc_removed_pins: list[tuple[str, str]] = []
     for net in valid_nets:
         if _is_gnd_net(net["net"]):
@@ -444,14 +407,14 @@ def netlist_node(state, config):
                 else:
                     keep.append(p)
             net["pins"] = keep
-    # Re-home ERC-removed pins to their proper power net if it exists
+
     if erc_removed_pins:
+        from agent.power_domains import classify as _classify_rail
         net_by_canon: dict[str, list[str]] = {}
         for vn in valid_nets:
             if not _is_gnd_net(vn["net"]):
                 net_by_canon.setdefault(vn["net"].upper(), []).extend(vn["pins"])
         for p, pname in erc_removed_pins:
-            from agent.power_domains import classify as _classify_rail
             canon = _classify_rail(pname) or pname.lstrip("+")
             if canon.upper() in net_by_canon:
                 net_by_canon[canon.upper()].append(p)
@@ -466,69 +429,12 @@ def netlist_node(state, config):
                 assigned.discard(p)
                 _emit(config, "agent:log", {"message": f"  ERC: orphaned {p} ({pname}) — no power net '{canon}' found"})
 
-    # ── Auto pull-up detection ─────────────────────────────────────────
-    netlist_validation_issues: list[dict] = []
-    try:
-        from agent.auto_pullup import find_missing_pullups
-        pullup_issues = find_missing_pullups(valid_nets, pins, comps)
-        for pi in pullup_issues:
-            _emit(config, "agent:log", {"message": f"  {pi['code']}: {pi['message']}"})
-            netlist_validation_issues.append(pi)
-    except Exception as pu_ex:
-        _emit(config, "agent:log", {"message": f"  Pull-up check failed: {pu_ex}"})
+    return valid_nets
 
-    power_pins = []
-    netlist = []
-    seen_edges: set[tuple[str, str, str]] = set()
 
-    def _append_edge(edge: dict):
-        src = edge.get("source", "")
-        tgt = edge.get("target", "")
-        net_name = edge.get("net", "")
-        if not src or not tgt or not net_name or src == tgt:
-            return
-        edge_key = (net_name.upper(),) + tuple(sorted((src, tgt)))
-        if edge_key in seen_edges:
-            return
-        seen_edges.add(edge_key)
-        netlist.append({"source": src, "target": tgt, "net": net_name})
-
-    n_power_nets = 0
-    n_signal_nets = 0
-    for net in valid_nets:
-        name = net["net"]
-        if _is_gnd_net(name) or _is_power_net(name):
-            n_power_nets += 1
-            canonical = "GND" if _is_gnd_net(name) else name.upper().lstrip('+')
-            for p in net["pins"]:
-                power_pins.append({"pin": p, "net": canonical})
-        else:
-            n_signal_nets += 1
-            for edge in _signal_edges_for_net(name, net["pins"], pins, passive_refs):
-                _append_edge(edge)
-    for edge in explicit_signal_edges:
-        _append_edge(edge)
-    n_power_nets = len(power_groups)
-    _emit(config, "agent:log", {
-        "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "
-                   f"{n_signal_nets} signal ({len(netlist)} wire connections)"
-    })
-    emit_tool_event(config, "Netlist Generation", "completed",
-                    f"{len(netlist)} connections across {n_power_nets + n_signal_nets} nets")
-    emit_assistant_message(config, f"Generated {len(netlist)} connections across {n_power_nets + n_signal_nets} nets.")
-    if trace_constraints:
-        _emit(config, "agent:log", {
-            "message": f"  Trace constraints from LLM: {len(trace_constraints)} net(s) with custom widths/impedances"
-        })
-    # ── Inject PWR_FLAG for power nets without a power-output driver ──
-    result = {"netlist": netlist, "nets": valid_nets, "power_pins": power_pins,
-              "trace_constraints": trace_constraints,
-              "_validation_issues": netlist_validation_issues}
-    if _bus_warnings_for_result:
-        result["validation_warnings"] = _bus_warnings_for_result
-        for w in _bus_warnings_for_result:
-            emit_thought(config, f"Bus topology: {w}")
-    # ── Build canonical synthesis graph ──────────────────────────────
+def _build_synthesis_graph(config, comps, pins, netlist, power_pins) -> tuple:
+    """Build SynthesisGraph and run deterministic validation. Returns (graph_or_None, validation_issues)."""
+    validation_issues = []
     try:
         from agent.synthesis.graph import SynthesisGraph
         from agent.synthesis.classifier import classify_all
@@ -544,37 +450,30 @@ def netlist_node(state, config):
         classify_all(sgraph)
         match_and_constrain(sgraph)
 
-        # Store live graph for downstream use (M1a flag or always for netlist)
-        result["synthesis_graph"] = sgraph
-
-        # Serialize for state persistence
         _emit(config, "agent:log", {
             "message": (f"Synthesis graph: {len(sgraph.components)} components, "
                         f"{len(sgraph.nets)} nets, {len(sgraph.constraints)} constraints")
         })
 
-        # ── M1b: Deterministic validation on the graph ────────────────
         if is_enabled("VALIDATION_DETERMINISTIC"):
             try:
                 from agent.synthesis.validation import validate_circuit
                 from agent.synthesis.engine import validate_constraints, suggest_repairs
 
-                validation_issues = validate_circuit(sgraph)
+                validation_issues = list(validate_circuit(sgraph))
                 constraint_viols = validate_constraints(sgraph)
                 repairs = suggest_repairs(constraint_viols)
 
-                all_issues = list(validation_issues)
                 for cv in constraint_viols:
-                    all_issues.append({
+                    validation_issues.append({
                         "code": "CON001",
                         "severity": cv.severity,
                         "stage": "synthesis",
                         "message": cv.description,
                     })
 
-                if all_issues:
-                    result["_validation_issues"] = all_issues
-                    for issue in all_issues:
+                if validation_issues:
+                    for issue in validation_issues:
                         severity = issue.get("severity", "warning")
                         code = issue.get("code", "UNKNOWN")
                         msg = issue.get("message", "")
@@ -586,14 +485,21 @@ def netlist_node(state, config):
                         emit_thought(config, f"  Repair: {r.description} (priority {r.priority})")
 
                 _emit(config, "agent:log", {
-                    "message": f"Deterministic validation: {len(all_issues)} issues, {len(repairs)} repairs suggested"
+                    "message": f"Deterministic validation: {len(validation_issues)} issues, {len(repairs)} repairs suggested"
                 })
             except Exception as ve:
                 _emit(config, "agent:log", {"message": f"  Deterministic validation failed: {ve}"})
 
+        return sgraph, validation_issues
     except Exception as exc:
         _emit(config, "agent:log", {"message": f"Synthesis graph build failed: {exc}"})
+        return None, validation_issues
 
+
+def _inject_pwr_flags(config, state, valid_nets, pins, power_pins) -> dict:
+    """Inject PWR_FLAG components for power nets without a power-output driver.
+    Returns dict of state overrides to merge into result."""
+    overrides = {}
     try:
         import copy
         from agent.tools import fetch_sexpr as _fetch_sexpr
@@ -642,14 +548,160 @@ def netlist_node(state, config):
                 pm[pkey] = pval
                 power_pins.append(fc["power_pin_entry"])
                 injected_flag_nets.append(net_name)
-            result["selected_components"] = selected
-            result["component_ops"] = comp_ops
-            result["pin_matrix"] = pm
+            overrides["selected_components"] = selected
+            overrides["component_ops"] = comp_ops
+            overrides["pin_matrix"] = pm
             if injected_flag_nets:
                 _emit(config, "agent:log", {
                     "message": (f"  Injected PWR_FLAG on {len(injected_flag_nets)} net(s): "
                                f"{', '.join(injected_flag_nets)}")
                 })
     except Exception as e:
-        print(f"PWR_FLAG injection failed: {e}")
+        logger.error(f"PWR_FLAG injection failed: {e}")
+    return overrides
+
+
+def netlist_node(state, config):
+    _emit(config, "agent:thinking", {"message": "Planning pin connections..."})
+    emit_assistant_message(config, "Generating the netlist — connecting all selected components into a wiring topology...")
+    emit_tool_event(config, "Netlist Generation", "running", "Connecting pins...")
+    comps = state.get("selected_components", [])
+    pins = state.get("pin_matrix", {})
+    if not comps or not pins:
+        _emit(config, "agent:log", {"message": "No components or pins to route."})
+        return {"netlist": [], "nets": [], "power_pins": []}
+
+    # ── 1. Build research context ──
+    research_context = _build_research_context(state)
+    if research_context:
+        _emit(config, "agent:log", {
+            "message": f"  Injecting research context into netlist prompt"
+        })
+
+    # ── 2. Pre-assign power/GND pins ──
+    nets, assigned, power_groups = _preassign_power_nets(pins, comps)
+    _emit(config, "agent:log", {
+        "message": f"  Power/GND pre-assigned deterministically: {len(assigned)} pins -> "
+                   f"{', '.join(power_groups) or 'none'}"
+    })
+
+    # ── 3. Deterministic pin matcher ──
+    _run_deterministic_pin_matcher(config, comps, pins, nets, assigned)
+
+    # ── 4. Process signal pins in batches via LLM ──
+    signal_keys = [k for k in pins if k not in assigned]
+    batches = _make_signal_batches(signal_keys)
+    if signal_keys:
+        _emit(config, "agent:log", {
+            "message": f"  Wiring {len(signal_keys)} signal pins in {len(batches)} batch(es)"
+        })
+    passive_refs = {
+        c.get("ref_des", "") for c in comps
+        if str(c.get("category", "") or "").upper() in ("DEVICE", "RESISTOR", "CAPACITOR", "INDUCTOR", "DIODE")
+        or str(c.get("id_str", "") or "").startswith("Device:")
+    }
+    trace_constraints, explicit_signal_edges = _process_signal_batches(
+        config, state, comps, pins, nets, assigned, batches, signal_keys,
+        research_context, passive_refs
+    )
+
+    # ── 5. Bus topology check ──
+    nets, bus_warnings, bus_removed_pins = check_bus_topology(nets, pins, comps)
+    if bus_removed_pins:
+        old_count = len(assigned)
+        for p in bus_removed_pins:
+            assigned.discard(p)
+        _emit(config, "agent:log", {
+            "message": f"  Bus check: freed {old_count - len(assigned)} pin(s) from assigned "
+                       f"for fallback recovery"
+        })
+    for w in bus_warnings:
+        _emit(config, "agent:log", {"message": w})
+    _bus_warnings_for_result = list(bus_warnings) if is_enabled("BUS_WARNINGS_SURFACED") else []
+
+    # ── 6. Preserve power domains ──
+    # Power rails are canonicalized by _preassign_power_nets. Never infer a
+    # connection from electrical type alone: VBUS, VIN, 5V, and 3V3 can each
+    # legitimately contain a source and must only meet through an explicit
+    # regulator or power-path component.
+
+    # ── 7. Validate and clean nets ──
+    valid_nets = _validate_and_clean_nets(config, nets, pins, assigned)
+
+    # ── 8. Auto pull-up detection ──
+    netlist_validation_issues: list[dict] = []
+    try:
+        from agent.auto_pullup import find_missing_pullups
+        pullup_issues = find_missing_pullups(valid_nets, pins, comps)
+        for pi in pullup_issues:
+            _emit(config, "agent:log", {"message": f"  {pi['code']}: {pi['message']}"})
+            netlist_validation_issues.append(pi)
+    except Exception as pu_ex:
+        _emit(config, "agent:log", {"message": f"  Pull-up check failed: {pu_ex}"})
+
+    # ── 9. Build netlist edges ──
+    power_pins = []
+    netlist = []
+    seen_edges: set[tuple[str, str, str]] = set()
+
+    def _append_edge(edge: dict):
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        net_name = edge.get("net", "")
+        if not src or not tgt or not net_name or src == tgt:
+            return
+        edge_key = (net_name.upper(),) + tuple(sorted((src, tgt)))
+        if edge_key in seen_edges:
+            return
+        seen_edges.add(edge_key)
+        netlist.append({"source": src, "target": tgt, "net": net_name})
+
+    n_power_nets = 0
+    n_signal_nets = 0
+    for net in valid_nets:
+        name = net["net"]
+        if _is_gnd_net(name) or _is_power_net(name):
+            n_power_nets += 1
+            canonical = "GND" if _is_gnd_net(name) else name.upper().lstrip('+')
+            for p in net["pins"]:
+                power_pins.append({"pin": p, "net": canonical})
+        else:
+            n_signal_nets += 1
+            for edge in _signal_edges_for_net(name, net["pins"], pins, passive_refs):
+                _append_edge(edge)
+    for edge in explicit_signal_edges:
+        _append_edge(edge)
+    n_power_nets = len(power_groups)
+    _emit(config, "agent:log", {
+        "message": f"Nets: {n_power_nets} power/GND ({len(power_pins)} pins as power symbols), "
+                   f"{n_signal_nets} signal ({len(netlist)} wire connections)"
+    })
+    emit_tool_event(config, "Netlist Generation", "completed",
+                    f"{len(netlist)} connections across {n_power_nets + n_signal_nets} nets")
+    emit_assistant_message(config, f"Generated {len(netlist)} connections across {n_power_nets + n_signal_nets} nets.")
+    if trace_constraints:
+        _emit(config, "agent:log", {
+            "message": f"  Trace constraints from LLM: {len(trace_constraints)} net(s) with custom widths/impedances"
+        })
+
+    # ── 10. Build result ──
+    result = {"netlist": netlist, "nets": valid_nets, "power_pins": power_pins,
+              "trace_constraints": trace_constraints,
+              "_validation_issues": netlist_validation_issues}
+    if _bus_warnings_for_result:
+        result["validation_warnings"] = _bus_warnings_for_result
+        for w in _bus_warnings_for_result:
+            emit_thought(config, f"Bus topology: {w}")
+
+    # ── 11. Build SynthesisGraph ──
+    sgraph, synth_issues = _build_synthesis_graph(config, comps, pins, netlist, power_pins)
+    if sgraph:
+        result["synthesis_graph"] = sgraph
+    if synth_issues:
+        result["_validation_issues"] = synth_issues
+
+    # ── 12. Inject PWR_FLAG ──
+    flag_overrides = _inject_pwr_flags(config, state, valid_nets, pins, power_pins)
+    result.update(flag_overrides)
+
     return result

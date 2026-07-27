@@ -384,6 +384,31 @@ def extract_knowledge(
     }
 
 
+# ── M1c: Pin vocabulary bridge ────────────────────────────────────────────
+
+_KNOWLEDGE_TO_PIN_ROLE_MAP: dict[str, str] = {
+    "POWER_IN": "POWER_IN", "POWER_OUT": "POWER_OUT", "GROUND": "GND",
+    "BATTERY": "POWER_IN", "VREF": "VREF",
+    "UART_TX": "TX", "UART_RX": "RX", "UART_FLOW": "PASSIVE",
+    "I2C_SDA": "SDA", "I2C_SCL": "SCL",
+    "SPI_MOSI": "OUTPUT", "SPI_MISO": "INPUT", "SPI_SCK": "CLOCK", "SPI_CS": "INPUT",
+    "USB_DP": "BIDIRECTIONAL", "USB_DN": "BIDIRECTIONAL", "USB_ID": "INPUT",
+    "ADC_IN": "INPUT", "ANALOG_REF": "VREF",
+    "RESET": "RESET", "BOOT": "INPUT", "ENABLE": "INPUT",
+    "PWM": "OUTPUT", "CAPTURE": "INPUT", "COMPARE": "OUTPUT",
+    "GPIO": "BIDIRECTIONAL", "NC": "NC", "UNUSED": "UNUSED",
+}
+
+
+def knowledge_to_pin_role(knowledge_role: str) -> str:
+    """Map knowledge_extractor string roles to synthesis PinRole enum values.
+
+    Returns the PinRole .value string (e.g. "power_in", "tx", "sda").
+    Falls back to "passive" for unrecognized roles.
+    """
+    return _KNOWLEDGE_TO_PIN_ROLE_MAP.get(knowledge_role, "PASSIVE")
+
+
 def format_knowledge_for_prompt(knowledge: dict[str, Any]) -> str:
     """Format structured knowledge into a compact LLM-friendly string.
 

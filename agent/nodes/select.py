@@ -7,6 +7,8 @@ from agent.utils import (
     _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result,
     _extract_part_numbers, _is_passive, emit_thought, emit_tool_call, emit_tool_end, emit_step,
 )
+from agent.knowledge.part_locker import extract_and_lock_user_components
+from agent.synthesis.support_synthesizer import synthesize_support_components
 from uuid import uuid4
 
 _PREFIX_RULES: list[tuple[str, str]] = [
@@ -50,6 +52,7 @@ _SUBSYSTEM_EXPECTATION_HINTS: list[tuple[str, set[str]]] = [
     ("power", {"regulator_switching", "regulator_linear"}),
     ("sensor", {"sensor"}),
     ("temperature", {"sensor"}),
+    ("lm35", {"sensor"}),
     ("microcontroller", {"mcu"}),
     ("mcu", {"mcu"}),
     ("wireless", {"mcu", "driver"}),
@@ -109,14 +112,39 @@ def _normalize_part_family(id_str: str) -> str:
 def _candidate_buckets(candidate: dict) -> set[str]:
     text = _candidate_text(candidate)
     buckets: set[str] = set()
-    for bucket, patterns in _TYPE_BUCKET_PATTERNS:
+    for bucket, patterns in [
+        ("resistor", ("RESISTOR", "R_SMALL", ":R_", " OHM")),
+        ("capacitor", ("CAPACITOR", "C_SMALL", ":C_", "UF", "NF", "PF")),
+        ("inductor", ("INDUCTOR", "L_SMALL", ":L_")),
+        ("diode", ("DIODE", ":D_", "SCHOTTKY", "ZENER")),
+        ("led", ("DEVICE:LED", " LED ", "INDICATOR")),
+        ("display", ("DISPLAY", "OLED", "SSD1306", "SSH1106", "LCD", "SEGMENT")),
+        ("connector", ("CONNECTOR", "HEADER", "TERMINAL", "RECEPTACLE")),
+        ("mcu", ("MCU_", "MICROCONTROLLER", "PROCESSOR", "ESP32", "STM32", "RP2040", "RP2350", "ATMEGA", "ATTINY")),
+        ("sensor", ("SENSOR", "TMP", "BME", "DS18", "DHT", "LM35", "AHT", "SHT", "MPU")),
+        ("regulator_switching", ("REGULATOR_SWITCHING", "BUCK", "BOOST", "STEP-DOWN", "STEP DOWN", "STEP-UP", "STEP UP", "SWITCHING REGULATOR", "TPS")),
+        ("regulator_linear", ("REGULATOR_LINEAR", "LDO", "LINEAR REGULATOR", "AMS1117", "AP2112", "LM1117", "MCP1700")),
+        ("usb_uart", ("CP210", "CH340", "FT232", "FT230", "USB-UART", "USB TO UART", "UART BRIDGE", "USB INTERFACE", "USB SERIAL")),
+    ]:
         if any(pattern in text for pattern in patterns):
             buckets.add(bucket)
     return buckets
 
 
-def _expected_buckets(sub: dict, prompt: str) -> set[str]:
+def _expected_buckets(sub: dict, prompt: str = "") -> set[str]:
     subsystem = (sub.get("subsystem", "") or "").lower()
+    import re
+    if "user-specified" in subsystem:
+        match = re.search(r'user-specified\s*\(([^)]+)\)', subsystem, re.IGNORECASE)
+        if match:
+            part_name = match.group(1).strip().upper()
+            if "LM35" in part_name:
+                return {"sensor"}
+            elif "AMS1117" in part_name or "AP2112" in part_name:
+                return {"regulator_linear"}
+            elif "ESP32" in part_name or "STM32" in part_name:
+                return {"mcu"}
+
     function = (sub.get("function", "") or "").lower()
     examples = " ".join(str(x) for x in (sub.get("example_components", []) or []))
     text = f"{subsystem} {function} {examples} {prompt}".upper()
@@ -124,6 +152,8 @@ def _expected_buckets(sub: dict, prompt: str) -> set[str]:
     for keyword, buckets in _SUBSYSTEM_EXPECTATION_HINTS:
         if keyword.upper() in text:
             expected.update(buckets)
+    if "LM35" in text:
+        expected.add("sensor")
     if "BUCK" in text or "STEP-DOWN" in text or "STEP DOWN" in text:
         expected.discard("regulator_linear")
         expected.add("regulator_switching")
@@ -141,7 +171,7 @@ def _expected_buckets(sub: dict, prompt: str) -> set[str]:
     return expected
 
 
-def _filter_candidates_by_expected_type(sub: dict, candidates: list[dict], prompt: str) -> list[dict]:
+def _filter_candidates_by_expected_type(sub: dict, candidates: list[dict], prompt: str = "") -> list[dict]:
     expected = _expected_buckets(sub, prompt)
     if not expected:
         return candidates
@@ -226,20 +256,31 @@ def _assign_ref_des(components: list[dict], sheet_map: dict[str, int] | None = N
 
 
 def _dedupe_selected_components(selected: list[dict], subsystem_sheet_map: dict[str, int], config) -> list[dict]:
-    # Dedup by component ID first, then by subsystem label for primary picks.
-    seen_ids: dict[str, str] = {}
+    # Dedup by functional_id / unique description key first
+    seen_keys: dict[str, str] = {}
     deduped_ids: list[dict] = []
     for c in selected:
+        func_id = c.get("functional_id", "")
         id_str = c.get("id_str", "")
-        if not id_str:
+        desc = c.get("description", "")
+        key = func_id if func_id else f"{id_str}::{desc}"
+        
+        # If no key available, keep it
+        if not key or key == "::":
             deduped_ids.append(c)
             continue
-        if id_str in seen_ids:
+            
+        # Passive devices with unique descriptions are always preserved
+        if _is_passive(id_str, c.get("category", "")) and desc:
+            deduped_ids.append(c)
+            continue
+
+        if key in seen_keys:
             _emit(config, "agent:log", {
-                "message": f"  Dedup: dropped {c.get('ref_des', '?')} ({id_str}) -- duplicate of {seen_ids[id_str]}"
+                "message": f"  Dedup: dropped {c.get('ref_des', '?')} ({id_str}) -- duplicate of {seen_keys[key]}"
             })
             continue
-        seen_ids[id_str] = f"{c.get('ref_des', '?')} (subsystem: {c.get('subsystem', '?')})"
+        seen_keys[key] = f"{c.get('ref_des', '?')} (subsystem: {c.get('subsystem', '?')})"
         deduped_ids.append(c)
     if len(deduped_ids) < len(selected):
         selected = _assign_ref_des(deduped_ids, subsystem_sheet_map)
@@ -248,7 +289,21 @@ def _dedupe_selected_components(selected: list[dict], subsystem_sheet_map: dict[
     seen_subs: dict[str, str] = {}
     deduped_subs: list[dict] = []
     for c in selected:
-        if c.get("justification", "").startswith("Auto-added by validator"):
+        id_str = c.get("id_str", "")
+        category = c.get("category", "")
+        justification = c.get("justification", "")
+        func_id = c.get("functional_id", "")
+        
+        # Always keep passives, switches, connectors, and support components
+        if (
+            _is_passive(id_str, category)
+            or category in ("Switch", "Connector", "Device", "Power_Protection")
+            or func_id
+            or justification.startswith("Auto-added by validator")
+            or justification.startswith("Deterministically synthesized")
+            or justification.startswith("Supporting part")
+            or c.get("for_component")
+        ):
             deduped_subs.append(c)
             continue
         sub = c.get("subsystem", "")
@@ -284,6 +339,13 @@ def select_node(state, config):
     if not research:
         _emit(config, "agent:log", {"message": "No research results to select from."})
         return _stage_result(state, "select", {"selected_components": []})
+
+    prompt = state.get("prompt", "")
+    locked_user_parts = extract_and_lock_user_components(prompt)
+    if locked_user_parts:
+        _emit(config, "agent:log", {
+            "message": f"  Part Locker: Hard-locked {len(locked_user_parts)} user-specified component(s) into state"
+        })
 
     rejected_ids = set(state.get("rejected_ids", []))
     rejected_families = set(state.get("rejected_families", []))
@@ -331,6 +393,11 @@ def select_node(state, config):
     emit_thought(config, f"Scoring candidates across {len(research)} subsystem(s)...")
     for sub in research:
         sub_name = sub.get("subsystem", "")
+        if sub_name.lower() in ("passive components", "connectors") and not sub.get("example_components"):
+            _emit(config, "agent:log", {
+                "message": f"  Skipping IC candidate selection for generic support subsystem '{sub_name}' (handled by support rules)"
+            })
+            continue
         emit_step(config, sel_id, f"Scoring {sub_name}...", "running")
         candidates = _filter_candidates_by_expected_type(sub, sub.get("results", []), state.get("prompt", ""))
 
@@ -569,12 +636,19 @@ def select_node(state, config):
         parts = get_supporting_components(s)
         covered = covered_prefixes_by_subsystem.get(s.get("subsystem", ""), set())
         for p in parts:
+            p_desc = p.get("description", "").upper()
+            if "CC1" in p_desc or "CC2" in p_desc or "SENSOR" in p_desc or "LM35" in p_desc:
+                # Handled deterministically with unique functional IDs by SupportSynthesizer
+                continue
             if p["ref_des_prefix"] in covered:
                 _emit(config, "agent:log", {
                     "message": f"  Skipped {p['description']} for {s['ref_des']} — '{s.get('subsystem','')}' already has a validator-fixed {p['ref_des_prefix']}-part"
                 })
                 continue
             count = p.get("count", 1)
+            sp_key = (p.get("preferred_id_str", ""), p["description"], s["ref_des"])
+            if any((item.get("preferred_id_str", ""), item.get("description", ""), item.get("for_component", "")) == sp_key for item in support_parts):
+                continue
             for _ in range(count):
                 support_parts.append({
                     "search_query": p["search_query"],
@@ -692,13 +766,32 @@ def select_node(state, config):
                     })
             except Exception as e:
                 _emit(config, "agent:log", {"message": f"Support component search failed (skipped): {e}"})
+
+    if locked_user_parts:
+        for lp in locked_user_parts:
+            if not any(s.get("id_str") == lp["id_str"] for s in selected):
+                selected.append(lp)
+                _emit(config, "agent:log", {
+                    "message": f"  Hard Lock: Added user-requested part {lp['id_str']} ({lp['subsystem']})"
+                })
+
+    synths = synthesize_support_components(selected, prompt)
+    if synths:
+        for sc in synths:
+            if not any(s.get("functional_id") == sc.get("functional_id") for s in selected):
+                selected.append(sc)
+        _emit(config, "agent:log", {
+            "message": f"  Synthesizer: Deterministically added {len(synths)} discrete support passives/switches"
+        })
+
     if injected:
         selected.extend(injected)
-        selected = _assign_ref_des(selected, subsystem_sheet_map)
-        selected = _dedupe_selected_components(selected, subsystem_sheet_map, config)
-        _emit(config, "agent:log", {
-            "message": f"  Injected {len(injected)} supporting components"
-        })
+
+    selected = _assign_ref_des(selected, subsystem_sheet_map)
+    selected = _dedupe_selected_components(selected, subsystem_sheet_map, config)
+    _emit(config, "agent:log", {
+        "message": f"  Final selected components: {len(selected)} total"
+    })
 
     for s in selected:
         if s.get("justification"):

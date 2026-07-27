@@ -17,7 +17,7 @@ import re
 from agent.emit_utils import (
     _safe_print, _emit, emit_assistant_message, emit_tool_event,
     emit_thought_stream, emit_thought, emit_tool_call, emit_tool_end, emit_step,
-    _clean_json, _sanitize_data,
+    emit_pipeline_event, _clean_json, _sanitize_data,
 )
 from agent.llm_utils import (
     _rate_limit, _record_call, _is_connection_error,
@@ -43,6 +43,7 @@ POWER_ETYPES = {"power_in", "power_out"}
 
 _PART_TOKEN_RE = re.compile(r'\b[A-Za-z]{2,}[0-9][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*\b')
 _NON_PART_WORDS = {"USB2", "USB3", "RS232", "RS485", "CAT5", "CAT6", "WIFI6", "IEEE802"}
+_GPIO_PIN_RE = re.compile(r'^(?:GPIO|IO|ADC|DAC|PWM|D[+-])\d*$', re.IGNORECASE)
 
 
 class AgentLLMError(Exception):
@@ -72,11 +73,28 @@ def _extract_part_numbers(prompt: str) -> list:
         up = tok.upper()
         if len(up) < 5 or up in _NON_PART_WORDS or up in seen:
             continue
+        # Skip pin names (GPIO0, ADC1, IO2, D+, D-)
+        if _GPIO_PIN_RE.match(tok):
+            continue
         if re.fullmatch(r'[A-Z]{0,2}\d+(V\d*|UF|NF|PF|UH|MH|K|M|MA|A|W|OHM|KOHM|MHZ|KHZ|HZ|BIT|MM)', up):
             continue
         seen.add(up)
         out.append(tok)
-    return out
+    # Dedup: if a longer part string contains a shorter one (e.g. "ESP32-C3-WROOM-02" vs "ESP32"),
+    # keep only the longer one.  The shorter token is almost certainly not a real part.
+    filtered = [t for t in out if not any(
+        len(longer) > len(t) and t.upper() in longer.upper()
+        for longer in out
+    )]
+    return filtered
+
+
+def _get_ref_des(comp: dict) -> str:
+    return comp.get("ref_des", "?")
+
+
+def _get_id_str(comp: dict) -> str:
+    return comp.get("id_str", "")
 
 
 def _is_passive(id_str: str, category: str) -> bool:
@@ -329,7 +347,18 @@ def _generate_nets_fallback(pin_matrix: dict,
     for name, keys in by_name.items():
         canon = _canonical_signal_name(name)
         if canon:
-            signal_groups.setdefault(canon, []).extend(keys)
+            # Only group pins from DIFFERENT components to avoid merging
+            # same-component same-name pins (e.g. USB-C VBUS A4/A9/B4/B9)
+            seen_refs = set()
+            unique = []
+            for p in keys:
+                ref = p.split(":")[0]
+                if ref not in seen_refs:
+                    seen_refs.add(ref)
+                    unique.append(p)
+                elif _is_power_net(name):
+                    unique.append(p)
+            signal_groups.setdefault(canon, []).extend(unique)
         else:
             unmatched.append((name, keys))
     for canon, pins in signal_groups.items():

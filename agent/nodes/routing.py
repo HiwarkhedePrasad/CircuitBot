@@ -1,15 +1,43 @@
-"""Routing node — runs wire routing using existing placements.
+"""Routing node — generates ConnectionRecords from the classified netlist.
 
-Handles ERC repair attach requests by merging pending connections
-into the netlist before routing. Never re-runs placement.
+Replaced the explicit-wire autorouter with a net-label-first architecture:
+short wires for local connections, net labels / global labels for buses
+and power rails.
 """
 
+from __future__ import annotations
+
+from uuid import uuid4
+
+from agent.connection_graph import ConnectivityGraph
+from agent.connection_emitter import emit_connections
+from agent.connection_strategy import WIRE
 from agent.placement.blocks_v2 import _prepare_components, _get_comp_ref
-from agent.routing import route_traces, _snap
-from agent.routing.api import repair_placement_for_routing
+
+
+def _dedupe_issues(issues: list[dict]) -> list[dict]:
+    """Deduplicate validation issues by message to prevent unbounded growth in ERC loops."""
+    seen = set()
+    deduped = []
+    for issue in issues:
+        msg = issue.get("message", "")
+        if msg and msg not in seen:
+            seen.add(msg)
+            deduped.append(issue)
+        elif not msg:
+            deduped.append(issue)
+    return deduped
+from agent.routing.geometry import _absolute_pin_position, _pin_direction, _snap
+from agent.routing.constants import PIN_STUB_LEN
 from agent.validation import ValidationIssue
 from agent.utils import _emit, emit_assistant_message, emit_tool_event, emit_thought, emit_tool_call, emit_tool_end, emit_step
-from uuid import uuid4
+
+
+def _stub_end_for_power(pin: dict, component: dict) -> tuple[float, float]:
+    from agent.routing.geometry import _stub_point
+    pos = _absolute_pin_position(pin, component)
+    direction = _pin_direction(pin)
+    return _stub_point(pos[0], pos[1], direction, PIN_STUB_LEN)
 
 
 def _find_attachment_buddy(pin: str, net_name: str,
@@ -75,12 +103,12 @@ def routing_node(state, config):
         return {}
 
     route_id = uuid4().hex[:8]
-    emit_tool_call(config, route_id, "Wire Routing", "running")
-    emit_thought(config, "Routing wires on the schematic...")
-    msg = "Re-routing with ERC repair connections..." if erc_pending else "Routing wires..."
+    emit_tool_call(config, route_id, "Connection Generation", "running")
+    emit_thought(config, "Generating connections on the schematic...")
+    msg = "Re-connecting with ERC repair connections..." if erc_pending else "Generating connections..."
     emit_assistant_message(config, msg)
-    emit_tool_event(config, "Routing", "running",
-                    "Re-routing..." if erc_pending else "Routing wires...")
+    emit_tool_event(config, "Connection", "running",
+                    "Re-connecting..." if erc_pending else "Generating connections...")
 
     # ── 1. Build component list and restore placements ──────────────
     components = []
@@ -100,7 +128,7 @@ def routing_node(state, config):
     components = _prepare_components(components)
 
     if not components:
-        emit_tool_event(config, "Routing", "failed", "No components could be routed.")
+        emit_tool_event(config, "Connection", "failed", "No components to connect.")
         return {}
 
     for c in components:
@@ -110,9 +138,19 @@ def routing_node(state, config):
             c["y"] = match["y"]
             c["rotation"] = match.get("rotation", 0)
 
-    # ── 2. Merge ERC pending connections into netlist ───────────────
-    emit_step(config, route_id, "Merging ERC connections..." if erc_pending else "Building netlist...", "running")
+    # ── 2. Build placements dict for span estimation ────────────────
+    placements_dict: dict[str, dict] = {}
+    for p in placements:
+        placements_dict[p["ref_des"]] = p
+    for c in components:
+        ref = c["ref_des"]
+        if ref not in placements_dict:
+            placements_dict[ref] = {"x": c.get("x", 0), "y": c.get("y", 0)}
+
+    # ── 3. Merge ERC pending connections into netlist/nets ──────────
+    emit_step(config, route_id, "Merging ERC connections..." if erc_pending else "Analyzing netlist...", "running")
     working_netlist = list(netlist)
+    working_nets = [dict(n) for n in nets]
     if erc_pending:
         for req in erc_pending:
             pin_key = req["pin"]
@@ -131,173 +169,61 @@ def routing_node(state, config):
                     "target": pin_key,
                     "net": net_name,
                 })
+                # Also add to working_nets if the net exists
+                for wn in working_nets:
+                    if wn["net"] == net_name:
+                        if pin_key not in wn.get("pins", []):
+                            wn.setdefault("pins", []).append(pin_key)
+                            wn.setdefault("pins", []).append(buddy)
+                        break
 
-    # ── 3. Pin-coverage validation (PCV) ───────────────────────────
-    all_pins = set(pin_matrix.keys())
-    net_pins = set()
-    for n in nets:
-        for p in n.get("pins", []):
-            net_pins.add(p)
-    wired_pins = set()
-    for t in state.get("wire_paths", []):
-        src = t.get("source", "")
-        tgt = t.get("target", "")
-        if src: wired_pins.add(src)
-        if tgt: wired_pins.add(tgt)
-    power_pin_keys = set(pp["pin"] for pp in power_pins)
-    assigned_pins = net_pins | wired_pins | power_pin_keys
+    # ── 4. Build connectivity graph and emit connection records ────
+    emit_step(config, route_id, "Building connectivity graph...", "running")
+    graph = ConnectivityGraph(working_nets, pin_matrix, components, placements_dict)
+    connection_records = emit_connections(graph)
 
-    # Filter pins that are intentionally unconnected (NC, empty name, etc.)
-    _INTENTIONALLY_UNCONNECTED = frozenset({"NC", "NO_CONNECT", "NO_CONNECTION", "N/C", "NOCONNECT", ""})
-    uncovered_raw = sorted(all_pins - assigned_pins)
-    uncovered = [
-        p for p in uncovered_raw
-        if pin_matrix.get(p, {}).get("name", "").strip().upper() not in _INTENTIONALLY_UNCONNECTED
-    ]
-
-    pcv_issues = []
-    if uncovered:
-        pcv_issues.append(ValidationIssue(
-            code="PCV001",
-            severity="info",
-            stage="routing",
-            message=f"{len(uncovered)} pin(s) not assigned to any net or wire: {', '.join(uncovered[:8])}"
-                     f"{'...' if len(uncovered) > 8 else ''}",
-        ))
-    covered_no_wire = sorted(net_pins - wired_pins - power_pin_keys)
-    if covered_no_wire:
-        pcv_issues.append(ValidationIssue(
-            code="PCV002",
-            severity="info",
-            stage="routing",
-            message=f"{len(covered_no_wire)} pin(s) in netlist but missing physical wire: "
-                     f"{', '.join(covered_no_wire[:8])}{'...' if len(covered_no_wire) > 8 else ''}",
-        ))
-
-    for iss in pcv_issues:
-        _emit(config, "agent:log", {"message": f"  {iss.code}: {iss.message}"})
-
-    # ── 4. Targeted ERC re-route ────────────────────────────────────
-    erc_affected = state.get("_erc_affected_nets", [])
-    preserve_existing = bool(erc_affected)
-    existing_traces = state.get("wire_paths", [])
-
-    if preserve_existing and erc_affected:
-        affected_set = set(erc_affected)
-        preserved = [t for t in existing_traces if t.get("net", "") not in affected_set]
-        targeted_netlist = [c for c in working_netlist if c.get("net", "") in affected_set]
-        _emit(config, "agent:log", {
-            "message": f"  Targeted re-route: {len(targeted_netlist)} connections in {len(affected_set)} affected net(s), "
-                       f"{len(preserved)} existing traces preserved"
-        })
-    else:
-        preserved = []
-        targeted_netlist = working_netlist
-
-    # ── 5. Route traces ─────────────────────────────────────────────
-    emit_step(config, route_id, "Routing wires...", "running")
-    route_netlist = targeted_netlist if preserve_existing else working_netlist
-    raw_traces, dropped_pairs = route_traces(components, route_netlist, pin_matrix,
-                                             erc_retries=erc_retries)
-
-    if dropped_pairs:
-        for src_ref, tgt_ref in dropped_pairs:
-            _emit(config, "agent:log", {
-                "message": f"  \u26a0 Dropped wire: {src_ref} \u2194 {tgt_ref} (routing failed)"
-            })
-
-    # ── 5b. Placement repair + re-route for dropped pairs ───────────
-    n_retried = 0
-    retry_traces = []
-    n_retry_dropped = 0
-    if dropped_pairs and not preserve_existing:
-        n_moved = repair_placement_for_routing(components, dropped_pairs)
-        if n_moved > 0:
-            _emit(config, "agent:log", {
-                "message": f"  Placement repair: nudged {n_moved} component(s) closer to fix dropped wires"
-            })
-            dropped_netlist = [
-                c for c in working_netlist
-                if (c["source"].split(":")[0], c["target"].split(":")[0]) in
-                   [(a, b) for a, b in dropped_pairs] or
-                   (c["target"].split(":")[0], c["source"].split(":")[0]) in
-                   [(a, b) for a, b in dropped_pairs]
-            ]
-            retry_traces, n_retry_dropped = route_traces(components, dropped_netlist, pin_matrix,
-                                                         erc_retries=erc_retries)
-            placements = [{"ref_des": c["ref_des"], "x": c["x"], "y": c["y"],
-                           "rotation": c.get("rotation", 0.0)} for c in components]
-
-    MAX_WIRE_LEN = 300.0 * (1 + erc_retries * 0.5)
-    clean_traces = list(preserved) if preserve_existing else []
-    n_dropped = 0
-    n_len_dropped = 0
-    for tr in raw_traces:
-        path = tr.get("path", [])
-        if len(path) < 2:
-            n_dropped += 1
-            continue
-        ok = True
-        total_len = 0.0
-        for i in range(len(path) - 1):
-            dx = abs(path[i]["x"] - path[i + 1]["x"])
-            dy = abs(path[i]["y"] - path[i + 1]["y"])
-            if dx > 1e-3 and dy > 1e-3:
-                ok = False
-                break
-            total_len += dx + dy
-            if total_len > MAX_WIRE_LEN:
-                ok = False
-                break
-        if not ok:
-            n_dropped += 1
-            if total_len > 150.0:
-                n_len_dropped += 1
-            continue
-        clean_traces.append(tr)
-
-    for tr in retry_traces:
-        path = tr.get("path", [])
-        if len(path) < 2:
-            continue
-        ok = True
-        total_len = 0.0
-        for i in range(len(path) - 1):
-            dx = abs(path[i]["x"] - path[i + 1]["x"])
-            dy = abs(path[i]["y"] - path[i + 1]["y"])
-            if dx > 1e-3 and dy > 1e-3:
-                ok = False
-                break
-            total_len += dx + dy
-            if total_len > MAX_WIRE_LEN:
-                ok = False
-                break
-        if ok:
-            clean_traces.append(tr)
-            n_retried += 1
-
-    recovered = n_retried
-
-    total_wire = sum(
-        sum(abs(p[i+1]["x"] - p[i]["x"]) + abs(p[i+1]["y"] - p[i]["y"])
-            for i in range(len(p) - 1))
-        for p in [tr["path"] for tr in clean_traces if tr.get("path")]
-    ) if clean_traces else 0.0
-
-    _emit(config, "agent:log", {
-        "message": (
-            f"  Routing: {len(clean_traces)} wires, "
-            f"{n_dropped} dropped ({n_len_dropped} length, "
-            f"{n_dropped - n_len_dropped} other)"
-            f" (+{len(dropped_pairs)} pairs, "
-            f"{n_retry_dropped} re-route drops), "
-            f"{recovered}/{len(dropped_pairs)} recovered via placement repair, "
-            f"{total_wire:.1f}mm total"
-        )
-    })
-
-    # ── 6. Generate power labels ────────────────────────────────────
+    # ── 5. Convert connection records to backward-compat formats ───
+    wire_paths = []
+    net_labels = []
     power_labels = []
+
+    for cr in connection_records:
+        net_name = cr["net"]
+        geo = cr["geometry"]
+
+        if cr["type"] == WIRE and geo.get("wire_path"):
+            path_pts = [{"x": p[0], "y": p[1]} for p in geo["wire_path"]]
+            wire_paths.append({
+                "source": cr["source_pin"],
+                "target": cr["target_pin"],
+                "net": net_name,
+                "path": path_pts,
+            })
+        else:
+            # GLOBAL connection records are for power nets and are handled
+            # entirely by the power_labels section below (5b) which produces
+            # both stub wires and global labels.  Skipping them here avoids
+            # duplicate labels (section c) and prevents EV001 when the stub
+            # wire from _emit_global is zero-length after snapping.
+            if cr["type"] == "global":
+                continue
+            for sx, sy, ex, ey in geo.get("stub_wires", []):
+                wire_paths.append({
+                    "source": cr["source_pin"],
+                    "target": "",
+                    "net": net_name,
+                    "path": [{"x": sx, "y": sy}, {"x": ex, "y": ey}],
+                })
+
+            for lpos in geo.get("label_positions", []):
+                net_labels.append({
+                    "type": cr["type"],
+                    "net": net_name,
+                    "pin": cr["source_pin"],
+                    "at": {"x": lpos[0], "y": lpos[1]},
+                })
+
+    # ── 5b. Power labels (global label shorthand for non-GLOBAL nets) ─
     for pp in power_pins:
         pin_obj = pin_matrix.get(pp["pin"])
         if not pin_obj:
@@ -306,8 +232,7 @@ def routing_node(state, config):
         comp = _get_comp_ref(ref, components)
         if not comp:
             continue
-        ax = pin_obj["x"] + comp["x"]
-        ay = pin_obj["y"] + comp["y"]
+        ax, ay = _absolute_pin_position(pin_obj, comp)
         ccx = comp["x"] + comp["bbox"]["x"] + comp["bbox"]["w"] / 2
         ccy = comp["y"] + comp["bbox"]["y"] + comp["bbox"]["h"] / 2
         dx = ax - ccx
@@ -324,37 +249,87 @@ def routing_node(state, config):
             "dir": direction,
         })
 
+    # ── 6. Pin-coverage validation (PCV) ────────────────────────────
+    all_pins = set(pin_matrix.keys())
+    net_pins = set()
+    for n in working_nets:
+        for p in n.get("pins", []):
+            net_pins.add(p)
+    connected_pins = set()
+    for cr in connection_records:
+        if cr["source_pin"]:
+            connected_pins.add(cr["source_pin"])
+        if cr["target_pin"]:
+            connected_pins.add(cr["target_pin"])
+    for pp in power_pins:
+        connected_pins.add(pp["pin"])
+
+    _INTENTIONALLY_UNCONNECTED = frozenset({"NC", "NO_CONNECT", "NO_CONNECTION", "N/C", "NOCONNECT", ""})
+    uncovered_raw = sorted(all_pins - connected_pins)
+    uncovered = [
+        p for p in uncovered_raw
+        if pin_matrix.get(p, {}).get("name", "").strip().upper() not in _INTENTIONALLY_UNCONNECTED
+    ]
+
+    pcv_issues = []
+    if uncovered:
+        pcv_issues.append(ValidationIssue(
+            code="PCV001",
+            severity="info",
+            stage="routing",
+            message=f"{len(uncovered)} pin(s) not covered by any connection record: {', '.join(uncovered[:8])}"
+                     f"{'...' if len(uncovered) > 8 else ''}",
+        ))
+    unattached_labels = [
+        nl for nl in net_labels
+        if nl["type"] in ("label", "global") and nl["pin"] not in connected_pins
+    ]
+    if unattached_labels:
+        pcv_issues.append(ValidationIssue(
+            code="PCV002",
+            severity="info",
+            stage="routing",
+            message=f"{len(unattached_labels)} label(s) unattached to a pin",
+        ))
+
+    for iss in pcv_issues:
+        _emit(config, "agent:log", {"message": f"  {iss.code}: {iss.message}"})
+
     # ── 7. Emit layout_ready ────────────────────────────────────────
     _emit(config, "agent:layout_ready", {
         "placements": placements,
-        "traces": clean_traces,
+        "traces": wire_paths,
         "power_labels": power_labels,
         "netlist": working_netlist,
         "power_pins": power_pins,
+        "net_labels": net_labels,
     })
 
-    suffix = " (ERC repair re-route)" if erc_pending else ""
-    emit_tool_event(config, "Routing", "completed",
-                    f"{len(clean_traces)} wires routed{suffix}")
-    emit_tool_end(config, route_id, f"Routed {len(clean_traces)} wires{suffix}",
-                   status="completed" if n_dropped == 0 else "failed")
+    suffix = " (ERC repair reconnect)" if erc_pending else ""
+    n_wires = sum(1 for cr in connection_records if cr["type"] == WIRE)
+    n_labels = sum(1 for cr in connection_records if cr["type"] in ("label", "global"))
+    emit_tool_event(config, "Connection", "completed",
+                    f"{n_wires} wires, {n_labels} labels{suffix}")
+    emit_tool_end(config, route_id,
+                  f"Generated {n_wires} wire(s) and {n_labels} label(s){suffix}",
+                  status="completed" if not uncovered else "warning")
     emit_assistant_message(
         config,
-        f"Routing complete — {len(clean_traces)} wires drawn{suffix}."
+        f"Connectivity complete — {n_wires} wire(s), {n_labels} net label(s){suffix}."
     )
 
     result = {
         "component_placements": placements,
-        "wire_paths": clean_traces,
+        "connection_records": connection_records,
+        "wire_paths": wire_paths,
+        "net_labels": net_labels,
         "power_labels": power_labels,
         "netlist": working_netlist,
-        "_dropped_pairs": dropped_pairs,
-        "_validation_issues": state.get("_validation_issues", []) + [i.to_dict() for i in pcv_issues],
+        "_validation_issues": _dedupe_issues(state.get("_validation_issues", []) + [i.to_dict() for i in pcv_issues]),
     }
     if state.get("_erc_results"):
         result["_erc_retries"] = erc_retries + 1
         result["_erc_pending_connections"] = []
-        # Save error count for no-progress detection in _route_after_erc
         erc_errors = state["_erc_results"].get("errors", [])
         result["_prev_erc_error_count"] = len(erc_errors)
 

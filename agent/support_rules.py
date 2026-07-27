@@ -111,12 +111,21 @@ RULES: list[Rule] = [
              "description": "0.1µF decoupling cap for USB-UART bridge", "count": 2},
         ],
     ),
+    # ── ESP32 WROOM / Bare Module: EN & BOOT pull-up resistors + decoupling caps ──
+    (
+        lambda c: "ESP32" in _id(c) or "RF_MODULE" in _id(c),
+        [
+            {"search_query": "10k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "10kΩ EN pin pull-up resistor", "count": 1},
+            {"search_query": "10k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "10kΩ BOOT pin pull-up resistor", "count": 1},
+            {"search_query": "small capacitor", "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "0.1µF decoupling cap for ESP32 module", "count": 1},
+            {"search_query": "small capacitor", "preferred_id_str": "Device:C_Small", "library_filter": "Device", "ref_des_prefix": "C", "description": "10µF bulk decoupling cap for ESP32 module", "count": 1},
+        ],
+    ),
     # ── Microcontrollers / MCU modules: decoupling caps ──
     (
         lambda c: (
             (_has_lib(c, "MCU_", "Module_") or "MCU" in _id(c) or "ESP32" in _id(c) or "RP2040" in _id(c) or "STM32" in _id(c))
-            and not any(dev in _id(c) for dev in ["WEMOS", "NODEMCU", "DEVKIT", "MINI", "WROOM"])
-            and not _has_lib(c, "RF_Module")
+            and not any(dev in _id(c) for dev in ["WEMOS", "NODEMCU", "DEVKIT", "MINI"])
             # Exclude AVR — already handled by the specific rule above
             and not any(kw in _id(c) for kw in ["ATMEGA", "ATTINY", "AT90", "ATXMEGA"])
             and not _has_lib(c, "MCU_Microchip_AVR")
@@ -172,7 +181,8 @@ RULES: list[Rule] = [
     (
         lambda c: _has_lib(c, "Connector") and "USB" in _id(c) and ("TYPE-C" in _id(c) or "USB_C" in _id(c)),
         [
-            {"search_query": "5.1k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "5.1kΩ USB-C CC pull-down", "count": 2},
+            {"search_query": "5.1k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "5.1kΩ USB-C CC1 pull-down", "count": 1},
+            {"search_query": "5.1k ohm resistor", "preferred_id_str": "Device:R_Small", "library_filter": "Device", "ref_des_prefix": "R", "description": "5.1kΩ USB-C CC2 pull-down", "count": 1},
             {"search_query": "USB ESD protection", "preferred_id_str": "Connector_USB:TPD6S300A", "library_filter": "Connector_USB", "ref_des_prefix": "U", "description": "TPD6S300A USB-C ESD protection", "count": 1},
         ],
     ),
@@ -269,10 +279,10 @@ def _make_polyfuse(ref_des: str, value: str, for_ref: str) -> dict:
 # ICs don't end up in the wrong library (e.g. Connector_USB:TPD6S300A).
 
 KNOWN_FALLBACK_SYMBOLS: dict[str, str] = {
-    "TPD6S300A":    "Device:TPD6S300A",
-    "USBLC6-2SC6":  "Device:USBLC6-2SC6",
-    "IP4234CZ10":   "Device:IP4234CZ10",
-    "SRV05-4":      "Device:SRV05-4",
+    "TPD6S300A":    "Power_Protection:TPD6S300A",
+    "USBLC6-2SC6":  "Power_Protection:USBLC6-2SC6",
+    "IP4234CZ10":   "Power_Protection:IP4234CZ10",
+    "SRV05-4":      "Power_Protection:SRV05-4",
     "Crystal":      "Device:Crystal",
     "Crystal_GND24":"Device:Crystal_GND24",
 }

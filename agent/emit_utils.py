@@ -7,12 +7,22 @@ from uuid import uuid4
 def _safe_print(text: str) -> None:
     try:
         print(text)
-    except UnicodeEncodeError:
-        ascii_text = text.encode("ascii", errors="replace").decode("ascii")
-        print(ascii_text)
+    except (UnicodeEncodeError, OSError, ValueError, AttributeError):
+        try:
+            ascii_text = str(text).encode("ascii", errors="replace").decode("ascii")
+            print(ascii_text)
+        except Exception:
+            pass
 
 
 def _emit(config, event, data):
+    configurable = (config or {}).get("configurable", {})
+    pipeline_context = configurable.get("pipeline_context") or {}
+    if event in ("agent:log", "agent:thought_stream") and pipeline_context:
+        data = dict(data)
+        data.setdefault("run_id", pipeline_context.get("run_id"))
+        data.setdefault("stage_key", pipeline_context.get("stage_key"))
+        data.setdefault("attempt", pipeline_context.get("attempt"))
     msg = data.get("message", "")
     if event == "agent:thinking":
         _safe_print(f"[THINKING] {msg} [THINKING]")
@@ -27,9 +37,15 @@ def _emit(config, event, data):
         _safe_print(f"[{label}] {msg}" if msg else f"[{label}] {data}")
     elif msg:
         _safe_print(f"[{event}] {msg}")
-    emit_fn = config["configurable"].get("emit")
+    emit_fn = configurable.get("emit")
     if emit_fn:
         emit_fn(event, data)
+
+
+def emit_pipeline_event(emit_fn, event):
+    """Emit an already validated pipeline event through the configured transport."""
+    if emit_fn:
+        emit_fn("agent:pipeline", event)
 
 
 def emit_thought_stream(config, event_type, id, content, status="completed", details=None, parent_id=None):
@@ -70,9 +86,10 @@ def emit_assistant_message(config, text: str) -> None:
 
 
 def emit_tool_event(config, title: str, status: str = "running",
-                    summary: str = "", details: dict | None = None) -> None:
+                    summary: str = "", details: dict | None = None,
+                    tool_id: str | None = None) -> None:
     payload: dict = {
-        "id": uuid.uuid4().hex[:8],
+        "id": tool_id or uuid.uuid4().hex[:8],
         "type": "tool_card",
         "ts": time.time(),
         "title": title,

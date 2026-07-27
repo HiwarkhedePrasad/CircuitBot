@@ -28,10 +28,10 @@ from agent.placement.community import detect_blocks, _BLOCK_ROLE
 GRID_SIZE = 1.27
 BBOX_PAD = 1.5
 BBOX_CLEARANCE = 0.635
-TIER_GAP = 20.32
-COMP_V_GAP = 7.62
-SAT_H_GAP = 12.70
-SAT_V_GAP = 3.81
+TIER_GAP = 10.16
+COMP_V_GAP = 5.08
+SAT_H_GAP = 6.35
+SAT_V_GAP = 2.54
 OVERLAP_PULLBACK = 0.30
 MAX_COMPS_PER_COLUMN = 4
 SMALL_CIRCUIT_MAX_COMPONENTS = 20
@@ -174,13 +174,26 @@ def calculate_ops_bbox(ops: list) -> dict:
                 cx, cy, rv = float(c[1]), float(c[2]), float(r[1])
                 upd(cx - rv, cy - rv)
                 upd(cx + rv, cy + rv)
+        elif t == "arc":
+            has_graphics = True
+            for name in ("start", "mid", "end"):
+                point = _get_attr(op, name)
+                if point:
+                    upd(float(point[1]), float(point[2]))
 
-    if not has_graphics:
-        for op in ops:
-            if op[0] == "pin":
-                a = _get_attr(op, "at")
-                if a:
-                    upd(float(a[1]), float(a[2]))
+    for op in ops:
+        if op[0] == "pin":
+            a = _get_attr(op, "at")
+            length = _get_attr(op, "length")
+            if a:
+                x, y = float(a[1]), float(a[2])
+                upd(x, y)
+                if length:
+                    import math
+                    angle = math.radians(float(a[3]) if len(a) > 3 else 0.0)
+                    pin_len = float(length[1])
+                    upd(x + math.cos(angle) * pin_len,
+                        y + math.sin(angle) * pin_len)
 
     if mn_x == float("inf"):
         return {"x": -5.0, "y": -5.0, "w": 10.0, "h": 10.0}
@@ -281,8 +294,8 @@ def _block_grid_layout(blocks: dict[str, list[str]]) -> dict[str, dict]:
             }
         }
 
-    cell_w = 200.0
-    cell_h = 150.0
+    cell_w = 80.0
+    cell_h = 60.0
     grid_map: dict[str, tuple[int, int]] = {}
     peripheral_count = 0
     for block_name in blocks:
@@ -333,7 +346,7 @@ def _place_block(
         sub = graph.subgraph(mains).copy()
         if sub.number_of_nodes() >= 2:
             pos = nx.spring_layout(sub, weight="weight", iterations=50,
-                                   k=1.5, seed=42)
+                                   k=0.8, seed=42)
             px_vals = [p[0] for p in pos.values()]
             py_vals = [p[1] for p in pos.values()]
             rng_x = max(max(px_vals) - min(px_vals), 1.0)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agent.routing.constants import MAX_WIRE_MANHATTAN, MAX_COLLISIONS, GRID_SIZE
-from agent.routing.geometry import _stub_point, _snap
+from agent.routing.geometry import _stub_point, _snap, _orthogonal_segments_intersect
 from agent.routing.candidates import _candidate_straight, _candidate_L, _candidate_Z, _candidate_U
 from agent.routing.astar import _astar_orthogonal
 from agent.routing.path_utils import _clean_path, _path_length, _bend_count
@@ -9,10 +9,19 @@ from agent.routing.collision import _path_collisions
 
 
 def make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
-              blocked_vertices: set[tuple[float, float]] | None = None):
+              blocked_vertices: set[tuple[float, float]] | None = None,
+              forbidden_segments: list | None = None):
     s_stub = _stub_point(*s_pos, s_dir)
     t_stub = _stub_point(*t_pos, t_dir)
     blocked = blocked_vertices or set()
+    forbidden = forbidden_segments or []
+
+    def _hits_forbidden(path):
+        return any(
+            _orthogonal_segments_intersect((a, b), occupied)
+            for a, b in zip(path, path[1:])
+            for occupied in forbidden
+        )
 
     candidates = []
     candidates += _candidate_straight(s_pos, s_stub, t_pos, t_stub)
@@ -40,6 +49,8 @@ def make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
                 break
         if vertex_overlap:
             continue
+        if _hits_forbidden(path):
+            continue
         score = collisions * 10000 + length + bends * 2
         if score < best_score:
             best_score = score
@@ -64,6 +75,8 @@ def make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
                     vertex_overlap = True
                     break
             if vertex_overlap:
+                continue
+            if _hits_forbidden(path):
                 continue
             score = collisions * 10000 + length + bends * 2
             if score < best_score:
@@ -97,6 +110,8 @@ def make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
             new_path = _clean_path(path)
             if len(new_path) < 2:
                 continue
+            if _hits_forbidden(new_path):
+                continue
             length = _path_length(new_path)
             if length > MAX_WIRE_MANHATTAN * 1.5:
                 continue
@@ -118,28 +133,12 @@ def make_path(s_pos, s_dir, t_pos, t_dir, components, src_ref, tgt_ref,
             path = [s_pos] + astar_path + [t_pos]
             path = _clean_path(path)
             if len(path) >= 2:
+                if _hits_forbidden(path):
+                    return None
                 length = _path_length(path)
                 if length <= MAX_WIRE_MANHATTAN * 1.5:
                     collisions = _path_collisions(path, components, src_ref, tgt_ref)
                     if collisions <= MAX_COLLISIONS:
                         best_path = path
-
-    if best_path is None:
-        relaxed_collisions = max(MAX_COLLISIONS + 1, 1)
-        for raw in candidates:
-            path = _clean_path(raw)
-            if len(path) < 2:
-                continue
-            length = _path_length(path)
-            if length > MAX_WIRE_MANHATTAN * 1.5:
-                continue
-            collisions = _path_collisions(path, components, src_ref, tgt_ref)
-            if collisions > relaxed_collisions:
-                continue
-            bends = _bend_count(path)
-            score = collisions * 10000 + length + bends * 2
-            if score < best_score:
-                best_score = score
-                best_path = path
 
     return best_path

@@ -17,21 +17,26 @@ def test_chat_proposal_commit_updates_session_and_board_state():
     from server import CHAT_SESSIONS, session_manager, app, design_lock, socketio
 
     session_id = "test-chat-session"
-    with design_lock:
-        saved_board = _td().get("board_model")
-        _td()["board_model"] = {
-            "components": [],
-            "traces": [],
-            "vias": [],
-            "nets": [],
-            "outline_segments": [],
-            "_render_from_model": True,
-        }
+    ds = session_manager.get_or_create(session_id)
+    with ds.lock:
+        ds.set_design({
+            "selected_components": [],
+            "component_placements": [],
+            "wire_paths": [],
+            "board_model": {
+                "components": [],
+                "traces": [],
+                "vias": [],
+                "nets": [],
+                "outline_segments": [],
+                "_render_from_model": True,
+            }
+        })
     CHAT_SESSIONS.pop(session_id, None)
 
     client = socketio.test_client(app)
     try:
-        client.emit("chat:message", {"session_id": session_id, "text": "add a resistor here"})
+        client.emit("chat:message", {"session_id": session_id, "text": "/add resistor"})
         received = client.get_received()
         proposal_events = [event for event in received if event["name"] == "chat:proposal"]
         assert proposal_events, received
@@ -70,8 +75,6 @@ def test_chat_proposal_commit_updates_session_and_board_state():
     finally:
         client.disconnect()
         CHAT_SESSIONS.pop(session_id, None)
-        with design_lock:
-            _td()["board_model"] = saved_board
 
 
 def test_chat_resume_returns_history_pending_proposals_and_board_state():
@@ -92,7 +95,7 @@ def test_chat_resume_returns_history_pending_proposals_and_board_state():
 
     client = socketio.test_client(app)
     try:
-        client.emit("chat:message", {"session_id": session_id, "text": "please add resistor"})
+        client.emit("chat:message", {"session_id": session_id, "text": "/add resistor"})
         received = client.get_received()
         proposal = next(event["args"][0] for event in received if event["name"] == "chat:proposal")
 
@@ -101,7 +104,7 @@ def test_chat_resume_returns_history_pending_proposals_and_board_state():
         state = next(event["args"][0] for event in received if event["name"] == "chat:state")
 
         assert state["history"][0]["role"] == "user"
-        assert state["history"][0]["content"] == "please add resistor"
+        assert state["history"][0]["content"] == "/add resistor"
         assert state["proposals"][0]["id"] == proposal["id"]
         assert state["board_model"]["components"] == []
     finally:
@@ -128,7 +131,7 @@ def test_short_component_prompt_returns_component_proposal_not_full_agent():
 
     client = socketio.test_client(app)
     try:
-        client.emit("chat:message", {"session_id": session_id, "text": "add esp32 devkit"})
+        client.emit("chat:message", {"session_id": session_id, "text": "/add esp32 devkit"})
         received = client.get_received()
         names = [event["name"] for event in received]
         assert "chat:proposal" in names, received
@@ -228,7 +231,7 @@ def test_chat_proposal_pads_preserve_physical_coordinates():
 
     client = socketio.test_client(app)
     try:
-        client.emit("chat:message", {"session_id": session_id, "text": "add esp32 devkit"})
+        client.emit("chat:message", {"session_id": session_id, "text": "/add esp32 devkit"})
         received = client.get_received()
         proposal = next(event["args"][0] for event in received if event["name"] == "chat:proposal")
         

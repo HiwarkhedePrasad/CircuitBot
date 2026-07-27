@@ -105,6 +105,10 @@ class BoardComponent:
     pads: list[PadDef] = field(default_factory=list)
     graphics: list[dict] = field(default_factory=list)
     bbox: Optional[tuple[float, float, float, float]] = None
+    model_3d_path: Optional[str] = None
+    model_3d_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    model_3d_scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    model_3d_rotate: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def pad_polygons(self) -> list[Polygon]:
         return [p.to_polygon() for p in self.pads if p.to_polygon() is not None]
@@ -275,6 +279,10 @@ class BoardModel:
                 "value": c.value,
                 "pads": [p.to_dict() for p in c.pads],
                 "graphics": c.graphics,
+                "model_3d_path": c.model_3d_path,
+                "model_3d_offset": list(c.model_3d_offset),
+                "model_3d_scale": list(c.model_3d_scale),
+                "model_3d_rotate": list(c.model_3d_rotate),
             }
 
         return {
@@ -346,6 +354,10 @@ class BoardModel:
                 layer=cd.get("layer", "F.Cu"), value=cd.get("value", ""),
                 pads=pads,
                 graphics=cd.get("graphics", []),
+                model_3d_path=cd.get("model_3d_path"),
+                model_3d_offset=tuple(cd.get("model_3d_offset", [0, 0, 0])),
+                model_3d_scale=tuple(cd.get("model_3d_scale", [1, 1, 1])),
+                model_3d_rotate=tuple(cd.get("model_3d_rotate", [0, 0, 0])),
             ))
         for td in data.get("traces", []):
             path = [(p["x"], p["y"]) for p in td.get("path", [])]

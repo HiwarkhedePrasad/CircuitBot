@@ -4,12 +4,16 @@
   "private": true,
   "description": "AI-assisted KiCad schematic and PCB generation with browser-based PCB editing",
   "scripts": {
-    "start": "python server.py",
+    "start": "node scripts/build.js && python server.py",
+    "build": "node scripts/build.js",
     "install-viewer": "node -e \"require('fs').cpSync(require('path').join(require.resolve('@tscircuit/runframe/package.json'), '..', 'dist', 'standalone-preview.min.js'), 'static/tscircuit-viewer.min.js')\""
   },
   "dependencies": {
     "@tscircuit/runframe": "^0.0.2141",
     "@xiaomi-mimo/cli": "^0.3.0-alpha.0",
     "opencode-llm-proxy": "^1.9.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }

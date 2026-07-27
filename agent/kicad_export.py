@@ -61,7 +61,7 @@ def _new_uuid() -> str:
 
 
 def _q(s: str) -> str:
-    return '"' + str(s).replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return '"' + str(s if s is not None else "").replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '') + '"'
 
 
 def _fmt(v: float) -> str:
@@ -249,12 +249,12 @@ def generate_kicad_sch(design: dict) -> str:
     - wire_paths: [{source, target, path: [{x, y}]}]
     - title (optional): project name for the title block (default: "CircuitBot Generated Design")
     """
-    comps = design.get('selected_components', [])
-    comp_ops = design.get('component_ops', {})
-    placements = {p['ref_des']: p for p in design.get('component_placements', [])}
-    wires = design.get('wire_paths', [])
-    power_labels = design.get('power_labels', [])
-    netlist = design.get('netlist', [])
+    comps = design.get('selected_components') or []
+    comp_ops = design.get('component_ops') or {}
+    placements = {p['ref_des']: p for p in (design.get('component_placements') or [])}
+    wires = design.get('wire_paths') or []
+    power_labels = design.get('power_labels') or []
+    netlist = design.get('netlist') or []
 
     # Build footprint lookup: ref_des -> footprint string
     fp_lookup = {c['ref_des']: c.get('footprint', '') for c in comps}
@@ -270,13 +270,13 @@ def generate_kicad_sch(design: dict) -> str:
             xs.append(p['x'])
             ys.append(-p['y'])
     for w in wires:
-        for pt in w.get('path', []):
+        for pt in (w.get('path') or []):
             xs.append(pt['x'])
             ys.append(-pt['y'])
     for lbl in power_labels:
         xs.append(lbl['x'])
         ys.append(-lbl['y'])
-    for nl in design.get('net_labels', []):
+    for nl in (design.get('net_labels') or []):
         at = nl.get('at', {})
         xs.append(at.get('x', 0))
         ys.append(-at.get('y', 0))
@@ -413,7 +413,7 @@ def generate_kicad_sch(design: dict) -> str:
 
     # (a) signal-net wires
     for w in wires:
-        pts = _orthogonalize(_simplify_path(w.get('path', [])))
+        pts = _orthogonalize(_simplify_path(w.get('path') or []))
         if len(pts) < 2:
             continue
         # Compute total wire length in canvas coords; drop if absurd
@@ -465,12 +465,8 @@ def generate_kicad_sch(design: dict) -> str:
             net = str(w.get('net', ''))
             segment = ((x1, y1), (x2, y2)) if (x1, y1) <= (x2, y2) else ((x2, y2), (x1, y1))
             key = segment
-            for prior_net, prior_segment in emitted_segments:
-                if prior_net != net and _orthogonal_segments_intersect(segment, prior_segment):
-                    raise ExportValidationError(
-                        f"Cross-net wire intersection between '{net}' and '{prior_net}'",
-                        issues=[{"code": "EV002", "net": net, "other_net": prior_net}],
-                    )
+            # Cross-net wire crossings are valid in schematics (no junction = no connection).
+            # Do NOT drop segments that intersect another net — they are valid crossings.
             if key in seen_segs:
                 continue
             seen_segs.add(key)
@@ -502,6 +498,8 @@ def generate_kicad_sch(design: dict) -> str:
         print(f"WARNING: EV001: {len(unique_missing)} wire-endpoint(s) lack physical wire segments: "
               f"{', '.join(unique_missing[:10])}"
               f"{'...' if len(unique_missing) > 10 else ''}", file=sys.stderr)
+        from agent.exceptions import ExportValidationError
+        raise ExportValidationError(f"EV001: {len(unique_missing)} wire-endpoint(s) lack physical wire segments: {', '.join(unique_missing[:10])}")
 
     # (b) power nets — give every power pin its own short outward stub and
     # same-name global label. KiCad connects equal global-label names
@@ -628,7 +626,7 @@ def generate_kicad_sch(design: dict) -> str:
             surviving_wired_pins.add(pin_key)
 
     # ── (c) net labels and global labels from connection records ──
-    for nl in design.get('net_labels', []):
+    for nl in (design.get('net_labels') or []):
         nl_type = nl.get('type', 'label')
         net = nl.get('net', '')
         at = nl.get('at', {})

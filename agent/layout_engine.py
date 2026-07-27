@@ -188,13 +188,28 @@ def calculate_ops_bbox(ops: list) -> dict:
                 cx, cy, rv = float(c[1]), float(c[2]), float(r[1])
                 upd(cx - rv, cy - rv)
                 upd(cx + rv, cy + rv)
+        elif t == "arc":
+            has_graphics = True
+            for name in ("start", "mid", "end"):
+                point = _get_attr(op, name)
+                if point:
+                    upd(float(point[1]), float(point[2]))
 
-    if not has_graphics:
-        for op in ops:
-            if op[0] == "pin":
-                a = _get_attr(op, "at")
-                if a:
-                    upd(float(a[1]), float(a[2]))
+    # Pins are visible geometry and must be part of the routing keep-out even
+    # when a symbol body also exists.
+    for op in ops:
+        if op[0] == "pin":
+            a = _get_attr(op, "at")
+            length = _get_attr(op, "length")
+            if a:
+                x, y = float(a[1]), float(a[2])
+                upd(x, y)
+                if length:
+                    import math
+                    angle = math.radians(float(a[3]) if len(a) > 3 else 0.0)
+                    pin_len = float(length[1])
+                    upd(x + math.cos(angle) * pin_len,
+                        y + math.sin(angle) * pin_len)
 
     if mn_x == float("inf"):
         return {"x": -5.0, "y": -5.0, "w": 10.0, "h": 10.0}

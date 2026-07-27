@@ -4,6 +4,7 @@ Emits agent:pcb_approval event, then blocks on a threading.Event
 until the user responds via the frontend. Returns pcb_approved=True/False.
 """
 
+from agent.pipeline_tracker import update_pipeline_stage
 from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 
@@ -27,7 +28,9 @@ def ask_pcb_approval_node(state, config):
     emit_tool_event(config, "PCB Approval", "running", "Awaiting user decision...")
 
     if approval_event is not None:
+        update_pipeline_stage(config, "waiting", "Awaiting PCB approval")
         approval_event.wait(timeout=300)
+        update_pipeline_stage(config, "running", "Applying PCB decision")
 
     approved = False
     if approval_result is not None:
