@@ -42,6 +42,9 @@ let pcbState = {
     routePoints: [],
     routeVias: [],
     routeCursor: null,
+    routeAngleMode: '45',
+    routePosture: 0,
+    snapPadTarget: null,
     lastPointerWorld: null,
     pointerDownScreen: null,
     pointerDownWorld: null,
@@ -54,6 +57,9 @@ let pcbState = {
     clipboard: null,
     highlightedNet: null,
     soloLayer: null,
+    // M3: Findings (constraint violations displayed on objects)
+    findings: [],
+    findingsVisible: true,
 };
 
 function dispatchPcbViewChanged() {
@@ -100,4 +106,47 @@ function dispatchPcbLayerVisibilityUpdated() {
             detail: { visibleLayers: { ...(pcbState.visibleLayers || {}) } },
         }));
     } catch (_) {}
+}
+
+// ── M4: Real-time constraint checking (debounced) ────────────────────────
+let _constraintCheckTimer = null;
+let _constraintCheckPending = false;
+
+function pcbScheduleConstraintCheck() {
+    if (_constraintCheckPending) return;
+    _constraintCheckPending = true;
+    clearTimeout(_constraintCheckTimer);
+    _constraintCheckTimer = setTimeout(async () => {
+        _constraintCheckPending = false;
+        if (!pcbState.boardModel) return;
+        try {
+            const sessionId = window.circuitbotChatSessionId || 'default';
+            const resp = await fetch('/api/constraint_check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId }),
+            });
+            const data = await resp.json();
+            if (data.violations && data.violations.length > 0) {
+                pcbState.findings = data.violations.map(v => ({
+                    id: v.id,
+                    entity_type: v.entity_ids && v.entity_ids.length ? 'component' : 'net',
+                    entity_id: v.entity_ids && v.entity_ids.length ? v.entity_ids[0] : '',
+                    severity: v.severity,
+                    title: v.code,
+                    description: v.description,
+                }));
+                if (typeof pcbEditor !== 'undefined') {
+                    pcbEditor.requestOverlayRefresh();
+                }
+            } else {
+                if (pcbState.findings.length > 0) {
+                    pcbState.findings = [];
+                    if (typeof pcbEditor !== 'undefined') {
+                        pcbEditor.requestOverlayRefresh();
+                    }
+                }
+            }
+        } catch (_) {}
+    }, 1000); // 1 second debounce
 }

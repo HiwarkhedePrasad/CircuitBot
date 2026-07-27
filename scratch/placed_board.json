@@ -885,6 +885,22 @@
           "size": 1.0,
           "hidden": false
         }
+      ],
+      "model_3d_path": null,
+      "model_3d_offset": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "model_3d_scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "model_3d_rotate": [
+        0.0,
+        0.0,
+        0.0
       ]
     }
   ],
@@ -1015,5 +1031,7 @@
       }
     }
   ],
-  "layer_count": 2
+  "layer_count": 2,
+  "_render_from_model": true,
+  "ratsnest": {}
 }

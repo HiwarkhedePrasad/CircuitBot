@@ -197,6 +197,23 @@ def test_export_pcb_fails_without_design():
     assert "No design generated yet" in data["error"]
 
 
+def test_export_pcb_rejects_unrouted_agent_board():
+    from server import app, design_lock
+
+    board_model = _sample_board_model()
+    board_model["traces"] = []
+    with design_lock:
+        _td()["board_model"] = dict(board_model, _render_from_model=True)
+        _td()["selected_components"] = [{"ref_des": "R1", "id_str": "Device:R"}]
+        _td()["netlist"] = [{"source": "R1:1", "target": "R1:2", "net": "TEST"}]
+
+    with app.test_client() as client:
+        response = client.get("/api/export_pcb?session_id=test")
+
+    assert response.status_code == 409
+    assert "unrouted signal connections" in json.loads(response.data)["error"]
+
+
 # ── Session isolation tests ────────────────────────────────────────────
 
 
@@ -227,6 +244,9 @@ def test_save_board_model_respects_session():
     from server import app, design_lock, session_manager
 
     bm = _sample_board_model()
+    with design_lock:
+        session_manager.get_or_create("default").last_design.clear()
+        session_manager.get_or_create("custom-session").last_design.clear()
     with app.test_client() as client:
         resp = client.post(
             "/api/save_board_model?session_id=custom-session",

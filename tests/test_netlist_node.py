@@ -70,7 +70,7 @@ def test_netlist_node_uses_star_edges_for_multi_pin_signal_net(monkeypatch):
         "selected_components": [
             {"ref_des": "U1", "id_str": "MCU:Test", "category": "MCU", "description": "MCU"},
             {"ref_des": "R1", "id_str": "Device:R", "category": "RESISTOR", "description": "Resistor"},
-            {"ref_des": "D1", "id_str": "Device:LED", "category": "DIODE", "description": "LED"},
+            {"ref_des": "D1", "id_str": "Device:D_Small", "category": "DIODE", "description": "Diode"},
         ],
         "pin_matrix": {
             "U1:1": {"name": "GPIO2", "etype": "output", "pin_num": "1", "ref_des": "U1"},

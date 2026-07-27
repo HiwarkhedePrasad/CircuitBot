@@ -195,7 +195,7 @@ def schematic_audit_node(state, config):
         for f in filtered_fixable:
             fresh_pending.append({
                 "pin": f["pin_key"],
-                "net": f.get("pin_name", ""),
+                "net": f.get("pin_name", "") or f.get("pin_num", "") or f["pin_key"].split(":")[-1],
                 "type": f["type"],
             })
 

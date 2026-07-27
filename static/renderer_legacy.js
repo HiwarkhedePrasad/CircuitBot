@@ -104,6 +104,104 @@ async function resolveAndParse(sexprStr, category, accOps = []) {
     return accOps;
 }
 
+// --- Symbol Thumbnail Renderer (for search result cards) ---
+function renderSymbolThumbnail(ops, width, height) {
+    if (!ops || ops.length === 0) return null;
+
+    const canvas = document.createElement('canvas');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // Calculate bounds
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    function updateBounds(x, y) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+
+    ops.forEach(op => {
+        const type = op[0];
+        if (type === 'rectangle') {
+            const s = getAttr(op, 'start'), e = getAttr(op, 'end');
+            if (s && e) { updateBounds(parseFloat(s[1]), parseFloat(s[2])); updateBounds(parseFloat(e[1]), parseFloat(e[2])); }
+        } else if (type === 'polyline') {
+            const pts = getAttr(op, 'pts');
+            if (pts) { for (let i = 1; i < pts.length; i++) { if (pts[i][0] === 'xy') updateBounds(parseFloat(pts[i][1]), parseFloat(pts[i][2])); } }
+        } else if (type === 'circle') {
+            const c = getAttr(op, 'center'), r = getAttr(op, 'radius');
+            if (c && r) { const cx = parseFloat(c[1]), cy = parseFloat(c[2]), rad = parseFloat(r[1]); updateBounds(cx - rad, cy - rad); updateBounds(cx + rad, cy + rad); }
+        } else if (type === 'pin') {
+            const at = getAttr(op, 'at'), len = getAttr(op, 'length');
+            if (at && len) { let x = parseFloat(at[1]), y = parseFloat(at[2]), l = parseFloat(len[1]), a = parseFloat(at[3] || 0); updateBounds(x, y); updateBounds(x + Math.cos(a * Math.PI / 180) * l, y + Math.sin(a * Math.PI / 180) * l); }
+        } else if (type === 'property' || type === 'text') {
+            const at = getAttr(op, 'at');
+            if (at) updateBounds(parseFloat(at[1]), parseFloat(at[2]));
+        }
+    });
+
+    if (minX === Infinity) { minX = -5; maxX = 5; minY = -5; maxY = 5; }
+    const margin = 2;
+    minX -= margin; maxX += margin; minY -= margin; maxY += margin;
+    const w = maxX - minX, h = maxY - minY;
+    const scale = Math.min(width / w, height / h) * 0.85;
+    const cx = width / 2, cy = height / 2;
+    const midX = (minX + maxX) / 2, midY = (minY + maxY) / 2;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(scale, -scale);
+    ctx.translate(-midX, -midY);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const strokeColor = '#E34E32';
+    const pinColor = '#00A8A8';
+
+    ops.forEach(op => {
+        const type = op[0];
+        ctx.save();
+        if (type === 'rectangle') {
+            const s = getAttr(op, 'start'), e = getAttr(op, 'end');
+            if (s && e) {
+                ctx.strokeStyle = strokeColor; ctx.lineWidth = 0.254; ctx.fillStyle = 'transparent';
+                ctx.strokeRect(parseFloat(s[1]), parseFloat(s[2]), parseFloat(e[1]) - parseFloat(s[1]), parseFloat(e[2]) - parseFloat(s[2]));
+            }
+        } else if (type === 'circle') {
+            const c = getAttr(op, 'center'), r = getAttr(op, 'radius');
+            if (c && r) {
+                ctx.strokeStyle = strokeColor; ctx.lineWidth = 0.254; ctx.beginPath();
+                ctx.arc(parseFloat(c[1]), parseFloat(c[2]), parseFloat(r[1]), 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        } else if (type === 'polyline') {
+            const pts = getAttr(op, 'pts');
+            if (pts && pts.length > 1) {
+                ctx.strokeStyle = strokeColor; ctx.lineWidth = 0.254; ctx.beginPath();
+                ctx.moveTo(parseFloat(pts[1][1]), parseFloat(pts[1][2]));
+                for (let i = 2; i < pts.length; i++) { if (pts[i][0] === 'xy') ctx.lineTo(parseFloat(pts[i][1]), parseFloat(pts[i][2])); }
+                ctx.stroke();
+            }
+        } else if (type === 'pin') {
+            const at = getAttr(op, 'at'), len = getAttr(op, 'length');
+            if (at && len) {
+                const x = parseFloat(at[1]), y = parseFloat(at[2]), l = parseFloat(len[1]), a = parseFloat(at[3] || 0);
+                ctx.strokeStyle = pinColor; ctx.lineWidth = 0.2; ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + Math.cos(a * Math.PI / 180) * l, y + Math.sin(a * Math.PI / 180) * l);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    });
+
+    ctx.restore();
+    return canvas.toDataURL('image/png');
+}
+
 // --- Symbol Preview Renderer (Canvas2D) ---
 const COLORS = {
     symbolLine: '#E34E32',

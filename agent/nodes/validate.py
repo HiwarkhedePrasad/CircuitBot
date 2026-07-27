@@ -8,16 +8,18 @@ from agent.tools import search_components
 from agent.utils import (
     _emit, emit_assistant_message, emit_tool_event, _check_stage_contract, _stage_result, _call_llm, _clean_json, _ref_prefix_for,
     MAX_VALIDATION_RETRIES, emit_thought, emit_tool_call, emit_tool_end, emit_step,
+    _get_id_str,
 )
 from uuid import uuid4
 
 _KNOWN_SYMBOLS = frozenset([
     "Device:R_Small", "Device:C_Small", "Device:LED", "Device:L_Small",
-    "Device:D_Small", "Connector_USB:USB_C_Receptacle_USB2.0",
+    "Device:D_Small", "Connector:USB_C_Receptacle_USB2.0_16P",
     "Regulator_Linear:AMS1117-3.3",
     "Connector_USB:TPD6S300A",
     "Sensor_Temperature:TMP117xxYBG",
     "Sensor_Temperature:DS18B20",
+    "Sensor_Temperature:BME280",
     "Device:Crystal", "Device:Crystal_GND24", "Device:Crystal_Small",
     "Connector:AVR-ISP-6",
     "Connector:Conn_01x04_Pin",
@@ -28,15 +30,12 @@ _KNOWN_SYMBOLS = frozenset([
     # Placeholder symbols from support_rules KNOWN_FALLBACK_SYMBOLS —
     # these are used when RAG has no real KiCad symbol for an IC.
     # They are placeholders; the validator should not flag them.
-    "Device:TPD6S300A", "Device:USBLC6-2SC6", "Device:IP4234CZ10",
-    "Device:SRV05-4",
+    "Power_Protection:TPD6S300A", "Power_Protection:USBLC6-2SC6", "Power_Protection:IP4234CZ10",
+    "Power_Protection:SRV05-4", "Device:TPD6S300A", "Device:USBLC6-2SC6",
 ])
 
-LIBRARY_PREFIX_FIXES: dict[str, str] = {
-    'Connector:USB_C_':  'Connector_USB:USB_C_',
-    'Connector:USB_':    'Connector_USB:USB_',
-    'Connector:USB2':    'Connector_USB:USB2',
-}
+# Library prefix fixes — import from centralized registry
+from agent.library_registry import LIBRARY_PREFIX_FIXES
 
 _CRITICAL_PATTERNS = [
     ("infrared", "led", "Status LED is infrared — not visible to human eye"),
@@ -44,6 +43,19 @@ _CRITICAL_PATTERNS = [
     ("cpld", "capacitor", "CPLD selected where capacitor required"),
     ("pd controller", "connector", "USB PD controller selected where USB-C connector required"),
 ]
+
+# IC-based circuit validation: when the prompt names a specific IC,
+# the selected component must belong to the same family.
+_IC_FAMILY_KEYWORDS = {
+    "NE555": {"NE555", "LM555", "ICM7555", "TLC555", "LMC555", "555 TIMER"},
+    "LM358": {"LM358", "LM324", "LM2904", "OPAMP", "OP-AMP"},
+    "LM741": {"LM741", "UA741", "OPAMP"},
+    "LM7805": {"LM7805", "L7805", "7805", "REGULATOR"},
+    "LM7812": {"LM7812", "L7812", "7812", "REGULATOR"},
+    "LM317": {"LM317", "LM338", "LM350", "REGULATOR"},
+    "74HC595": {"74HC595", "74HCT595", "SHIFT REGISTER"},
+    "CD4017": {"CD4017", "HEF4017", "DECODER"},
+}
 
 
 def _fix_library_prefixes(components: list[dict], emit_fn) -> int:
@@ -150,6 +162,288 @@ def _check_prompt_integrity(prompt: str, comps: list[dict]) -> list[str]:
     return errors
 
 
+def _check_ic_based_integrity(prompt: str, comps: list[dict], circuit_type: str, primary_ic: str | None) -> list[str]:
+    """Check that IC-based circuits have the correct primary IC selected.
+
+    When the user asks for a NE555 timer, the selected components should include
+    a NE555 (or compatible), NOT an ESP32 or other MCU.
+
+    Returns a list of error messages, empty if no violations.
+    """
+    if circuit_type not in ("ic_based", "analog_only") or not primary_ic:
+        return []
+
+    # Find the IC family keywords for this primary IC
+    ic_upper = primary_ic.upper()
+    family_keywords = None
+    for ic_name, keywords in _IC_FAMILY_KEYWORDS.items():
+        if ic_name.upper() in ic_upper or ic_upper in ic_name.upper():
+            family_keywords = keywords
+            break
+
+    if not family_keywords:
+        return []
+
+    errors: list[str] = []
+
+    # Check if any selected component matches the expected IC family
+    found_ic = False
+    for c in comps:
+        id_str = (c.get("id_str", "") or "").upper()
+        desc = (c.get("description", "") or "").upper()
+        if any(kw in id_str or kw in desc for kw in family_keywords):
+            found_ic = True
+            break
+
+    if not found_ic:
+        errors.append(
+            f"Part family integrity violation: prompt names '{primary_ic}' as core IC. "
+            f"Selected components do not include a {primary_ic}-family part. "
+            f"Expected a timer IC (NE555, LM555, etc.) or compatible component."
+        )
+
+    # Check that no MCU was incorrectly selected for an IC-based circuit
+    if circuit_type in ("ic_based", "analog_only"):
+        _MCU_KEYWORDS = ("ESP32", "RP2040", "STM32", "ATMEGA", "ATTINY", "SAMD", "NRF", "PIC", "FPGA")
+        for c in comps:
+            id_str = (c.get("id_str", "") or "").upper()
+            desc = (c.get("description", "") or "").upper()
+            if any(kw in id_str or kw in desc for kw in _MCU_KEYWORDS):
+                errors.append(
+                    f"MCU detected in non-MCU circuit: {c.get('ref_des', '?')} ({c.get('id_str', '?')}) "
+                    f"is a microcontroller. This is a {circuit_type} circuit using {primary_ic} — "
+                    f"no MCU is needed."
+                )
+
+    # Check for unnecessary components in simple IC-based circuits
+    if circuit_type == "ic_based" and primary_ic and "NE555" in primary_ic.upper():
+        _UNNECESSARY_KEYWORDS = {
+            "USB_C_RECEPTACLE": "USB-C connector — a simple barrel jack or terminal block is sufficient for 5V input",
+            "TPD6S300A": "USB-C ESD protection — not needed for a NE555 circuit",
+            "AMS1117": "3.3V regulator — NE555 operates at 5V directly",
+            "LDO": "voltage regulator — NE555 operates at 5V directly",
+            "ESP32": "ESP32 MCU — not needed for a NE555 timer circuit",
+            "RP2040": "RP2040 MCU — not needed for a NE555 timer circuit",
+            "STM32": "STM32 MCU — not needed for a NE555 timer circuit",
+            "AVR-ISP": "programming header — NE555 is not programmable",
+            "CONN_ARM_CORTEX": "debug header — NE555 is not programmable",
+        }
+        for c in comps:
+            id_str = (c.get("id_str", "") or "").upper()
+            for keyword, reason in _UNNECESSARY_KEYWORDS.items():
+                if keyword in id_str:
+                    errors.append(
+                        f"Unnecessary component for NE555 circuit: {c.get('ref_des', '?')} ({c.get('id_str', '?')}) — {reason}"
+                    )
+                    break
+
+    return errors
+
+
+# ── L1b Pin-Role Knowledge Base ──────────────────────────────────────
+# Pattern from PCBSchemaGen 32-role ontology: each component type has
+# expected pin roles.  We check these at the component-list level to
+# catch missing support infrastructure before LLM validation.
+
+_PIN_ROLE_KB: dict[str, dict] = {
+    "i2c_sensor": {
+        "required_roles": {"vdd", "gnd", "sda", "scl"},
+        "optional_roles": {"alert", "address", "int"},
+        "suggestions": {
+            "vdd": "Connect VDD to 3V3 power rail",
+            "gnd": "Connect GND to ground",
+            "sda": "Connect SDA to MCU I2C data pin (pull-up resistor required)",
+            "scl": "Connect SCL to MCU I2C clock pin (pull-up resistor required)",
+        },
+    },
+    "spi_device": {
+        "required_roles": {"vdd", "gnd", "mosi", "miso", "sck", "cs"},
+        "optional_roles": {"int", "reset"},
+        "suggestions": {
+            "vdd": "Connect VDD to power rail",
+            "gnd": "Connect GND to ground",
+            "mosi": "Connect MOSI to MCU SPI MOSI pin",
+            "miso": "Connect MISO to MCU SPI MISO pin",
+            "sck": "Connect SCK to MCU SPI clock pin",
+            "cs": "Connect CS to MCU GPIO for chip select",
+        },
+    },
+    "regulator": {
+        "required_roles": {"vin", "vout", "gnd"},
+        "optional_roles": {"enable", "bypass", "feedback"},
+        "suggestions": {
+            "vin": "Connect VIN to input power source (5V or VBUS)",
+            "vout": "Connect VOUT to load (3V3 rail)",
+            "gnd": "Connect GND to ground",
+            "enable": "Pull EN pin high to enable regulator",
+        },
+    },
+    "mcu_3v3": {
+        "required_roles": {"vdd", "gnd"},
+        "optional_roles": {"uart_tx", "uart_rx", "sda", "scl", "mosi", "miso", "sck",
+                           "gpio", "adc", "usb_dp", "usb_dn", "boot", "reset", "xtal_in", "xtal_out"},
+        "suggestions": {
+            "vdd": "Connect VDD to 3V3 power rail with 100nF decoupling cap",
+            "gnd": "Connect all GND pins to ground plane",
+        },
+    },
+    "usb_connector": {
+        "required_roles": {"vbus", "gnd", "dp", "dn"},
+        "optional_roles": {"cc1", "cc2", "sbu1", "sbu2", "shield"},
+        "suggestions": {
+            "vbus": "Connect VBUS to 5V power rail",
+            "gnd": "Connect GND to ground",
+            "dp": "Connect D+ to MCU USB DP pin",
+            "dn": "Connect D- to MCU USB DN pin",
+            "cc1": "Add 5.1kΩ pull-down to GND for UFP mode",
+            "cc2": "Add 5.1kΩ pull-down to GND for UFP mode",
+        },
+    },
+    "crystal": {
+        "required_roles": {"xtal_in", "xtal_out"},
+        "optional_roles": {"gnd"},
+        "suggestions": {
+            "xtal_in": "Connect to MCU XTAL1/OSC_IN pin with 12-22pF load cap to GND",
+            "xtal_out": "Connect to MCU XTAL2/OSC_OUT pin with 12-22pF load cap to GND",
+        },
+    },
+}
+
+# Category-to-role mapping: classify a component by its id_str/category
+_PIN_ROLE_CLASSIFIERS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r'(?:TMP117|BME280|MPU6050|SSD1306|SH1106|AT24C02|'
+                r'MCP4725|ADS1115|BH1750|PCA9685|MCP23017|MCP7940|'
+                r'DS3231|INA219|MCP9808|SHT30|SHT31|SGP30|CCS811|VL53L0X)'), "i2c_sensor"),
+    (re.compile(r'(?:NRF24L01|RFM95|SX1262|CC1101|CC1310|CC1352)'), "spi_device"),
+    (re.compile(r'Regulator_Linear:|Regulator_Switching:'), "regulator"),
+    (re.compile(r'Connector_USB:|USB_C_RECEPTACLE'), "usb_connector"),
+    (re.compile(r'Device:Crystal|Device:Crystal_GND24|Device:Crystal_Small'), "crystal"),
+    (re.compile(r'(?:ESP32|STM32|RP2040|RP2350|ATMEGA|ATTINY|SAMD|NRF52)'), "mcu_3v3"),
+]
+
+
+def _classify_pin_role(comp: dict) -> str | None:
+    """Classify a component's pin-role category for L1b checking."""
+    id_str = (_get_id_str(comp)).upper()
+    for pattern, role_type in _PIN_ROLE_CLASSIFIERS:
+        if pattern.search(id_str):
+            return role_type
+    return None
+
+
+def _check_pin_roles(comps: list[dict]) -> list[dict]:
+    """L1b Pin-Role Pre-Check: verify each IC has expected pin role coverage.
+
+    For each classified component, check that the component list includes
+    supporting infrastructure for required pin roles.  This is a
+    deterministic pre-check that runs before the LLM validation pass,
+    following the PCBSchemaGen L1b pattern.
+
+    Returns list of issue dicts (matching the validate.py issue format).
+    """
+    issues: list[dict] = []
+    classified: dict[str, list[dict]] = {}
+
+    for c in comps:
+        role = _classify_pin_role(c)
+        if role:
+            classified.setdefault(role, []).append(c)
+
+    for role_type, role_components in classified.items():
+        kb = _PIN_ROLE_KB.get(role_type)
+        if not kb:
+            continue
+
+        for rc in role_components:
+            ref = rc.get("ref_des", "")
+            id_str = _get_id_str(rc)
+
+            for required_role in kb["required_roles"]:
+                suggestion = kb["suggestions"].get(required_role, "")
+                role_covered = _check_role_covered(comps, rc, required_role)
+                if not role_covered:
+                    issues.append({
+                        "id_str": id_str,
+                        "severity": "warning",
+                        "message": (
+                            f"{ref} ({id_str}): expected pin role '{required_role}' "
+                            f"appears uncovered"
+                        ),
+                        "suggestion": suggestion,
+                    })
+
+    return issues
+
+
+def _check_role_covered(comps: list[dict], target: dict, role: str) -> bool:
+    """Check if a required pin role is covered by the component list.
+
+    This is a heuristic check based on component descriptions and
+    supporting component relationships.
+    """
+    ref = target.get("ref_des", "")
+    id_str = (_get_id_str(target)).upper()
+    desc = (target.get("description", "") or "").lower()
+
+    # Power roles: check if a regulator output matches or a power net exists
+    if role in ("vdd", "vin"):
+        if "3.3" in desc or "3V3" in desc or "5V" in desc:
+            return True
+        for c in comps:
+            if c.get("ref_des") == ref:
+                continue
+            cid = (_get_id_str(c)).upper()
+            if "REGULATOR" in cid:
+                return True
+            # MCU VDD: check if a regulator for this voltage exists
+            if role == "vdd" and ("ESP32" in id_str or "STM32" in id_str or "RP2040" in id_str):
+                for c2 in comps:
+                    c2id = (_get_id_str(c2)).upper()
+                    if "AMS1117" in c2id or "AP2112" in c2id or "MCP1700" in c2id:
+                        return True
+        return False
+
+    # Ground: always covered (every component has GND)
+    if role == "gnd":
+        return True
+
+    # I2C roles: check MCU I2C capability
+    if role in ("sda", "scl"):
+        for c in comps:
+            cid = (_get_id_str(c)).upper()
+            cdesc = (c.get("description", "") or "").lower()
+            if "I2C" in cdesc or "I2C" in cid or "SDA" in cid or "SCL" in cid:
+                return True
+            if any(mcu in cid for mcu in ("ESP32", "STM32", "RP2040", "RP2350", "ATMEGA", "ATTINY", "SAMD")):
+                return True
+        return False
+
+    # SPI roles
+    if role in ("mosi", "miso", "sck", "cs"):
+        for c in comps:
+            cid = (_get_id_str(c)).upper()
+            if any(spi in cid for spi in ("SPI", "MOSI", "MISO", "SCK")):
+                return True
+            if any(mcu in cid for mcu in ("ESP32", "STM32", "RP2040", "RP2350")):
+                return True
+        return False
+
+    # USB roles
+    if role in ("dp", "dn"):
+        for c in comps:
+            cid = (_get_id_str(c)).upper()
+            if "USB" in cid:
+                return True
+        return False
+
+    # Crystal roles: check if MCU has crystal support
+    if role in ("xtal_in", "xtal_out"):
+        return True
+
+    # Default: assume role is covered (optional roles)
+    return True
+
+
 _BARE_RF_PATTERNS = re.compile(
     r'(ESP32|ESP8266|NRF24[L]?[012]|NRF52[345]|CC1101|CC1310|CC1352|SX126[128]|LR1110|LR1120)',
     re.IGNORECASE,
@@ -246,6 +540,25 @@ def _remove_devkit_redundancy(comps: list[dict], emit_fn) -> tuple[list[dict], l
         for c in comps if c.get("ref_des", "") in module_refs
     )
     redundant_refs: set[str] = set()
+
+    # ── Check if any MCU has native USB (no external bridge needed) ────
+    _NATIVE_USB_MCUS = frozenset([
+        "ESP32-S3", "ESP32-C3", "ESP32-C6", "ESP32-H2",
+        "RP2040", "RP2350",
+        "STM32F0", "STM32F4", "STM32G4", "STM32H5", "STM32H7",
+        "STM32L0", "STM32L4", "STM32U5",
+        "SAMD21", "SAMD51", "SAMD11",
+        "NRF52840", "NRF52833", "NRF52820",
+        "TEENSY", "XIAO",
+    ])
+    mcu_has_native_usb = False
+    for c in comps:
+        c_id = (c.get("id_str", "") or "").upper()
+        c_desc = (c.get("description", "") or "").upper()
+        if any(kw in c_id or kw in c_desc for kw in _NATIVE_USB_MCUS):
+            mcu_has_native_usb = True
+            break
+
     for c in comps:
         id_str = (c.get("id_str", "") or "").upper()
         ref = c.get("ref_des", "")
@@ -254,18 +567,43 @@ def _remove_devkit_redundancy(comps: list[dict], emit_fn) -> tuple[list[dict], l
         # Never remove user-locked or core MCU/module components
         if c.get("user_locked") or _is_core_component(c):
             continue
-        # USB-UART bridges — only remove if a true dev board is present
-        if has_dev_board and any(kw in id_str for kw in ("CP2102", "CH340", "FT230", "FT232")):
-            redundant_refs.add(ref)
+        # USB-UART bridges — remove if dev board OR if MCU has native USB
+        if any(kw in id_str for kw in ("CP2102", "CH340", "FT230", "FT232")):
+            if has_dev_board or mcu_has_native_usb:
+                redundant_refs.add(ref)
         # Voltage regulators — only remove if a true dev board is present
         if has_dev_board and ("AMS1117" in id_str or "REGULATOR_LINEAR:" in id_str):
             redundant_refs.add(ref)
         # USB-C receptacles — only remove if a true dev board is present
         if has_dev_board and "USB_C_RECEPTACLE" in id_str:
             redundant_refs.add(ref)
-        # Non-RTC crystals (40 MHz main crystal — RTC 32.768 kHz is kept)
+        # Dev module with built-in MCU → remove standalone MCU of same type
+        # (e.g., Wemos C3 Mini already has ESP32-C3, don't also select a bare ESP32-C3)
+        if has_dev_board:
+            _MCU_FAMILIES = ("ESP32", "ESP8266", "STM32", "ATMEGA", "RP2040", "RP2350", "NRF", "SAMD")
+            if any(fam in id_str for fam in _MCU_FAMILIES) and ref not in module_refs:
+                redundant_refs.add(ref)
+        # Non-RTC crystals — only remove if the MCU's dependency graph says
+        # the module covers the crystal requirement.  This prevents infinite
+        # loops where the crystal is removed, rejected, re-requested by the
+        # dependency expander, and removed again.
         if id_str in ("DEVICE:CRYSTAL_SMALL", "DEVICE:CRYSTAL", "DEVICE:CRYSTAL_GND24"):
-            redundant_refs.add(ref)
+            from agent.knowledge.dependency_graph import get_mcu_family, DEPENDENCY_GRAPH
+            crystal_covered = False
+            for c2 in comps:
+                c2_id = (c2.get("id_str", "") or "").upper()
+                family = get_mcu_family(c2_id)
+                if family and family in DEPENDENCY_GRAPH:
+                    overrides = DEPENDENCY_GRAPH[family].get("module_overrides", {})
+                    # Check if any crystal requirement is covered by module_overrides
+                    for req_key, covered in overrides.items():
+                        if covered and "crystal" in req_key:
+                            crystal_covered = True
+                            break
+                if crystal_covered:
+                    break
+            if crystal_covered:
+                redundant_refs.add(ref)
 
     # Library-level catch-all: any component from a library known to be
     # redundant with WROOM/modules (e.g. Interface_USB, Regulator_Linear,
@@ -451,10 +789,23 @@ def validate_node(state, config):
     if contract:
         _emit(config, "agent:log", {"message": contract})
         return _stage_result(state, "validate", {"selected_components": [], "validation_errors": []})
-    comps = state.get("selected_components", [])
+    comps = list(state.get("selected_components", []))
     analysis = state.get("analysis", [])
     prompt = state.get("prompt", "")
     research = state.get("research_results", [])
+
+    # ── Merge datasheet search results into component data ──────────────
+    # The datasheet_search_node runs after select but before validate.
+    # Its results are in state["datasheet_search_results"] but never merged
+    # into each component's datasheet_text. Fix that now so the LLM
+    # validator sees fresh datasheet info.
+    ds_results = state.get("datasheet_search_results", [])
+    if ds_results:
+        ds_by_ref = {r["ref_des"]: r for r in ds_results if r.get("ref_des")}
+        for c in comps:
+            ref = c.get("ref_des", "")
+            if ref in ds_by_ref and ds_by_ref[ref].get("summary"):
+                c["datasheet_text"] = ds_by_ref[ref]["summary"][:500]
     if not comps:
         _emit(config, "agent:log", {"message": "No components to validate."})
         return _stage_result(state, "validate", {"selected_components": comps, "validation_errors": []})
@@ -472,10 +823,33 @@ def validate_node(state, config):
             "message": f"  Prompt-integrity pre-check found {len(integrity_errors)} issue(s)"
         })
 
+    # IC-based circuit integrity check: verify the correct IC is selected
+    circuit_type = state.get("circuit_type", "mcu_based")
+    primary_ic = state.get("primary_ic")
+    ic_errors = _check_ic_based_integrity(prompt, comps, circuit_type, primary_ic)
+    if ic_errors:
+        _emit(config, "agent:log", {
+            "message": f"  IC-based circuit check found {len(ic_errors)} issue(s)"
+        })
+
+    # L1b Pin-Role Pre-Check: verify each IC has expected pin role coverage.
+    # This runs before LLM validation, patterned after PCBSchemaGen L1b.
+    pin_role_issues = _check_pin_roles(comps)
+    if pin_role_issues:
+        _emit(config, "agent:log", {
+            "message": f"  L1b pin-role pre-check found {len(pin_role_issues)} issue(s)"
+        })
+
     # Module preference check: bare RF ICs should be replaced with modules.
-    # When found, try to auto-replace with a module variant immediately so the
-    # retry loop doesn't exhaust just picking different bare ICs.
-    module_errors = _check_module_preference(comps)
+    # Skip this check entirely for non-MCU circuits (IC-based, analog-only)
+    # or bare_ic/custom_pcb boards where bare IC use is intentional.
+    board_type = state.get("board_type", "")
+    if board_type in ("bare_ic", "custom_pcb"):
+        module_errors = []
+    elif circuit_type in ("mcu_based", "mixed"):
+        module_errors = _check_module_preference(comps)
+    else:
+        module_errors = []
     if module_errors:
         _emit(config, "agent:log", {
             "message": f"  Module preference pre-check found {len(module_errors)} issue(s)"
@@ -487,6 +861,11 @@ def validate_node(state, config):
                     continue
                 bare_name = err_id.split(":")[-1] if ":" in err_id else err_id
                 bare_base = bare_name.split("-")[0].upper()
+                # Extract the MCU variant (e.g., "C3" from "ESP32-C3") for family matching
+                mcu_variant = ""
+                parts = bare_name.split("-")
+                if len(parts) >= 2:
+                    mcu_variant = parts[1].upper()
                 # Search for a module variant (e.g., ESP32-C3 → ESP32-C3-DevKitM-1)
                 try:
                     mod_results = search_components(f"{bare_base} DEVKIT WROOM module", k=10)
@@ -494,7 +873,10 @@ def validate_node(state, config):
                     for r in mod_results:
                         rid = (r.get("id_str", "") or "").upper()
                         lib = rid.split(":")[0] if ":" in rid else ""
-                        if bare_base.upper() in rid and any(
+                        # Must match the MCU family (e.g., ESP32-C3, not ESP32-S3)
+                        if bare_base.upper() in rid and (
+                            not mcu_variant or mcu_variant in rid
+                        ) and any(
                             kw in rid for kw in ("WROOM", "DEVKIT", "MINI", "MODULE", "DK")
                         ):
                             replacement = r
@@ -582,61 +964,88 @@ def validate_node(state, config):
             "suggestion": "Reselect using a part matching the originally specified family",
         })
         result["valid"] = False
-    for err_msg, err_id in module_errors:
+    for err in ic_errors:
         result.setdefault("issues", []).append({
-            "id_str": err_id,
+            "id_str": "",
             "severity": "error",
-            "message": err_msg,
-            "suggestion": "Replace bare RF IC with a pre-certified module",
+            "message": err,
+            "suggestion": "Remove MCU and select the correct IC for this circuit type",
         })
         result["valid"] = False
+    for err_msg, err_id in module_errors:
+        result.setdefault("issues", []).append({
+            "id_str": "",
+            "severity": "error",
+            "message": err_msg,
+            "suggestion": "Search for and replace with a pre-certified module (WROOM/DEVKIT variant)",
+        })
+        result["valid"] = False
+    for issue in pin_role_issues:
+        result.setdefault("issues", []).append(issue)
+        if issue.get("severity") in ("error", "fatal_error"):
+            result["valid"] = False
     issues = result.get("issues", [])
     missing = result.get("missing_components", [])
     errors = [i for i in issues if i.get("severity") == "error"]
     warnings = [i for i in issues if i.get("severity") == "warning"]
 
-    emit_step(config, val_id, "Post-processing and applying corrections...", "running")
+    # ── Architecture freeze guard ──
+    # When architecture is frozen, the validate node must be READ-ONLY.
+    # It should only classify issues, never modify the component list.
+    # This prevents the validate→repair loop from fighting the architecture.
+    arch_frozen = state.get("architecture_frozen", False)
 
-    # ── Post-LLM redundancy enforcement ──
-    # The LLM may flag components as "redundant" (e.g. external crystal + load
-    # caps when a WROOM module is selected).  This step gives those warnings
-    # teeth: the flagged components are DELETED from comps immediately.
-    comps, issues, enforced_removed = _enforce_redundancy_removal(
-        comps, issues, lambda k, v: _emit(config, k, v),
-    )
-    _enforced_rejected_ids: list[str] = []
-    if enforced_removed:
-        _enforced_refs = set(enforced_removed)
-        _enforced_rejected_ids = [
-            c.get("id_str", "") for c in state.get("selected_components", [])
-            if c.get("ref_des", "") in _enforced_refs and c.get("id_str", "")
-        ]
+    if arch_frozen:
+        emit_step(config, val_id, "Architecture frozen — validation is read-only", "running")
+        # Skip ALL mutations: redundancy enforcement, devkit removal, auto-add
+        # Just classify issues and return
+    else:
+        emit_step(config, val_id, "Post-processing and applying corrections...", "running")
+
+    if not arch_frozen:
+        # ── Post-LLM redundancy enforcement ──
+        # The LLM may flag components as "redundant" (e.g. external crystal + load
+        # caps when a WROOM module is selected).  This step gives those warnings
+        # teeth: the flagged components are DELETED from comps immediately.
+        comps, issues, enforced_removed = _enforce_redundancy_removal(
+            comps, issues, lambda k, v: _emit(config, k, v),
+        )
+        _enforced_rejected_ids: list[str] = []
+        if enforced_removed:
+            _enforced_refs = set(enforced_removed)
+            _enforced_rejected_ids = [
+                c.get("id_str", "") for c in state.get("selected_components", [])
+                if c.get("ref_des", "") in _enforced_refs and c.get("id_str", "")
+            ]
+            errors = [i for i in issues if i.get("severity") == "error"]
+            warnings = [i for i in issues if i.get("severity") == "warning"]
+
+        n_fixed = _fix_library_prefixes(comps, lambda k, v: _emit(config, k, v))
+        if n_fixed:
+            _emit(config, "agent:log", {"message": f"  Fixed {n_fixed} library prefix(es)"})
+        # Remove prefix-fixable issues from the error list (data is now corrected)
+        issues = [i for i in issues if "library prefix" not in (i.get("message", "") or "").lower()]
         errors = [i for i in issues if i.get("severity") == "error"]
         warnings = [i for i in issues if i.get("severity") == "warning"]
 
-    n_fixed = _fix_library_prefixes(comps, lambda k, v: _emit(config, k, v))
-    if n_fixed:
-        _emit(config, "agent:log", {"message": f"  Fixed {n_fixed} library prefix(es)"})
-    # Remove prefix-fixable issues from the error list (data is now corrected)
-    issues = [i for i in issues if "library prefix" not in (i.get("message", "") or "").lower()]
-    errors = [i for i in issues if i.get("severity") == "error"]
-    warnings = [i for i in issues if i.get("severity") == "warning"]
-
-    # ── Auto-remove redundant DevKit components ──
-    comps, removed_refs = _remove_devkit_redundancy(comps, lambda k, v: _emit(config, k, v))
-    _devkit_rejected_ids: list[str] = []
-    if removed_refs:
-        _devkit_rejected_ids = [
-            c.get("id_str", "") for c in state.get("selected_components", [])
-            if c.get("ref_des", "") in set(removed_refs) and c.get("id_str", "")
-        ]
-        # Rebuild error/warning lists — remove issues about now-removed components
-        removed_ref_set = set(removed_refs)
-        issues = [i for i in issues if not any(
-            r in (i.get("id_str", "") or "") for r in removed_ref_set
-        )]
-        errors = [i for i in issues if i.get("severity") == "error"]
-        warnings = [i for i in issues if i.get("severity") == "warning"]
+        # ── Auto-remove redundant DevKit components ──
+        comps, removed_refs = _remove_devkit_redundancy(comps, lambda k, v: _emit(config, k, v))
+        _devkit_rejected_ids: list[str] = []
+        if removed_refs:
+            _devkit_rejected_ids = [
+                c.get("id_str", "") for c in state.get("selected_components", [])
+                if c.get("ref_des", "") in set(removed_refs) and c.get("id_str", "")
+            ]
+            # Rebuild error/warning lists — remove issues about now-removed components
+            removed_ref_set = set(removed_refs)
+            issues = [i for i in issues if not any(
+                r in (i.get("id_str", "") or "") for r in removed_ref_set
+            )]
+            errors = [i for i in issues if i.get("severity") == "error"]
+            warnings = [i for i in issues if i.get("severity") == "warning"]
+    else:
+        _enforced_rejected_ids: list[str] = []
+        _devkit_rejected_ids: list[str] = []
 
     # C-05: Build full rejected list BEFORE critical-pattern early return so
     # that devkit-removed and enforcement-removed IDs are never lost.
@@ -687,6 +1096,40 @@ def validate_node(state, config):
     for w in warnings:
         emit_tool_event(config, "Validation", "running", f"Warning: {w.get('message', '')}")
     corrections = []
+    validation_errors = []
+
+    # When architecture is frozen, don't auto-add missing components —
+    # report them as errors instead. EXCEPTION: inject support components
+    # for known-requirement ICs (e.g., NE555 timing components).
+    if missing and state.get("architecture_frozen"):
+        from agent.knowledge.component_catalog import resolve_component
+        injectable = []
+        unresolvable = []
+        for mc in missing:
+            # Try to resolve from component catalog
+            req_id = mc.get("requirement_id", "")
+            desc = mc.get("description", "")
+            resolved = resolve_component(req_id, desc) if req_id else None
+            if resolved:
+                injectable.append({"resolved": resolved, "original": mc})
+                _emit(config, "agent:log", {
+                    "message": f"  Auto-injecting support component: {resolved['id_str']} for {req_id}"
+                })
+            else:
+                unresolvable.append(mc)
+                validation_errors.append(
+                    f"Missing component (architecture locked): {desc}"
+                )
+        if injectable:
+            # Clear missing list and add injectable to the auto-add path
+            missing = [{"requirement_id": inj["resolved"]["id_str"],
+                        "description": inj["resolved"].get("description", ""),
+                        "preferred_id_str": inj["resolved"]["id_str"],
+                        "library_filter": inj["resolved"].get("category", "")}
+                       for inj in injectable]
+        else:
+            missing = []
+
     if missing:
         emit_thought(config, f"Searching for {len(missing)} missing component(s)...")
         for mc in missing:
@@ -834,6 +1277,19 @@ def validate_node(state, config):
             rejected.append(rid)
     for e in errors:
         eid = e.get("id_str", "")
+        # Do not reject user-locked components, connectors, switches, or valid support passives
+        comp_obj = next((c for c in comps if c.get("id_str") == eid or c.get("ref_des") == eid), None)
+        if comp_obj and (
+            comp_obj.get("is_user_locked")
+            or comp_obj.get("user_locked")
+            or comp_obj.get("functional_id")
+            or comp_obj.get("category") in ("Connector", "Switch", "Device", "Power_Protection")
+        ):
+            continue
+        # Do not reject components if error message is about a missing external part
+        msg_lower = e.get("message", "").lower()
+        if "missing" in msg_lower or "not present" in msg_lower or "required" in msg_lower:
+            continue
         if eid and eid not in rejected:
             rejected.append(eid)
         fam = _normalize_part_family(eid)

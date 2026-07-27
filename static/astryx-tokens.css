@@ -1,0 +1,182 @@
+/*
+ * CircuitBot Design Tokens
+ * Hardware engineering AI IDE — black/neutral identity
+ * Derived from Astryx core, rebranded for CircuitBot
+ */
+
+:root {
+  /* ── Color System ────────────────────────────────────────────────────── */
+
+  /* Primary (Neutral — white on dark) */
+  --astryx-accent: #FFFFFF;
+  --astryx-accent-hover: #E6E6E6;
+  --astryx-accent-subtle: rgba(255, 255, 255, 0.06);
+  --astryx-accent-muted: rgba(255, 255, 255, 0.10);
+  --astryx-accent-strong: rgba(255, 255, 255, 0.16);
+
+  /* Backgrounds (Pure Black) */
+  --astryx-bg-body: #000000;
+  --astryx-bg-surface: #0A0A0A;
+  --astryx-bg-card: #111111;
+  --astryx-bg-elevated: #1A1A1A;
+  --astryx-bg-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Text */
+  --astryx-text-primary: #F0F0F0;
+  --astryx-text-secondary: #A0A0A0;
+  --astryx-text-tertiary: #666666;
+  --astryx-text-muted: #444444;
+  --astryx-text-disabled: #333333;
+  --astryx-text-inverse: #000000;
+
+  /* Borders */
+  --astryx-border-default: rgba(255, 255, 255, 0.08);
+  --astryx-border-strong: rgba(255, 255, 255, 0.14);
+  --astryx-border-emphasized: rgba(255, 255, 255, 0.22);
+  --astryx-border-focus: #FFFFFF;
+
+  /* Semantic Net Colors */
+  --cb-net-routed: #FFFFFF;
+  --cb-net-conflict: #FF6B35;
+  --cb-drc-error: #FF3B30;
+  --cb-erc-warning: #FFD60A;
+  --cb-sim-pass: #30D158;
+  --cb-sim-running: #64D2FF;
+
+  /* PCB Layer Colors */
+  --cb-layer-top-copper: #FFFFFF;
+  --cb-layer-bottom-copper: #FF3B30;
+  --cb-layer-top-silk: #FFD60A;
+  --cb-layer-bottom-silk: #64D2FF;
+  --cb-layer-top-mask: #E6E8EC;
+  --cb-layer-bottom-mask: #8B949E;
+  --cb-layer-pad: #FFFFFF;
+  --cb-layer-hole: #000000;
+  --cb-layer-board-outline: #FF6B35;
+
+  /* Status Colors */
+  --astryx-success: #30D158;
+  --astryx-success-subtle: rgba(48, 209, 88, 0.1);
+  --astryx-warning: #FFD60A;
+  --astryx-warning-subtle: rgba(255, 214, 10, 0.1);
+  --astryx-error: #FF3B30;
+  --astryx-error-subtle: rgba(255, 59, 48, 0.1);
+  --astryx-info: #64D2FF;
+  --astryx-info-subtle: rgba(100, 210, 255, 0.1);
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+
+  --astryx-font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --astryx-font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'Fira Code', ui-monospace, monospace;
+  --astryx-font-display: 'Syne', sans-serif;
+  --astryx-font-netlist: 12px 'JetBrains Mono', monospace;
+
+  /* Font Sizes */
+  --astryx-text-xs: 0.75rem;
+  --astryx-text-sm: 0.8125rem;
+  --astryx-text-base: 0.875rem;
+  --astryx-text-lg: 1rem;
+  --astryx-text-xl: 1.25rem;
+  --astryx-text-2xl: 1.5rem;
+  --astryx-text-3xl: 2rem;
+
+  /* Line Heights */
+  --astryx-leading-tight: 1.25;
+  --astryx-leading-normal: 1.5;
+  --astryx-leading-relaxed: 1.625;
+
+  /* Font Weights */
+  --astryx-weight-normal: 400;
+  --astryx-weight-medium: 500;
+  --astryx-weight-semibold: 600;
+  --astryx-weight-bold: 700;
+
+  /* ── Spacing (8pt system) ────────────────────────────────────────────── */
+
+  --astryx-space-0: 0;
+  --astryx-space-1: 0.125rem;
+  --astryx-space-2: 0.25rem;
+  --astryx-space-3: 0.375rem;
+  --astryx-space-4: 0.5rem;
+  --astryx-space-5: 0.625rem;
+  --astryx-space-6: 0.75rem;
+  --astryx-space-7: 0.875rem;
+  --astryx-space-8: 1rem;
+  --astryx-space-9: 1.125rem;
+  --astryx-space-10: 1.25rem;
+  --astryx-space-12: 1.5rem;
+  --astryx-space-14: 1.75rem;
+  --astryx-space-16: 2rem;
+  --astryx-space-20: 2.5rem;
+
+  /* ── Border Radius ───────────────────────────────────────────────────── */
+
+  --astryx-radius-tool: 4px;
+  --astryx-radius-sm: 6px;
+  --astryx-radius-md: 8px;
+  --astryx-radius-lg: 12px;
+  --astryx-radius-xl: 14px;
+  --astryx-radius-2xl: 16px;
+  --astryx-radius-3xl: 18px;
+  --astryx-radius-4xl: 20px;
+  --astryx-radius-full: 9999px;
+
+  /* ── Shadows ─────────────────────────────────────────────────────────── */
+
+  --astryx-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --astryx-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.5);
+  --astryx-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.6);
+  --astryx-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.6);
+  --astryx-shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.7);
+  --astryx-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --astryx-shadow-panel: 0 16px 42px rgba(0, 0, 0, 0.4);
+
+  /* ── Transitions ─────────────────────────────────────────────────────── */
+
+  --astryx-duration-fast: 100ms;
+  --astryx-duration-normal: 200ms;
+  --astryx-duration-slow: 300ms;
+  --astryx-ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --astryx-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --astryx-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --astryx-ease-spring: cubic-bezier(0.33, 1, 0.68, 1);
+
+  /* ── Z-Index Scale ───────────────────────────────────────────────────── */
+
+  --astryx-z-base: 0;
+  --astryx-z-dropdown: 100;
+  --astryx-z-sticky: 200;
+  --astryx-z-overlay: 300;
+  --astryx-z-modal: 400;
+  --astryx-z-popover: 500;
+  --astryx-z-toast: 600;
+
+  /* ── Canvas Grid ─────────────────────────────────────────────────────── */
+
+  --cb-grid-major: 2.54mm;
+  --cb-grid-minor: 1.27mm;
+  --cb-snap-grid: 1.27mm;
+}
+
+/* ── Light Theme Override ───────────────────────────────────────────────── */
+
+[data-theme="light"] {
+  --astryx-bg-body: #ffffff;
+  --astryx-bg-surface: #f5f5f5;
+  --astryx-bg-card: #ffffff;
+  --astryx-bg-elevated: #f0f0f0;
+
+  --astryx-text-primary: #111111;
+  --astryx-text-secondary: #555555;
+  --astryx-text-tertiary: #888888;
+  --astryx-text-muted: #aaaaaa;
+
+  --astryx-border-default: rgba(0, 0, 0, 0.08);
+  --astryx-border-strong: rgba(0, 0, 0, 0.14);
+  --astryx-border-emphasized: rgba(0, 0, 0, 0.22);
+
+  --astryx-accent: #000000;
+  --astryx-accent-hover: #222222;
+  --astryx-accent-subtle: rgba(0, 0, 0, 0.06);
+  --astryx-accent-muted: rgba(0, 0, 0, 0.10);
+}

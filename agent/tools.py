@@ -1,18 +1,19 @@
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import threading
 from pathlib import Path
 from dotenv import load_dotenv
-from kicad_rag.client import KicadRAG
+from kicad_rag.unified_client import UnifiedClient
 
 
 dotenv_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path, override=True)
 
-rag = KicadRAG(mode="hybrid")
+rag = UnifiedClient(mode="hybrid")
 
 # ── Tool Registry ────────────────────────────────────────────────────────────
 
@@ -183,24 +184,90 @@ def search_components(query: str, k: int = 8,
 
 def _search_components_impl(query: str, k: int,
                             library_filter: str | None) -> list[dict]:
-    results = rag.search(query, k=k)
+    results = rag.search(query, k=max(k * 2, 10), library_filter=library_filter)
+    actual_query = query
+
+    # If the primary query returned nothing and it looks like a part number
+    # (has digits mixed with letters), try falling back to the base name
+    # stripped of common suffixes.  The RAG index may not have exact suffix
+    # variants like "LM35DZ" when only "LM35-D" is indexed.
+    if not results and re.search(r'[A-Za-z]+\d+[A-Za-z]+', query):
+        base = re.sub(r'[-_ .][A-Za-z0-9]+$', '', query)
+        if base != query:
+            results = rag.search(base, k=max(k * 2, 5), library_filter=library_filter)
+            actual_query = base
+        if not results:
+            prefix = re.match(r'([A-Za-z]+\d+)', query.upper())
+            if prefix:
+                results = rag.search(prefix.group(1), k=max(k * 2, 5), library_filter=library_filter)
+                actual_query = prefix.group(1)
+
     if library_filter:
+        pats = [p.strip() for p in library_filter.split("|") if p.strip()]
         results = [r for r in results
-                   if r.id_str.startswith(library_filter + ":")]
-    return [
-        {
+                   if any(r.id_str.startswith(p + ":") or r.id_str.startswith(p + "_") for p in pats)]
+    # Re-rank: prefer results where the id_str or text contains the actual
+    # search terms at a word boundary.  The plain substring check is too
+    # aggressive — "LM35" matches "LM358", causing op-amps to outscore the
+    # actual temperature sensor.  Word boundary avoids this.
+    query_upper = actual_query.upper().strip()
+    query_tokens = [t for t in query_upper.replace("-", " ").replace("_", " ").split() if len(t) >= 3]
+    for r in results:
+        boost = 0.0
+        id_up = r.id_str.upper()
+        text_up = (r.text or "").upper()
+        id_part = id_up.split(":")[-1] if ":" in id_up else id_up
+        if re.search(r'(?<![A-Z0-9])' + re.escape(query_upper) + r'(?![A-Z0-9])', id_part):
+            boost = 5.0
+        elif re.search(r'(?<![A-Z0-9])' + re.escape(query_upper) + r'(?![A-Z0-9])', text_up):
+            boost = 5.0
+        else:
+            for qt in query_tokens:
+                if re.search(r'(?<![A-Z0-9])' + re.escape(qt) + r'(?![A-Z0-9])', id_part):
+                    boost = 2.0
+                    break
+                if re.search(r'(?<![A-Z0-9])' + re.escape(qt) + r'(?![A-Z0-9])', text_up):
+                    boost = 2.0
+                    break
+        r.score += boost
+    results.sort(key=lambda r: r.score, reverse=True)
+    
+    formatted_results = []
+    for r in results[:k]:
+        normalized_pins = []
+        for p in (r.pins or []):
+            num = str(p.get("num") or p.get("number") or "")
+            name = str(p.get("name") or "")
+            etype = str(p.get("type") or p.get("etype") or "passive")
+            normalized_pins.append({
+                "num": num,
+                "number": num,
+                "name": name,
+                "etype": etype,
+                "type": etype,
+            })
+        formatted_results.append({
             "id_str": r.id_str,
             "text": r.text,
             "score": r.score,
-            "pins": r.pins,
+            "pins": normalized_pins,
             "datasheet": r.datasheet,
             "datasheet_snippet": (r.text or "")[:300],
             "footprint": r.footprint,
             "fp_filters": r.fp_filters,
             "pads": r.pads,
-        }
-        for r in results
-    ]
+        })
+    return formatted_results
+
+
+@register_tool
+def search_jlcparts_tool(query: str, package: str | None = None, limit: int = 15) -> list[dict]:
+    """Search JLCPCB 2.5M part mirror for LCSC numbers, manufacturer parts, price, stock.
+    Args: query (str), package (optional str), limit (int).
+    Returns: list of component records."""
+    from kicad_rag.jlcparts_db import search_jlcparts
+    return search_jlcparts(query, package=package, limit=limit)
+
 
 
 def fetch_sexpr(id_str: str) -> str:

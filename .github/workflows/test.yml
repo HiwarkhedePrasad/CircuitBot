@@ -24,17 +24,14 @@ jobs:
       - name: Install Node dependencies
         run: npm install
 
-      - name: Run targeted Python regression tests
-        run: >
-          pytest
-          tests/test_apply_edits.py
-          tests/test_circuit_json_converter.py
-          tests/test_import_pcb_api.py
-          tests/test_pcb_import_graphics.py
-          tests/test_pcb_import_performance_shape.py
-          tests/test_pcb_save_export.py
-          tests/test_ratsnest.py
-          -q
+      - name: Ruff lint check
+        run: ruff check agent/ server/ tests/
+
+      - name: Ruff format check
+        run: ruff format --check agent/ server/ tests/
+
+      - name: Run Python tests
+        run: pytest tests/ -x -q --ignore=tests/test_e2e.py
 
       - name: Run PCB viewer JS regression tests
         run: node tests/test_pcb_viewer.js

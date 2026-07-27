@@ -52,12 +52,32 @@ def schematic_repair_node(state, config):
                 found_net = net_obj["net"]
                 break
             net_pins_lower = [p.lower() for p in net_obj.get("pins", [])]
+        no_connects = list(state.get("no_connects", []))
+    add_to_nc = []
+
+    for f in fixable:
+        pin_key = f.get("pin_key", "")
+        ftype = f.get("type", "")
+        if not pin_key:
+            continue
+
+        has_physical_wire = pin_key in wired_pins
+
+        found_net = None
+        for net_obj in nets:
+            if pin_key in net_obj.get("pins", []):
+                found_net = net_obj["net"]
+                break
+            net_pins_lower = [p.lower() for p in net_obj.get("pins", [])]
             if pin_key.lower() in net_pins_lower:
                 found_net = net_obj["net"]
                 break
 
         if not found_net:
-            skipped.append(pin_key)
+            if ftype in ("pin_not_connected", "unconnected_wire_endpoint") and pin_key not in no_connects and pin_key not in add_to_nc:
+                add_to_nc.append(pin_key)
+            else:
+                skipped.append(pin_key)
             continue
 
         if ftype in ("pin_not_connected", "unconnected_wire_endpoint"):
@@ -85,15 +105,20 @@ def schematic_repair_node(state, config):
         "message": (
             f"ERC repair: {len(pending)} attach request(s), "
             f"{len(add_to_power)} PWR_FLAG(s), "
-            f"{len(skipped)} skipped — not in any net"
+            f"{len(add_to_nc)} no_connect(s), "
+            f"{len(skipped)} skipped"
         )
     })
 
     new_power = list(power_pins)
     new_power.extend(add_to_power)
 
+    new_nc = list(no_connects)
+    new_nc.extend(add_to_nc)
+
     return {
         "_erc_pending_connections": pending,
         "_erc_affected_nets": sorted(affected_nets),
         "power_pins": new_power,
+        "no_connects": new_nc,
     }

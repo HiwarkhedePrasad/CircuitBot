@@ -4,10 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CircuitBot EDA</title>
+    <link rel="stylesheet" href="/static/astryx-tokens.css">
+    <link rel="stylesheet" href="/static/astryx-components.css">
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Skip to main content -->
+    <a href="#canvasViewport" class="skip-to-main">Skip to main content</a>
+
     <!-- SVG sprite -->
     <svg style="display:none">
         <symbol id="icon-bot" viewBox="0 0 20 20" fill="none">
@@ -15,15 +20,13 @@
         </symbol>
     </svg>
     <div class="eda-app">
-        <!-- Top Menubar & Toolbar -->
+        <!-- Top Toolbar -->
         <header class="eda-header">
-            <div class="brand">
-                <span class="logo">⚡</span>
-                <span class="title">CircuitBot <span class="version">v0.8.2</span></span>
-                <span class="connection-status" id="connectionStatus" title="Connected to backend">●</span>
-            </div>
             <div class="toolbar">
-                <button id="addBtn" class="tool-btn" title="Add Selected Component to Schematic" disabled>
+                <span class="toolbar-brand">⚡ CircuitBot</span>
+                <span class="connection-status" id="connectionStatus" title="Connected to backend">●</span>
+                <div class="divider"></div>
+                <button id="addBtn" class="tool-btn" title="Search & add a component to the schematic">
                     <span class="icon">+</span> Add Component
                 </button>
                 <div class="divider"></div>
@@ -47,184 +50,650 @@
                 <button id="importPCBBtn" class="tool-btn" title="Import .kicad_pcb file" disabled>
                     <span class="icon">📂</span> Import PCB
                 </button>
+                <button id="importSchBtn" class="tool-btn" title="Import & sync .kicad_sch file" disabled>
+                    <span class="icon">🔄</span> Import & Sync
+                </button>
+                <input type="file" id="schFileInput" accept=".kicad_sch" style="display:none">
             </div>
         </header>
 
         <div class="eda-workspace">
-            <!-- Left Sidebar: Library & Hierarchy -->
-            <aside class="eda-sidebar left-panel" id="leftPanel">
-                <button class="sidebar-toggle left-toggle" id="leftToggle" title="Collapse panel">
-                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                        <polyline points="8,2 4,6 8,10"/>
-                    </svg>
-                </button>
-                <div class="panel-section netlist-section">
-                    <div class="panel-header">
-                        <span class="panel-title">Netlist</span>
-                        <button id="copyNetlistBtn" class="icon-btn" title="Copy netlist to clipboard">📋</button>
-                        <span id="netlistCount" class="badge">0</span>
-                    </div>
-                    <div id="netlistDisplay" class="netlist-content">
-                        <div class="netlist-placeholder">Waiting for agent to generate netlist...</div>
-                    </div>
+            <!-- Left Sidebar: Activity Bar + Panel (Analysis & Navigation) -->
+            <aside class="eda-sidebar left-panel" id="leftPanel" role="navigation" aria-label="Analysis panels">
+                <!-- Activity Bar (icon-only column) -->
+                <div class="activity-bar" id="activityBar">
+                    <button class="activity-bar-btn sidebar-toggle-btn" id="leftToggle" title="Collapse sidebar">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 6h12M4 10h12M4 14h12"/>
+                        </svg>
+                    </button>
+                    <div class="activity-bar-divider"></div>
+                    <!-- Navigation group -->
+                    <button class="activity-bar-btn active" data-panel="netlist" title="Netlist Inspector">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 4h14M3 8h10M3 12h14M3 16h8"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-panel="components" title="Placed Components">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="6" height="6" rx="1"/>
+                            <rect x="11" y="3" width="6" height="6" rx="1"/>
+                            <rect x="3" y="11" width="6" height="6" rx="1"/>
+                            <rect x="11" y="11" width="6" height="6" rx="1"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-panel="layers" title="PCB Layers" id="pcbLayersActivityBtn">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 3L2 7l8 4 8-4-8-4z"/>
+                            <path d="M2 13l8 4 8-4"/>
+                            <path d="M2 10l8 4 8-4"/>
+                        </svg>
+                    </button>
+                    <!-- Analysis group -->
+                    <div class="activity-bar-divider"></div>
+                    <button class="activity-bar-btn" data-panel="erc" title="Electrical Rules Check">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 2L2 18h16L10 2z"/>
+                            <path d="M10 7v5"/>
+                            <circle cx="10" cy="15" r="0.5" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-panel="drc" title="Design Rules Check">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 2L3 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6l-7-4z"/>
+                            <path d="M7 10l2 2 4-4"/>
+                        </svg>
+                    </button>
+                    <div class="activity-bar-spacer"></div>
+                    <!-- Settings (bottom) -->
+                    <button class="activity-bar-btn" data-panel="settings" title="Settings">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="10" cy="10" r="3"/>
+                            <path d="M10 1v2M10 17v2M1 10h2M17 10h2M3.5 3.5l1.4 1.4M15.1 15.1l1.4 1.4M3.5 16.5l1.4-1.4M15.1 4.9l1.4-1.4"/>
+                        </svg>
+                    </button>
                 </div>
-                
-                <div class="panel-divider horizontal"></div>
-                
-                <div class="panel-section hierarchy-section">
-                    <div class="panel-header">
-                        <span class="panel-title">Placed Components</span>
-                        <span id="compCount" class="badge">0</span>
+
+                <!-- Panel Content (switchable) -->
+                <div class="panel-content" id="panelContent">
+                    <!-- Netlist Panel -->
+                    <div class="panel-view active" data-view="netlist">
+                        <div class="panel-header">
+                            <span class="panel-title">Netlist</span>
+                            <button id="copyNetlistBtn" class="icon-btn" title="Copy netlist to clipboard">📋</button>
+                            <span id="netlistCount" class="badge">0</span>
+                        </div>
+                        <div id="netlistDisplay" class="netlist-content">
+                            <div class="netlist-placeholder">Waiting for agent to generate netlist...</div>
+                        </div>
                     </div>
-                    <ul id="componentList" class="list-view">
-                        <!-- Placed items populated by app.js -->
-                    </ul>
-                </div>
-                <div id="pcbLayersPanel" class="panel-section pcb-layers-section hidden">
-                    <div class="panel-header">
-                        <span class="panel-title">PCB Layers</span>
+
+                    <!-- Placed Components Panel -->
+                    <div class="panel-view" data-view="components">
+                        <div class="panel-header">
+                            <span class="panel-title">Placed Components</span>
+                            <span id="compCount" class="badge">0</span>
+                        </div>
+                        <ul id="componentList" class="list-view">
+                            <!-- Placed items populated by app.js -->
+                        </ul>
+
+                        <!-- Manual Component Add Section -->
+                        <div class="add-component-section">
+                            <div class="add-component-header">
+                                <span class="add-component-title">Add Component</span>
+                                <button id="toggleAddSection" class="icon-btn" title="Toggle search">+</button>
+                            </div>
+                            <div id="addComponentBody" class="add-component-body hidden">
+                                <div class="add-component-search">
+                                    <input type="text" id="manualSearchInput" placeholder="Search components..." autocomplete="off">
+                                    <button id="manualSearchBtn" class="icon-btn" title="Search">&#x1F50D;</button>
+                                </div>
+                                <div id="manualSearchResults" class="manual-search-results"></div>
+                            </div>
+                        </div>
                     </div>
-                    <div id="pcbLayersList" class="pcb-layers-list"></div>
+
+                    <!-- Component Detail Panel (slide-in overlay) -->
+                    <div id="compDetailPanel" class="comp-detail-panel hidden">
+                        <div class="comp-detail-header">
+                            <button id="compDetailClose" class="comp-detail-close" title="Close">&times;</button>
+                            <span class="comp-detail-title">Component Details</span>
+                        </div>
+                        <div id="compDetailBody" class="comp-detail-body">
+                            <div class="comp-detail-placeholder">Select a component to view details</div>
+                        </div>
+                    </div>
+
+                    <!-- PCB Layers Panel -->
+                    <div class="panel-view" data-view="layers" id="pcbLayersPanel">
+                        <div class="panel-header">
+                            <span class="panel-title">PCB Layers</span>
+                        </div>
+                        <div id="pcbLayersList" class="pcb-layers-list"></div>
+                    </div>
+
+                    <!-- ERC Panel -->
+                    <div class="panel-view" data-view="erc">
+                        <div class="panel-header">
+                            <span class="panel-title">Electrical Rules</span>
+                            <button id="ercRunBtn" class="icon-btn" title="Run ERC">▶</button>
+                            <span id="ercCount" class="badge">0</span>
+                        </div>
+                        <div class="erc-filter">
+                            <button class="erc-filter-btn active" data-filter="all">All</button>
+                            <button class="erc-filter-btn" data-filter="error">Errors</button>
+                            <button class="erc-filter-btn" data-filter="warning">Warnings</button>
+                        </div>
+                        <div id="ercResults" class="erc-results">
+                            <div class="erc-placeholder">Click Run to check electrical rules</div>
+                        </div>
+                    </div>
+
+                    <!-- DRC Panel -->
+                    <div class="panel-view" data-view="drc">
+                        <div class="panel-header">
+                            <span class="panel-title">Design Rules</span>
+                            <button id="drcRunBtn" class="icon-btn" title="Run DRC">▶</button>
+                            <span id="drcCount" class="badge">0</span>
+                        </div>
+                        <div class="drc-rule-set">
+                            <label>Rule set:</label>
+                            <select id="drcRuleSelect">
+                                <option value="standard-2layer">Standard 2-layer</option>
+                                <option value="standard-4layer">Standard 4-layer</option>
+                                <option value="jlcpcb-2layer">JLCPCB 2-layer</option>
+                            </select>
+                        </div>
+                        <div id="drcResults" class="drc-results">
+                            <div class="drc-placeholder">Click Run to check design rules</div>
+                        </div>
+                    </div>
+
+                    <!-- Settings Panel -->
+                    <div class="panel-view" data-view="settings">
+                        <div class="panel-header">
+                            <span class="panel-title">Settings</span>
+                        </div>
+                        <div class="settings-content">
+                            <div class="settings-group">
+                                <label class="settings-label">Grid Snap</label>
+                                <select id="settingsGridSnap">
+                                    <option value="1.27" selected>1.27mm (50mil)</option>
+                                    <option value="2.54">2.54mm (100mil)</option>
+                                    <option value="0.635">0.635mm (25mil)</option>
+                                </select>
+                            </div>
+                            <div class="settings-group">
+                                <label class="settings-label">Symbol Standard</label>
+                                <select id="settingsSymbolStandard">
+                                    <option value="ansi" selected>ANSI</option>
+                                    <option value="iec">IEC</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </aside>
 
             <div class="resize-handle" id="leftResize"></div>
-            <div class="collapse-strip left-expand" id="leftExpand" style="display:none" title="Expand left panel">
+            <div class="collapse-strip left-expand" id="leftExpand" title="Expand left panel">
                 <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                     <polyline points="5,3 9,7 5,11"/>
                 </svg>
             </div>
 
-            <!-- Center: Workspace Canvas -->
+            <!-- Center: Chat + Canvas Split -->
             <main class="eda-main">
-                <div class="canvas-header">
-                    <div class="canvas-header-row">
-                        <div class="tabs">
-                            <button id="viewSchematicBtn" class="tab active">Schematic Editor</button>
-                            <button id="viewPCBBtn" class="tab">PCB View</button>
-                            <button id="viewSymbolBtn" class="tab">Symbol Preview</button>
+                <div class="center-split">
+                    <!-- AI Chat Column (left half) -->
+                    <div class="chat-column" id="chatColumn">
+                        <div class="chat-header">
+                            <span class="chat-title">AI Design Co-Pilot</span>
+                            <span class="agent-status-text" id="agentStatus">Ready</span>
                         </div>
-                        <div class="canvas-controls">
-                            <div class="zoom-group">
-                                <button id="zoomOutBtn" title="Zoom Out">-</button>
-                                <span id="zoomLevel">100%</span>
-                                <button id="zoomInBtn" title="Zoom In">+</button>
-                                <button id="zoomResetBtn" title="Fit to View">Fit</button>
+                        <div class="agent-workspace">
+                            <div class="agent-conversation" id="agentConversation" role="log" aria-live="polite" aria-label="Agent conversation">
+                                <div id="agentStatusBanner" class="agent-status-banner success" style="display:none;">
+                                    <span class="status-icon">&#x2713;</span>
+                                    <span id="agentStatusText">Design complete</span>
+                                </div>
+                                <div class="conv-empty" id="convEmpty">
+                                    <div class="agent-avatar-lg">
+                                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                            <path d="M10 2L12.5 7.5L18 10L12.5 12.5L10 18L7.5 12.5L2 10L7.5 7.5L10 2Z" fill="currentColor" opacity="0.6"/>
+                                        </svg>
+                                    </div>
+                                    <div class="empty-title">How can I help you?</div>
+                                    <div class="empty-sub">Ask me to design a circuit, find components, or generate a PCB layout.</div>
+                                    <div class="suggestion-chips" id="suggestionChips">
+                                        <button class="chip" data-prompt="Design a 3.3V USB power supply with LED indicator">3.3V USB power supply</button>
+                                        <button class="chip" data-prompt="ESP32 with button and status LED">ESP32 with button & LED</button>
+                                        <button class="chip" data-prompt="Temperature sensor with ADC and display">Temperature sensor</button>
+                                        <button class="chip" data-prompt="Battery charger with status LED">Battery charger</button>
+                                        <button class="chip" data-prompt="Motor driver circuit with ESP32">Motor driver</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="agent-composer" role="form" aria-label="Message input">
+                                <div class="command-palette hidden" id="commandPalette">
+                                    <div class="command-palette-header">
+                                        <span class="command-palette-title">Commands</span>
+                                        <span class="command-palette-hint">ESC to close</span>
+                                    </div>
+                                    <div class="command-palette-list" id="commandPaletteList"></div>
+                                </div>
+                                <textarea id="agentPrompt" placeholder="Type / for commands, or describe your design..." rows="1"></textarea>
+                                <button id="agentBtn" class="send-btn" disabled>
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                        <path d="M1 8L15 1L10 15L7 9L1 8Z" fill="currentColor"/>
+                                    </svg>
+                                </button>
                             </div>
                         </div>
                     </div>
-                    <div id="pcbToolbar" class="pcb-toolbar hidden" aria-label="PCB tools">
-                        <div class="pcb-tool-group" role="group" aria-label="PCB interaction tools">
-                            <button id="pcbPanToolBtn" class="pcb-tool-chip active" type="button" title="Pan board (H)" data-shortcut="H">Pan</button>
-                            <button id="pcbSelectToolBtn" class="pcb-tool-chip" type="button" title="Select and move components (S)" data-shortcut="S">Select</button>
-                            <button id="pcbRouteToolBtn" class="pcb-tool-chip" type="button" title="Route traces (X)" data-shortcut="X">Route</button>
-                            <button id="pcbViaToolBtn" class="pcb-tool-chip" type="button" title="Place vias (V)" data-shortcut="V">Via</button>
-                            <button id="pcbOutlineToolBtn" class="pcb-tool-chip" type="button" title="Draw board outline (O)" data-shortcut="O">Outline</button>
+
+                    <!-- Chat expand strip (visible when chat is collapsed) -->
+                    <div class="chat-expand-strip" id="chatExpand" title="Show AI Co-Pilot">
+                        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                            <polyline points="5,3 9,7 5,11"/>
+                        </svg>
+                    </div>
+                    <div class="canvas-divider" id="canvasDivider"></div>
+
+                    <!-- Canvas Column (right half) -->
+                    <div class="canvas-column">
+                        <div class="canvas-header">
+                            <div class="canvas-header-row">
+                                <div class="tabs">
+                                    <button id="viewSchematicBtn" class="tab active">Schematic</button>
+                                    <button id="viewPCBBtn" class="tab">PCB</button>
+                                    <button id="view3DBtn" class="tab">3D View</button>
+                                    <button id="viewSymbolBtn" class="tab">Symbol</button>
+                                </div>
+                                <div class="canvas-controls">
+                                    <div class="zoom-group">
+                                        <button id="zoomOutBtn" title="Zoom Out">-</button>
+                                        <span id="zoomLevel">100%</span>
+                                        <button id="zoomInBtn" title="Zoom In">+</button>
+                                        <button id="zoomResetBtn" title="Fit to View">Fit</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="pcbToolbar" class="pcb-toolbar hidden" aria-label="PCB tools">
+                                <div class="pcb-tool-group" role="group" aria-label="PCB interaction tools">
+                                    <button id="pcbPanToolBtn" class="pcb-tool-chip active" type="button" title="Pan board (H)" data-shortcut="H">Pan</button>
+                                    <button id="pcbSelectToolBtn" class="pcb-tool-chip" type="button" title="Select and move components (S)" data-shortcut="S">Select</button>
+                                    <button id="pcbRouteToolBtn" class="pcb-tool-chip" type="button" title="Route traces (X)" data-shortcut="X">Route</button>
+                                    <button id="pcbViaToolBtn" class="pcb-tool-chip" type="button" title="Place vias (V)" data-shortcut="V">Via</button>
+                                    <button id="pcbOutlineToolBtn" class="pcb-tool-chip" type="button" title="Draw board outline (O)" data-shortcut="O">Outline</button>
+                                </div>
+                                <div class="pcb-tool-group" role="group" aria-label="PCB help">
+                                    <button id="pcbHelpBtn" class="pcb-tool-chip" type="button" title="Keyboard shortcuts (?)" data-shortcut="?">?</button>
+                                </div>
+                                <div class="pcb-tool-group" role="group" aria-label="PCB routing settings">
+                                    <label class="pcb-tool-field" for="pcbLayerSelect">
+                                        <span>Layer</span>
+                                        <select id="pcbLayerSelect">
+                                            <option value="F.Cu">F.Cu</option>
+                                            <option value="B.Cu">B.Cu</option>
+                                        </select>
+                                    </label>
+                                    <label class="pcb-tool-field" for="pcbWidthSelect">
+                                        <span>Width</span>
+                                        <select id="pcbWidthSelect">
+                                            <option value="0.2">0.20 mm</option>
+                                            <option value="0.254" selected>0.254 mm</option>
+                                            <option value="0.3">0.30 mm</option>
+                                            <option value="0.5">0.50 mm</option>
+                                            <option value="1">1.00 mm</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="pcb3dToolbar" class="pcb-toolbar hidden" aria-label="3D viewer tools">
+                                <div class="pcb-tool-group">
+                                    <button class="pcb-tool-chip" id="view3dTopBtn" title="Top View">Top</button>
+                                    <button class="pcb-tool-chip" id="view3dFrontBtn" title="Front View">Front</button>
+                                    <button class="pcb-tool-chip" id="view3dBottomBtn" title="Bottom View">Bottom</button>
+                                    <button class="pcb-tool-chip" id="view3dFitBtn" title="Fit to View">Fit</button>
+                                </div>
+                                <div class="pcb-tool-group">
+                                    <button class="pcb-tool-chip" id="view3dWireframeBtn" title="Toggle Wireframe">Wire</button>
+                                    <button class="pcb-tool-chip" id="view3dExplodeBtn" title="Explode View">Explode</button>
+                                </div>
+                                <div class="pcb-tool-group">
+                                    <label class="pcb-tool-field">
+                                        <span>Board</span>
+                                        <input type="range" id="view3dBoardOpacity" min="0" max="100" value="85" style="width:80px">
+                                    </label>
+                                </div>
+                            </div>
                         </div>
-                        <div class="pcb-tool-group" role="group" aria-label="PCB help">
-                            <button id="pcbHelpBtn" class="pcb-tool-chip" type="button" title="Keyboard shortcuts (?)" data-shortcut="?">?</button>
+                        <div class="canvas-viewport" id="canvasViewport">
+                            <!-- Schematic Floating Toolbar -->
+                            <div id="schematicToolbar" class="schematic-toolbar">
+                                <button class="sch-tool active" data-tool="select" title="Select (V)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 4l6 12 2-5 5-2z"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="wire" title="Wire (W)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 10h6l2-4 2 8 2-4h4"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="bus" title="Bus (B)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h14"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="component" title="Component (C)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="5" width="10" height="10" rx="1"/><path d="M10 2v3M10 15v3M2 10h3M15 10h3"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="label" title="Net Label (L)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 6h6l2 4-2 4H3l2-4z"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="junction" title="Junction (J)">
+                                    <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3" fill="currentColor"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="noconnect" title="No Connect (X)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M7 7l6 6M13 7l-6 6"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="text" title="Text (T)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 5h10M10 5v12"/></svg>
+                                </button>
+                                <button class="sch-tool" data-tool="delete" title="Delete (Del)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 5l10 10M15 5l-10 10"/></svg>
+                                </button>
+                                <span class="sch-tool-sep"></span>
+                                <button class="sch-tool" data-tool="add-image" title="Add Image Marker (I)">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="4" width="14" height="12" rx="1.5"/><circle cx="8" cy="9" r="1.5"/><path d="M3 14l4-4 3 3 3-2 4 3"/></svg>
+                                </button>
+                            </div>
+
+                            <div id="canvasContainer"></div>
+                            <canvas id="pcbCanvas" style="display:none"></canvas>
+                            <canvas id="symbolCanvas" style="display:none"></canvas>
+                            <div id="view3DContainer" style="display:none;width:100%;height:100%"></div>
+                            <div id="tscircuit-container" style="display:none;width:100%;height:100%"></div>
+                            <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
+                            <div id="completenessBadge" class="completeness-badge hidden"></div>
+                            
+                            <!-- PCB Upload Overlay -->
+                            <div id="pcbUploadArea" class="pcb-upload-overlay hidden">
+                                <div class="pcb-upload-content">
+                                    <div class="pcb-upload-icon">📋</div>
+                                    <p>Drop a <code>.kicad_pcb</code> file here</p>
+                                    <p class="pcb-upload-sub">or click to browse</p>
+                                    <input type="file" id="pcbFileInput" accept=".kicad_pcb" hidden>
+                                </div>
+                            </div>
+
+                            <!-- Floating Route Input -->
+                            <div class="floating-route-input" id="floatingRouteInput">
+                                <div class="route-input-header">
+                                    <span class="route-input-label">Routing Constraints</span>
+                                    <button class="route-input-toggle" id="routeInputToggle" title="Toggle routing input">&#x2212;</button>
+                                </div>
+                                <input type="text" id="routePrompt" placeholder="e.g. connect VCC to 3.3V" autocomplete="off">
+                            </div>
+
+                            <!-- Floating PCB Routing HUD -->
+                            <div id="pcbFloatingHud" class="pcb-floating-hud hidden">
+                                <div class="hud-item hud-layer-item">
+                                    <button id="hudLayerBtn" class="hud-btn hud-layer-btn layer-fcu" type="button" title="Click to toggle copper layer (F.Cu / B.Cu)">
+                                        <span class="hud-layer-dot"></span>
+                                        <span id="hudLayerText">F.Cu (Top)</span>
+                                    </button>
+                                </div>
+                                <div class="hud-divider"></div>
+                                <div class="hud-item hud-width-item">
+                                    <span class="hud-label">Width</span>
+                                    <div class="hud-preset-chips" id="hudWidthChips">
+                                        <button class="hud-chip" type="button" data-width="0.15">0.15</button>
+                                        <button class="hud-chip active" type="button" data-width="0.254">0.25</button>
+                                        <button class="hud-chip" type="button" data-width="0.5">0.50</button>
+                                        <button class="hud-chip" type="button" data-width="1.0">1.00</button>
+                                    </div>
+                                </div>
+                                <div class="hud-divider"></div>
+                                <div class="hud-item hud-angle-item">
+                                    <button id="hudAngleBtn" class="hud-btn" type="button" title="Click or press 'A' to cycle angle mode (45° / 90° / Free)">
+                                        <span id="hudAngleText">45° Octagonal</span>
+                                    </button>
+                                </div>
+                                <div class="hud-divider"></div>
+                                <div class="hud-item hud-posture-item">
+                                    <button id="hudPostureBtn" class="hud-btn" type="button" title="Click or press Spacebar to toggle posture (H/V vs Diag)">
+                                        <span id="hudPostureText">H/V First</span>
+                                    </button>
+                                </div>
+                                <div class="hud-divider"></div>
+                                <div class="hud-item hud-status-item">
+                                    <span id="hudLiveNetBadge" class="hud-net-badge">Ready</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="pcb-tool-group" role="group" aria-label="PCB routing settings">
-                            <label class="pcb-tool-field" for="pcbLayerSelect">
-                                <span>Layer</span>
-                                <select id="pcbLayerSelect">
-                                    <option value="F.Cu">F.Cu</option>
-                                    <option value="B.Cu">B.Cu</option>
-                                </select>
-                            </label>
-                            <label class="pcb-tool-field" for="pcbWidthSelect">
-                                <span>Width</span>
-                                <select id="pcbWidthSelect">
-                                    <option value="0.2">0.20 mm</option>
-                                    <option value="0.254" selected>0.254 mm</option>
-                                    <option value="0.3">0.30 mm</option>
-                                    <option value="0.5">0.50 mm</option>
-                                    <option value="1">1.00 mm</option>
-                                </select>
-                            </label>
-                        </div>
+
+                        <footer class="eda-status-bar">
+                            <div class="status-left">
+                                <span class="status-item status-drc" id="statusDrc" title="DRC errors">DRC: 0</span>
+                                <span class="status-item status-erc" id="statusErc" title="ERC warnings">ERC: 0</span>
+                                <span class="status-item" id="statusNets">Nets: 0</span>
+                                <span class="status-item" id="componentCountStatus">Components: 0</span>
+                            </div>
+                            <div class="status-center">
+                                <span class="status-item" id="coordDisplay">X: 0.00 Y: 0.00</span>
+                            </div>
+                            <div class="status-right">
+                                <span class="status-item" id="statusLayer">Layer: Top</span>
+                                <span class="status-item" id="zoomStatus">Zoom: 100%</span>
+                                <span class="status-item" id="viewModeStatus">Schematic</span>
+                            </div>
+                        </footer>
                     </div>
                 </div>
-                
-                <div class="canvas-viewport">
-                    <div id="canvasContainer"></div>
-                    <canvas id="pcbCanvas" style="display:none"></canvas>
-                    <canvas id="symbolCanvas" style="display:none"></canvas>
-                    <div id="tscircuit-container" style="display:none;width:100%;height:100%"></div>
-                    <div id="modeIndicator" class="mode-indicator hidden">SCHEMATIC</div>
-                    <div id="completenessBadge" class="completeness-badge hidden"></div>
-                    
-                    <!-- PCB Upload Overlay (hidden by default, shown in PCB View tab) -->
-                    <div id="pcbUploadArea" class="pcb-upload-overlay hidden">
-                        <div class="pcb-upload-content">
-                            <div class="pcb-upload-icon">📋</div>
-                            <p>Drop a <code>.kicad_pcb</code> file here</p>
-                            <p class="pcb-upload-sub">or click to browse</p>
-                            <input type="file" id="pcbFileInput" accept=".kicad_pcb" hidden>
-                        </div>
-                    </div>
-
-                    <!-- Contextual Route Input (Floating at bottom of canvas) -->
-                    <div class="floating-route-input">
-                        <input type="text" id="routePrompt" placeholder="Routing constraints (e.g. 'connect VCC to 3.3V')..." autocomplete="off">
-                    </div>
-                </div>
-
-                <footer class="eda-status-bar">
-                    <div class="status-left">
-                        <span class="status-item">Grid: 1.27mm</span>
-                        <span class="status-item" id="coordDisplay">X: 0.00 Y: 0.00</span>
-                    </div>
-                    <div class="status-right">
-                    </div>
-                </footer>
             </main>
 
             <div class="resize-handle" id="rightResize"></div>
-            <div class="collapse-strip right-expand" id="rightExpand" style="display:none" title="Expand right panel">
+            <div class="collapse-strip right-expand" id="rightExpand" title="Expand right panel">
                 <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                     <polyline points="9,3 5,7 9,11"/>
                 </svg>
             </div>
 
-            <!-- Right Sidebar: AI Design Co-Pilot -->
+            <!-- Right Sidebar: BOM, Memory, MCP Tools, Version History, Requirements -->
             <aside class="eda-sidebar right-panel" id="rightPanel">
-                <button class="sidebar-toggle right-toggle" id="rightToggle" title="Collapse panel">
-                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                        <polyline points="4,2 8,6 4,10"/>
-                    </svg>
-                </button>
-                <div class="panel-section agent-section">
-                    <div class="panel-header">
-                        <span class="panel-title">AI Design Co-Pilot</span>
-                        <span class="agent-status-text" id="agentStatus">Ready</span>
+                <!-- Right Activity Bar -->
+                <div class="activity-bar right-activity-bar" id="rightActivityBar">
+                    <button class="activity-bar-btn" id="rightToggle" title="Collapse right panel">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M13 4l4 6-4 6"/>
+                        </svg>
+                    </button>
+                    <div class="activity-bar-divider"></div>
+                    <button class="activity-bar-btn active" data-rpanel="bom" title="Bill of Materials">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="2" width="14" height="16" rx="2"/>
+                            <path d="M7 6h6M7 10h6M7 14h4"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-rpanel="memory" title="Agent Memory">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 4h12v12H4z"/>
+                            <path d="M8 2v4M12 2v4M4 8h12"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-rpanel="mcp" title="MCP Tools">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="10" cy="10" r="3"/>
+                            <path d="M10 1v3M10 16v3M1 10h3M16 10h3M3.5 3.5l2.1 2.1M14.4 14.4l2.1 2.1M3.5 16.5l2.1-2.1M14.4 5.6l2.1-2.1"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-rpanel="markers" title="Image Markers">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 2c-3 0-6 2.5-6 6 0 4 6 10 6 10s6-6 6-10c0-3.5-3-6-6-6z"/>
+                            <circle cx="10" cy="8" r="2" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-rpanel="versions" title="Version History">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="10" cy="10" r="8"/>
+                            <path d="M10 5v5l3 3"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-rpanel="requirements" title="Design Requirements">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="2" width="14" height="16" rx="2"/>
+                            <path d="M7 7l2 2 4-4"/>
+                            <path d="M7 12h6"/>
+                        </svg>
+                    </button>
+                    <button class="activity-bar-btn" data-rpanel="pipeline" id="pipelineActivityBtn" title="Pipeline Activity" aria-label="Pipeline Activity">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="5" cy="4" r="1.5"/>
+                            <circle cx="5" cy="10" r="1.5"/>
+                            <circle cx="5" cy="16" r="1.5"/>
+                            <path d="M8 4h8M8 10h8M8 16h8"/>
+                        </svg>
+                        <span class="pipeline-status-dot pipeline-status-dot--idle" id="pipelineStatusDot" aria-hidden="true"></span>
+                        <span class="sr-only" id="pipelineStatusText">Pipeline idle</span>
+                    </button>
+                </div>
+
+                <!-- Right Panel Content -->
+                <div class="panel-content right-panel-content" id="rightPanelContent">
+                    <!-- BOM Panel -->
+                    <div class="panel-view active" data-rview="bom">
+                        <div class="panel-header">
+                            <span class="panel-title">Bill of Materials</span>
+                            <button id="bomExportBtn" class="icon-btn" title="Export BOM">⤓</button>
+                        </div>
+                        <div id="bomTable" class="bom-table">
+                            <div class="bom-placeholder">No components placed yet</div>
+                        </div>
+                        <div id="bomSummary" class="bom-summary hidden">
+                            <span id="bomTotalParts">0 unique parts</span>
+                            <span id="bomTotalCost">—</span>
+                        </div>
                     </div>
-                    <div class="agent-workspace">
-                        <div class="agent-conversation" id="agentConversation">
-                            <div class="conv-empty" id="convEmpty">
-                                <div class="agent-avatar-lg">
-                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                        <path d="M10 2L12.5 7.5L18 10L12.5 12.5L10 18L7.5 12.5L2 10L7.5 7.5L10 2Z" fill="currentColor" opacity="0.6"/>
-                                    </svg>
-                                </div>
-                                <div class="empty-title">How can I help you?</div>
-                                <div class="empty-sub">Ask me to design a circuit, find components, or generate a PCB layout.</div>
-                                <div class="suggestion-chips" id="suggestionChips">
-                                    <button class="chip" data-prompt="Design a 3.3V USB power supply with LED indicator">3.3V USB power supply</button>
-                                    <button class="chip" data-prompt="ESP32 with button and status LED">ESP32 with button & LED</button>
-                                    <button class="chip" data-prompt="Temperature sensor with ADC and display">Temperature sensor</button>
-                                    <button class="chip" data-prompt="Battery charger with status LED">Battery charger</button>
-                                    <button class="chip" data-prompt="Motor driver circuit with ESP32">Motor driver</button>
+
+                    <!-- Memory Panel -->
+                    <div class="panel-view" data-rview="memory">
+                        <div class="panel-header">
+                            <span class="panel-title">Agent Memory</span>
+                        </div>
+                        <div class="memory-content">
+                            <div class="memory-section">
+                                <div class="memory-section-title">📌 Pinned Context</div>
+                                <div id="memoryPinned" class="memory-entries">
+                                    <div class="memory-empty">No pinned items yet</div>
                                 </div>
                             </div>
+                            <div class="memory-section">
+                                <div class="memory-section-title">📋 Recent Decisions</div>
+                                <div id="memoryDecisions" class="memory-entries">
+                                    <div class="memory-empty">No decisions recorded</div>
+                                </div>
+                            </div>
+                            <div class="memory-section">
+                                <div class="memory-section-title">📁 Design Notes</div>
+                                <textarea id="memoryNotes" class="memory-notes" placeholder="Add design notes..."></textarea>
+                            </div>
                         </div>
-                        <div class="agent-composer">
-                            <textarea id="agentPrompt" placeholder="Ask the AI Design Co-Pilot..." rows="1"></textarea>
-                            <button id="agentBtn" class="send-btn" disabled>
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                    <path d="M1 8L15 1L10 15L7 9L1 8Z" fill="currentColor"/>
-                                </svg>
-                            </button>
+                    </div>
+
+                    <!-- MCP Tools Panel -->
+                    <div class="panel-view" data-rview="mcp">
+                        <div class="panel-header">
+                            <span class="panel-title">MCP Tools</span>
+                        </div>
+                        <div id="mcpToolsList" class="mcp-tools-list">
+                            <div class="mcp-tool enabled">
+                                <span class="mcp-status">✅</span>
+                                <span class="mcp-name">Filesystem</span>
+                                <span class="mcp-desc">Read/write files</span>
+                            </div>
+                            <div class="mcp-tool enabled">
+                                <span class="mcp-status">✅</span>
+                                <span class="mcp-name">Shell</span>
+                                <span class="mcp-desc">Run commands</span>
+                            </div>
+                            <div class="mcp-tool enabled">
+                                <span class="mcp-status">✅</span>
+                                <span class="mcp-name">KiCad</span>
+                                <span class="mcp-desc">Open/save project</span>
+                            </div>
+                            <div class="mcp-tool enabled">
+                                <span class="mcp-status">✅</span>
+                                <span class="mcp-name">SPICE</span>
+                                <span class="mcp-desc">Run simulation</span>
+                            </div>
+                            <div class="mcp-tool enabled">
+                                <span class="mcp-status">✅</span>
+                                <span class="mcp-name">Datasheet</span>
+                                <span class="mcp-desc">Search/query</span>
+                            </div>
+                            <div class="mcp-tool enabled">
+                                <span class="mcp-status">✅</span>
+                                <span class="mcp-name">Library</span>
+                                <span class="mcp-desc">Manage components</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Markers Panel -->
+                    <div class="panel-view" data-rview="markers">
+                        <div class="panel-header">
+                            <span class="panel-title">Image Markers</span>
+                            <span id="markerCountBadge" class="marker-count-badge">0</span>
+                        </div>
+                        <div id="markerList" class="marker-list">
+                            <div class="marker-list-empty">No image markers placed.</div>
+                        </div>
+                    </div>
+
+                    <!-- Version History Panel -->
+                    <div class="panel-view" data-rview="versions">
+                        <div class="panel-header">
+                            <span class="panel-title">Version History</span>
+                        </div>
+                        <div id="versionList" class="version-list">
+                            <div class="version-empty">No versions yet. Versions are created automatically after each agent action.</div>
+                        </div>
+                    </div>
+
+                    <!-- Requirements Panel -->
+                    <div class="panel-view" data-rview="requirements">
+                        <div class="panel-header">
+                            <span class="panel-title">Design Requirements</span>
+                            <button id="reqEditBtn" class="icon-btn" title="Edit requirements">✏</button>
+                        </div>
+                        <div id="requirementsList" class="requirements-list">
+                            <div class="requirements-empty">No requirements defined. Click Edit to add design requirements.</div>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline Activity Panel -->
+                    <div class="panel-view" data-rview="pipeline" id="pipelinePanel">
+                        <div class="pipeline-header">
+                            <div class="pipeline-header-row">
+                                <span class="panel-title">Pipeline Activity</span>
+                                <div class="pipeline-header-actions">
+                                    <span class="pipeline-run-status" id="pipelineRunStatus" aria-live="polite">Idle</span>
+                                    <button class="icon-btn pipeline-compact-toggle" id="pipelineCompactToggle" type="button" title="Toggle compact rows" aria-pressed="false">
+                                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                                            <path d="M3 4h10M3 8h10M3 12h10"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="pipeline-progress-rail" id="pipelineProgressRail" aria-label="Pipeline phase progress"></div>
+                            <div class="pipeline-progress-meta">
+                                <span id="pipelinePhaseLabel">No active run</span>
+                                <span id="pipelineElapsed"></span>
+                            </div>
+                        </div>
+                        <div class="pipeline-phases" id="pipelinePhases">
+                            <div class="pipeline-empty">
+                                <span class="pipeline-empty-mark" aria-hidden="true"></span>
+                                <span>No pipeline run for this session.</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -235,24 +704,78 @@
     <!-- Scripts -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
-    <script src="/static/schematic.js?v=13"></script>
-    <script src="/static/renderer_legacy.js?v=11"></script>
-    <script src="/static/schematic_renderer.js?v=3"></script>
-    <script src="/static/pcb_view/constants.js?v=16"></script>
-    <script src="/static/pcb_view/state.js?v=16"></script>
-    <script src="/static/pcb_view/utils.js?v=16"></script>
-    <script src="/static/pcb_view/gl_math.js?v=16"></script>
-    <script src="/static/pcb_view/kicanvas_transform.js?v=1"></script>
-    <script src="/static/pcb_view/kicanvas_webgl_helpers.js?v=1"></script>
-    <script src="/static/pcb_view/kicanvas_webgl_vector.js?v=1"></script>
-    <script src="/static/pcb_view/kicanvas_webgl_renderer.js?v=1"></script>
-    <script src="/static/pcb_view/kicanvas_board_painter.js?v=1"></script>
-    <script src="/static/pcb_view/stroke-font-data.js?v=1"></script>
-    <script src="/static/pcb_view/stroke-font.js?v=1"></script>
-    <script src="/static/pcb_view/editor_webgl.js?v=16"></script>
-    <script src="/static/pcb_view/events.js?v=16"></script>
-    <script src="/static/tscircuit-bridge.js?v=1"></script>
-    <script src="/static/app.js?v=14"></script>
+
+    <!-- Bundled app scripts (build with: npm run build) -->
+    <script src="/static/app.bundle.js?v=47713b4ab8"></script>
+
+    <!-- Three.js + 3D Viewer (loaded lazily when 3D View tab is clicked) -->
+    <script>
+    window._load3DScripts = function() {
+        if (window._3dScriptsLoaded) return Promise.resolve();
+        window._3dScriptsLoaded = true;
+        const scripts = [
+            'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+            'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js',
+            'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/VRMLLoader.js',
+            '/static/app.bundle.3d.js?v=4f9b72fdad',
+        ];
+        let chain = Promise.resolve();
+        for (const src of scripts) {
+            chain = chain.then(() => new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.onload = resolve;
+                s.onerror = () => { console.warn('[3D] Failed to load:', src); resolve(); };
+                document.body.appendChild(s);
+            }));
+        }
+        return chain;
+    };
+    </script>
+
+    <!-- Context Menu (right-click on canvas) -->
+    <div id="contextMenu" class="context-menu hidden">
+        <button data-action="add-image">&#x1F4F7; Add Screenshot/Photo</button>
+        <button data-action="paste-image">&#x1F4CB; Paste from Clipboard</button>
+        <hr>
+        <button data-action="fit-view">&#x2B1A; Fit to View</button>
+    </div>
+
+    <!-- Marker Context Menu (right-click on marker) -->
+    <div id="markerContextMenu" class="context-menu hidden">
+        <button data-action="marker-toggle">&#x1F441; Show/Hide Image</button>
+        <button data-action="marker-inspect">&#x1F50D; Inspect</button>
+        <button data-action="marker-rename">&#x270F; Rename</button>
+        <button data-action="marker-resize">&#x2B1D; Resize</button>
+        <button data-action="marker-rotate">&#x1F504; Rotate</button>
+        <hr>
+        <button data-action="marker-delete" class="danger-btn">&#x1F5D1; Delete</button>
+    </div>
+
+    <!-- Image Preview Overlay (Marker-Aware Inspector) -->
+    <div id="imagePreviewOverlay" class="image-preview-overlay hidden">
+        <div class="image-preview-header">
+            <input id="imagePreviewLabel" class="inline-label-input" value="Image Marker" placeholder="Label...">
+            <span class="marker-number-badge" id="imagePreviewMarkerNum">0</span>
+            <div class="image-preview-actions">
+                <button id="imagePreviewDelete" class="danger-btn" title="Delete marker">&#x1F5D1; Delete</button>
+                <button id="imagePreviewClose" class="icon-btn" title="Close">&times;</button>
+            </div>
+        </div>
+        <div class="image-preview-body">
+            <img id="imagePreviewImg" src="" alt="Marker preview">
+        </div>
+        <div class="image-preview-controls">
+            <label>Width <input type="number" id="markerWidthInput" min="1" step="1" style="width:60px"> </label>
+            <label>Height <input type="number" id="markerHeightInput" min="1" step="1" style="width:60px"> </label>
+            <label>Scale <input type="number" id="markerScaleInput" min="0.1" step="0.1" style="width:60px"> </label>
+            <label>Rotate <input type="number" id="markerRotationInput" min="0" max="360" step="15" style="width:60px">°</label>
+        </div>
+    </div>
+
+    <!-- Hidden file input for image upload -->
+    <input type="file" id="imageFileInput" accept="image/*" style="display:none">
+
     <!-- Toast notifications -->
     <div id="toastContainer" class="toast-container"></div>
 </body>

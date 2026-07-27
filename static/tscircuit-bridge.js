@@ -71,11 +71,18 @@
 
   async function persistBoardFallback() {
     if (!window.pcbState || !window.pcbState.boardModel) return
-    await fetch(_sessionUrl("/api/save_board_model"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ board_model: window.pcbState.boardModel }),
-    })
+    try {
+      const res = await fetch(_sessionUrl("/api/save_board_model"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ board_model: window.pcbState.boardModel }),
+      })
+      if (!res.ok) {
+        console.warn("[TscircuitViewer] persistBoardFallback failed:", res.status, await res.text().catch(() => ''));
+      }
+    } catch (err) {
+      console.warn("[TscircuitViewer] persistBoardFallback error:", err);
+    }
   }
 
   function refreshBoardRatsnest() {

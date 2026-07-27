@@ -374,8 +374,11 @@ class SchematicRenderer {
         this._panOffsetStart = { x: 0, y: 0 };
         this._selectedComp = null;
         this._selectedWire = null;
+        this._selectedImageMarker = null;
+        this._hoveredImageMarker = null;
         this._pinHitTargets = [];
         this._netLabelHitTargets = [];
+        this._imageMarkerHitTargets = [];
         this._wireDraft = null;
         this._hoverPin = null;
         this._activePin = null;
@@ -388,6 +391,7 @@ class SchematicRenderer {
         this._interactionAbort = new AbortController();
         this._gridDirty = true;
         this._gridRaf = 0;
+        this._overlayRaf = null;
 
         const container = document.getElementById(containerId);
         const parent = container.parentElement;
@@ -412,6 +416,7 @@ class SchematicRenderer {
         this._gridLayer = new PIXI.Container();
         this._wireLayer = new PIXI.Container();
         this._symbolLayer = new PIXI.Container();
+        this._imageMarkerLayer = new PIXI.Container();
         this._pinLayer = new PIXI.Container();
         this._textLayer = new PIXI.Container();
         this._overlayLayer = new PIXI.Container();
@@ -422,6 +427,7 @@ class SchematicRenderer {
             this._gridLayer,
             this._wireLayer,
             this._symbolLayer,
+            this._imageMarkerLayer,
             this._pinLayer,
             this._textLayer,
             this._overlayLayer
@@ -464,6 +470,10 @@ class SchematicRenderer {
             cancelAnimationFrame(this._gridRaf);
             this._gridRaf = 0;
         }
+        if (this._overlayRaf) {
+            cancelAnimationFrame(this._overlayRaf);
+            this._overlayRaf = null;
+        }
         if (this._resizeObserver) {
             try { this._resizeObserver.disconnect(); } catch (_) {}
             this._resizeObserver = null;
@@ -492,10 +502,12 @@ class SchematicRenderer {
         this._clearLayer(this._gridLayer);
         this._clearLayer(this._wireLayer);
         this._clearLayer(this._symbolLayer);
+        this._clearLayer(this._imageMarkerLayer);
         this._clearLayer(this._pinLayer);
         this._clearLayer(this._textLayer);
         this._clearLayer(this._overlayLayer);
         this._pinHitTargets = [];
+        this._imageMarkerHitTargets = [];
         this._wireDraft = null;
         this._hoverPin = null;
 
@@ -505,6 +517,7 @@ class SchematicRenderer {
         this._renderWires();
         this._renderJunctions();
         this._renderPowerLabels();
+        this._renderImageMarkers();
 
         const globalPinNames = [];
         for (const comp of this._schematic.components) {
@@ -922,15 +935,20 @@ class SchematicRenderer {
             if (!wire.path || wire.path.length < 2) continue;
             const srcRef = (wire.source || '').split(':')[0];
             const tgtRef = (wire.target || '').split(':')[0];
-            const offFirst = srcRef === this._dragCompRef ? this._dragDelta : { dx: 0, dy: 0 };
-            const offLast  = tgtRef === this._dragCompRef ? this._dragDelta : { dx: 0, dy: 0 };
-            g.moveTo(wire.path[0].x + offFirst.dx, wire.path[0].y + offFirst.dy);
-            for (let i = 1; i < wire.path.length; i++) {
-                const dx = Math.abs(wire.path[i].x - wire.path[i - 1].x);
-                const dy = Math.abs(wire.path[i].y - wire.path[i - 1].y);
+            const srcOff = srcRef === this._dragCompRef ? this._dragDelta : { dx: 0, dy: 0 };
+            const tgtOff = tgtRef === this._dragCompRef ? this._dragDelta : { dx: 0, dy: 0 };
+            const path = wire.path;
+            const n = path.length;
+
+            g.moveTo(path[0].x + srcOff.dx, path[0].y + srcOff.dy);
+            for (let i = 1; i < n; i++) {
+                const dx = Math.abs(path[i].x - path[i - 1].x);
+                const dy = Math.abs(path[i].y - path[i - 1].y);
                 if (dx > 0.001 && dy > 0.001) continue;
-                const off = i === wire.path.length - 1 ? offLast : { dx: 0, dy: 0 };
-                g.lineTo(wire.path[i].x + off.dx, wire.path[i].y + off.dy);
+                let off = { dx: 0, dy: 0 };
+                if (i < 2 && srcRef === this._dragCompRef) off = srcOff;
+                else if (i >= n - 2 && tgtRef === this._dragCompRef) off = tgtOff;
+                g.lineTo(path[i].x + off.dx, path[i].y + off.dy);
             }
         }
 
@@ -1146,10 +1164,349 @@ class SchematicRenderer {
         }
     }
 
+    // ── Image Markers ──────────────────────────────────────────────────────
+
+    _renderImageMarkers() {
+        if (!this._schematic || !this._schematic.imageMarkers) return;
+        for (const marker of this._schematic.imageMarkers) {
+            if (!marker.imageDataUrl) continue;
+            const isSelected = this._selectedImageMarker && this._selectedImageMarker.id === marker.id;
+            const isHovered = this._hoveredImageMarker && this._hoveredImageMarker.id === marker.id;
+            const isRevealed = !!marker._imageRevealed;
+            const container = new PIXI.Container();
+            container.position.set(marker.x, -marker.y);
+
+            // --- Image (only when revealed, hangs below the pin) ---
+            if (isRevealed) {
+                let imgW = marker.width * marker.scale;
+                let imgH = marker.height * marker.scale;
+                try {
+                    const texture = PIXI.Texture.from(marker.imageDataUrl);
+                    const sprite = new PIXI.Sprite(texture);
+                    sprite.anchor.set(0.5, 0);
+                    sprite.width = imgW;
+                    sprite.height = imgH;
+                    sprite.rotation = marker.rotation;
+                    sprite.position.set(0, 5);
+                    container.addChild(sprite);
+
+                    // Background card
+                    const bg = new PIXI.Graphics();
+                    bg.beginFill(0x0f172a, 0.92);
+                    bg.lineStyle(0.2, 0x3dff9a, 0.25);
+                    bg.drawRoundedRect(-imgW / 2 - 1, 4.5, imgW + 2, imgH + 2, 0.8);
+                    bg.endFill();
+                    container.addChildAt(bg, 0);
+
+                    if (isSelected) {
+                        const outline = new PIXI.Graphics();
+                        outline.lineStyle(0.3, SCH_COLORS.selection, 0.9);
+                        outline.drawRoundedRect(-imgW / 2 - 1.5, 4, imgW + 3, imgH + 3, 1);
+                        container.addChild(outline);
+                    }
+
+                    // Leader line
+                    const leader = new PIXI.Graphics();
+                    leader.lineStyle(0.12, 0x3dff9a, 0.35);
+                    leader.moveTo(0, 4);
+                    leader.lineTo(0, 4.7);
+                    container.addChild(leader);
+
+                    // ── Image Card Toolbar ──────────────────────────────
+                    if (this._zoom > 0.8) {
+                        const tbScale = Math.min(1, Math.max(0.5, this._zoom / 2));
+                        const tbY = 5 + imgH + 3.5;
+                        const toolBar = new PIXI.Container();
+                        toolBar.position.set(0, tbY);
+
+                        const btnSize = 1.8;
+                        const btnGap = 0.5;
+                        const nBtns = 3;
+                        const tbW = nBtns * btnSize + (nBtns - 1) * btnGap;
+                        const tBg = new PIXI.Graphics();
+                        tBg.beginFill(0x0f172a, 0.88);
+                        tBg.lineStyle(0.15, 0x3dff9a, 0.2);
+                        tBg.drawRoundedRect(-tbW / 2 - 0.5, -btnSize / 2 - 0.3, tbW + 1, btnSize + 0.6, 0.6);
+                        tBg.endFill();
+                        toolBar.addChild(tBg);
+
+                        for (let i = 0; i < nBtns; i++) {
+                            const bx = -tbW / 2 + i * (btnSize + btnGap) + btnSize / 2;
+                            const btn = new PIXI.Graphics();
+                            btn.beginFill(0x1e293b, 0.9);
+                            btn.lineStyle(0.1, 0x3dff9a, 0.15);
+                            btn.drawRoundedRect(-btnSize / 2, -btnSize / 2, btnSize, btnSize, 0.4);
+                            btn.endFill();
+                            btn.position.set(bx, 0);
+                            btn.eventMode = 'static';
+                            btn.cursor = 'pointer';
+                            const action = i === 0 ? 'inspect' : i === 1 ? 'toggle' : 'delete';
+                            btn._markerAction = action;
+                            btn.on('pointerdown', (ev) => {
+                                ev.stopPropagation();
+                                if (this._callbacks.onImageMarkerToolbarAction) {
+                                    this._callbacks.onImageMarkerToolbarAction(marker, action);
+                                }
+                            });
+                            toolBar.addChild(btn);
+
+                            // Icon label
+                            try {
+                                const iconLabels = { inspect: '\u{1F50D}', toggle: '\u{1F441}', delete: '\u{1F5D1}' };
+                                const icon = new PIXI.Text(iconLabels[action] || '', {
+                                    fontSize: 9,
+                                    fill: 0x94a3b8,
+                                    fontFamily: 'system-ui, sans-serif',
+                                });
+                                icon.anchor.set(0.5);
+                                icon.position.set(bx, 0);
+                                toolBar.addChild(icon);
+                            } catch (err) { /* ignore */ }
+                        }
+                        container.addChild(toolBar);
+                    }
+                } catch (err) {
+                    console.warn('ImageMarker sprite render failed:', err);
+                }
+            }
+
+            // --- SVG-based map pin (crisp at any zoom) ---
+            const pinTex = this._getMarkerPinTexture(isSelected, isRevealed, isHovered);
+            const pinSprite = new PIXI.Sprite(pinTex);
+            pinSprite.anchor.set(0.5, 1);
+            const pinScale = 4 / 80;
+            pinSprite.scale.set(pinScale, pinScale);
+            pinSprite.position.set(0, 0);
+
+            // Hover glow ring (behind pin)
+            if (isHovered) {
+                const glow = new PIXI.Graphics();
+                glow.beginFill(0x3dff9a, 0.06);
+                glow.drawCircle(0, -3.2, 4.5);
+                glow.endFill();
+                glow.beginFill(0x3dff9a, 0.03);
+                glow.drawCircle(0, -3.2, 6);
+                glow.endFill();
+                container.addChildAt(glow, 0);
+            }
+
+            container.addChild(pinSprite);
+
+            // --- Numbered badge ---
+            const badgeR = 1.2;
+            const badgeX = 2.0;
+            const badgeY = -4.5;
+            const badge = new PIXI.Graphics();
+            badge.beginFill(isSelected ? 0x3dff9a : (isHovered ? 0xf59e0b : 0x0f172a), 0.95);
+            badge.lineStyle(0.2, isSelected ? 0x3dff9a : (isHovered ? 0x3dff9a : 0xf59e0b), 0.8);
+            badge.drawCircle(badgeX, badgeY, badgeR);
+            badge.endFill();
+            container.addChild(badge);
+
+            try {
+                const badgeText = new PIXI.Text(String(marker.markerNumber), {
+                    fontSize: 14,
+                    fill: isSelected ? 0x0f172a : (isHovered ? 0x3dff9a : 0xf59e0b),
+                    fontFamily: 'system-ui, -apple-system, sans-serif',
+                    fontWeight: '700',
+                });
+                badgeText.anchor.set(0.5);
+                badgeText.position.set(badgeX, badgeY);
+                container.addChild(badgeText);
+            } catch (err) {
+                console.warn('ImageMarker badge text render failed:', err);
+            }
+
+            // --- Hint text ---
+            if (isHovered && !isRevealed) {
+                try {
+                    const hint = new PIXI.Text('Show image', {
+                        fontSize: 10,
+                        fill: 0x3dff9a,
+                        fontFamily: 'system-ui, -apple-system, sans-serif',
+                    });
+                    hint.anchor.set(0.5, 0);
+                    hint.position.set(0, -3.5);
+                    container.addChild(hint);
+                } catch (err) { /* ignore */ }
+            }
+
+            // --- Interaction (hover only; click handled in _handleClick) ---
+            container.eventMode = 'static';
+            container.cursor = 'pointer';
+
+            container.on('pointerover', () => {
+                this._hoveredImageMarker = marker;
+                this._partialRedraw();
+            });
+
+            container.on('pointerout', () => {
+                if (this._hoveredImageMarker && this._hoveredImageMarker.id === marker.id) {
+                    this._hoveredImageMarker = null;
+                    this._partialRedraw();
+                }
+            });
+
+            this._imageMarkerLayer.addChild(container);
+            this._imageMarkerHitTargets.push({ marker, container });
+        }
+    }
+
+    /**
+     * Generate a crisp SVG-based map pin texture, cached per color variant.
+     * Renders to an offscreen canvas at 4x resolution for sharp edges.
+     */
+    _getMarkerPinTexture(isSelected, isRevealed, isHovered) {
+        const cacheKey = `${isSelected ? 'sel' : isRevealed ? 'rev' : isHovered ? 'hov' : 'def'}`;
+        if (!this._pinTextureCache) this._pinTextureCache = {};
+        if (this._pinTextureCache[cacheKey]) return this._pinTextureCache[cacheKey];
+
+        const w = 64, h = 80;
+        const canvas = document.createElement('canvas');
+        canvas.width = w * 4;
+        canvas.height = h * 4;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(4, 4);
+
+        // Pin colors
+        let fillColor, strokeColor, innerColor;
+        if (isSelected) {
+            fillColor = '#3dff9a';
+            strokeColor = '#22c55e';
+            innerColor = '#0f172a';
+        } else if (isRevealed) {
+            fillColor = '#22c55e';
+            strokeColor = '#16a34a';
+            innerColor = '#ffffff';
+        } else if (isHovered) {
+            fillColor = '#fbbf24';
+            strokeColor = '#f59e0b';
+            innerColor = '#1e293b';
+        } else {
+            fillColor = '#f59e0b';
+            strokeColor = '#d97706';
+            innerColor = '#ffffff';
+        }
+
+        // Drop shadow
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 2;
+
+        // Teardrop pin path
+        ctx.beginPath();
+        ctx.moveTo(32, 76);  // tip
+        ctx.bezierCurveTo(32, 76, 12, 50, 12, 32);
+        ctx.bezierCurveTo(12, 14.3, 20.9, 6, 32, 6);
+        ctx.bezierCurveTo(43.1, 6, 52, 14.3, 52, 32);
+        ctx.bezierCurveTo(52, 50, 32, 76, 32, 76);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+
+        // Remove shadow for inner details
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        // Stroke outline
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Inner white circle
+        ctx.beginPath();
+        ctx.arc(32, 30, 11, 0, Math.PI * 2);
+        ctx.fillStyle = innerColor;
+        ctx.fill();
+
+        // Center dot
+        ctx.beginPath();
+        ctx.arc(32, 30, 5, 0, Math.PI * 2);
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+
+        // Glossy highlight on top
+        const grad = ctx.createLinearGradient(20, 8, 44, 36);
+        grad.addColorStop(0, 'rgba(255,255,255,0.3)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.beginPath();
+        ctx.moveTo(32, 8);
+        ctx.bezierCurveTo(22, 8, 14, 16, 14, 28);
+        ctx.bezierCurveTo(14, 20, 22, 12, 32, 12);
+        ctx.bezierCurveTo(42, 12, 50, 20, 50, 28);
+        ctx.bezierCurveTo(50, 16, 42, 8, 32, 8);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        const texture = PIXI.Texture.from(canvas);
+        this._pinTextureCache[cacheKey] = texture;
+        return texture;
+    }
+
+    hitTestImageMarker(wx, wy) {
+        for (const t of this._imageMarkerHitTargets) {
+            const m = t.marker;
+            const isRevealed = !!m._imageRevealed;
+            const pinR = 1.6;
+
+            // Hit test pin body (circle centered above the tip)
+            const bodyCy = m.y - pinR; // pin body center is pinR units ABOVE the tip in world coords
+            const bodyDist = Math.sqrt((wx - m.x) ** 2 + (wy - bodyCy) ** 2);
+            if (bodyDist <= pinR + 0.5) return m;
+
+            // Hit test pin tip (small area at the location point)
+            const tipDist = Math.sqrt((wx - m.x) ** 2 + (wy - m.y) ** 2);
+            if (tipDist <= 1.5) return m;
+
+            // If revealed, also hit test the image area
+            if (isRevealed) {
+                const hs = m.width * m.scale / 2;
+                const hv = m.height * m.scale / 2;
+                // Image hangs below the pin (starting at y + 4.5 in container space = y - 4.5 in world)
+                if (wx >= m.x - hs && wx <= m.x + hs && wy >= m.y - 4.5 && wy <= m.y - 4.5 + hv) {
+                    return m;
+                }
+            }
+        }
+        return null;
+    }
+
+    selectImageMarker(marker) {
+        this._selectedImageMarker = marker;
+        this._selectedComp = null;
+        this._pinTextureCache = {}; // Invalidate pin textures (selection changed)
+        this._partialRedraw();
+        if (this._callbacks.onImageMarkerSelect) {
+            this._callbacks.onImageMarkerSelect(marker);
+        }
+    }
+
+    clearImageMarkerHover() {
+        this._hoveredImageMarker = null;
+    }
+
+    _toggleMarkerReveal(marker) {
+        marker._imageRevealed = !marker._imageRevealed;
+        this._partialRedraw();
+        if (this._callbacks.onImageMarkerToggle) {
+            this._callbacks.onImageMarkerToggle(marker);
+        }
+    }
+
+    clearImageMarkerSelection() {
+        this._selectedImageMarker = null;
+        this._hoveredImageMarker = null;
+        this._pinTextureCache = {};
+        this._partialRedraw();
+    }
+
     // ── Selection ─────────────────────────────────────────────────────────────
 
     selectComponent(comp) {
         this._selectedComp = comp;
+        this._selectedImageMarker = null;
         this._clearLayer(this._overlayLayer);
         this._renderSelection();
         if (this._callbacks.onSelect) {
@@ -1159,7 +1516,9 @@ class SchematicRenderer {
 
     clearSelection() {
         this._selectedComp = null;
+        this._selectedImageMarker = null;
         this._clearLayer(this._overlayLayer);
+        this._partialRedraw();
         if (this._callbacks.onSelect) {
             this._callbacks.onSelect(null);
         }
@@ -1246,7 +1605,7 @@ class SchematicRenderer {
 
     setWireDraft(startPin, worldPoint) {
         this._wireDraft = startPin && worldPoint ? { startPin, worldPoint } : null;
-        this._renderInteractionOverlay();
+        this._scheduleInteractionOverlay();
     }
 
     clearWireDraft() {
@@ -1267,7 +1626,15 @@ class SchematicRenderer {
     }
 
     refresh() {
+        this._dragCompRef = null;
+        this._dragDelta = { dx: 0, dy: 0 };
         this._fullRedraw();
+    }
+
+    clearDragState() {
+        this._dragCompRef = null;
+        this._dragDelta = { dx: 0, dy: 0 };
+        this._partialRedraw();
     }
 
     // ── Camera ───────────────────────────────────────────────────────────────
@@ -1309,6 +1676,15 @@ class SchematicRenderer {
         if (this._callbacks.onZoomChange) this._callbacks.onZoomChange(this._zoom);
     }
 
+    zoomTo(worldX, worldY, targetZoom) {
+        this._contentCenter.x = worldX;
+        this._contentCenter.y = worldY;
+        this._panOffset = { x: 0, y: 0 };
+        this._zoom = targetZoom || Math.max(this._zoom, 4);
+        this._applyCamera();
+        if (this._callbacks.onZoomChange) this._callbacks.onZoomChange(this._zoom);
+    }
+
     _applyCamera() {
         const s = this._zoom;
         this._world.scale.set(s, -s);
@@ -1337,6 +1713,12 @@ class SchematicRenderer {
             x: wx * s + p.x,
             y: -wy * s + p.y,
         };
+    }
+
+    getCanvasCenterWorld() {
+        const cx = this._app.screen.width / 2;
+        const cy = this._app.screen.height / 2;
+        return this.screenToWorld(cx, cy) || { x: 0, y: 0 };
     }
 
     // ── Interaction ──────────────────────────────────────────────────────────
@@ -1378,15 +1760,18 @@ class SchematicRenderer {
             }
         }, { signal: this._interactionAbort.signal });
 
-        // Left-click: select, drag-move component, or pan on empty space
+        // Left-click: select, drag-move component/marker, or pan on empty space
         let _leftStart = null;
         let _dragComp = null;
+        let _dragMarker = null;
+        let _dragStartPos = null;  // Original position before drag (avoids polluting marker/comp objects)
         let _leftPanning = false;
 
         canvas.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
                 _leftStart = { x: e.clientX, y: e.clientY };
                 _dragComp = null;
+                _dragMarker = null;
                 _leftPanning = false;
                 if (this._wireDraft) return;
                 const rect = canvas.getBoundingClientRect();
@@ -1396,12 +1781,18 @@ class SchematicRenderer {
                 if (world) {
                     const pin = this.hitTestPin(world.x, world.y);
                     if (!pin) {
+                        const marker = this.hitTestImageMarker(world.x, world.y);
+                        if (marker) {
+                            _dragMarker = marker;
+                            this.selectImageMarker(marker);
+                            _dragStartPos = { x: marker.x, y: marker.y };
+                            return;
+                        }
                         const comp = this.hitTest(world.x, world.y);
                         if (comp) {
                             _dragComp = comp;
                             this.selectComponent(comp);
-                            comp._dragOrigX = comp.x;
-                            comp._dragOrigY = comp.y;
+                            _dragStartPos = { x: comp.x, y: comp.y };
                         }
                     }
                 }
@@ -1422,11 +1813,21 @@ class SchematicRenderer {
                 const dx = e.clientX - _leftStart.x;
                 const dy = e.clientY - _leftStart.y;
 
+                if (_dragMarker) {
+                    const newX = _dragStartPos.x + dx / this._zoom;
+                    const newY = _dragStartPos.y - dy / this._zoom;
+                    this._dragDelta = { dx: newX - _dragStartPos.x, dy: newY - _dragStartPos.y };
+                    _dragMarker.x = newX;
+                    _dragMarker.y = newY;
+                    this._partialRedraw();
+                    return;
+                }
+
                 if (_dragComp) {
-                    _dragComp.x = _dragComp._dragOrigX + dx / this._zoom;
-                    _dragComp.y = _dragComp._dragOrigY - dy / this._zoom;
-                    this._dragDelta.dx = _dragComp.x - _dragComp._dragOrigX;
-                    this._dragDelta.dy = _dragComp.y - _dragComp._dragOrigY;
+                    _dragComp.x = _dragStartPos.x + dx / this._zoom;
+                    _dragComp.y = _dragStartPos.y - dy / this._zoom;
+                    this._dragDelta.dx = _dragComp.x - _dragStartPos.x;
+                    this._dragDelta.dy = _dragComp.y - _dragStartPos.y;
                     this._dragCompRef = _dragComp.refDesignator;
                     this._partialRedraw();
                     return;
@@ -1457,14 +1858,14 @@ class SchematicRenderer {
                     const hoverKey = hoverPin ? hoverPin.key : '';
                     if ((this._hoverPin ? this._hoverPin.key : '') !== hoverKey) {
                         this._hoverPin = hoverPin;
-                        this._renderInteractionOverlay();
+                        this._scheduleInteractionOverlay();
                     }
                     // Net label hover
                     const hoverNl = this.hitTestNetLabel(world.x, world.y);
                     const hoverNlId = hoverNl ? hoverNl.id : '';
                     if ((this._hoverNetLabel ? this._hoverNetLabel.id : '') !== hoverNlId) {
                         this._hoverNetLabel = hoverNl;
-                        this._renderInteractionOverlay();
+                        this._scheduleInteractionOverlay();
                     }
                     canvas.style.cursor = this._wireDraft || hoverPin || hoverNl ? 'crosshair' : '';
                 }
@@ -1480,19 +1881,31 @@ class SchematicRenderer {
 
         canvas.addEventListener('mouseup', (e) => {
             if (e.button === 0) {
+                if (_dragMarker) {
+                    _dragStartPos = null;
+                    const dx = e.clientX - _leftStart.x;
+                    const dy = e.clientY - _leftStart.y;
+                    const moved = Math.abs(dx) >= 4 || Math.abs(dy) >= 4;
+                    if (moved && this._callbacks.onMarkerMoved) {
+                        this._callbacks.onMarkerMoved(_dragMarker, this._dragDelta.dx, this._dragDelta.dy);
+                    }
+                    _dragMarker = null;
+                    _leftStart = null;
+                    return;
+                }
                 if (_dragComp) {
-                    delete _dragComp._dragOrigX;
-                    delete _dragComp._dragOrigY;
+                    _dragStartPos = null;
                     const dx = e.clientX - _leftStart.x;
                     const dy = e.clientY - _leftStart.y;
                     const moved = Math.abs(dx) >= 4 || Math.abs(dy) >= 4;
                     if (moved && this._callbacks.onComponentMoved) {
                         this._callbacks.onComponentMoved(_dragComp, this._dragDelta.dx, this._dragDelta.dy);
+                        _dragComp = null;
+                        _leftStart = null;
+                        return;
                     }
-                    // Snap wire-end drag offset back; component x/y already hold the final pose
                     this._dragCompRef = null;
                     this._dragDelta = { dx: 0, dy: 0 };
-                    if (moved) this._partialRedraw();
                     _dragComp = null;
                     _leftStart = null;
                     return;
@@ -1528,20 +1941,83 @@ class SchematicRenderer {
             _leftStart = null;
             canvas.style.cursor = '';
         }, { signal: this._interactionAbort.signal });
+
+        // Double-click: open marker inspector
+        canvas.addEventListener('dblclick', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const sx = (e.clientX - rect.left) * (this._app.screen.width / rect.width);
+            const sy = (e.clientY - rect.top) * (this._app.screen.height / rect.height);
+            const world = this.screenToWorld(sx, sy);
+            if (!world) return;
+            const marker = this.hitTestImageMarker(world.x, world.y);
+            if (marker) {
+                this.selectImageMarker(marker);
+                if (this._callbacks.onImageMarkerDblClick) {
+                    this._callbacks.onImageMarkerDblClick(marker);
+                }
+            }
+        }, { signal: this._interactionAbort.signal });
+
+        // Right-click context menu
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const sx = (e.clientX - rect.left) * (this._app.screen.width / rect.width);
+            const sy = (e.clientY - rect.top) * (this._app.screen.height / rect.height);
+            const world = this.screenToWorld(sx, sy);
+            // Check if right-clicking on a marker
+            let marker = null;
+            if (world) {
+                marker = this.hitTestImageMarker(world.x, world.y);
+            }
+            if (this._callbacks.onContextMenu) {
+                this._callbacks.onContextMenu(e.clientX, e.clientY, world, marker);
+            }
+        }, { signal: this._interactionAbort.signal });
+
+        // Keyboard: Delete/Escape/Enter for marker interaction
+        document.addEventListener('keydown', (e) => {
+            // Guard: don't intercept keys when user is typing in an input field
+            const tag = (document.activeElement || {}).tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement || {}).isContentEditable) return;
+
+            if (this._selectedImageMarker) {
+                if (e.key === 'Delete' || e.key === 'Backspace') {
+                    e.preventDefault();
+                    if (this._callbacks.onImageMarkerDelete) {
+                        this._callbacks.onImageMarkerDelete(this._selectedImageMarker);
+                    }
+                } else if (e.key === 'Escape') {
+                    this._selectedImageMarker._imageRevealed = false;
+                    this.clearImageMarkerSelection();
+                } else if (e.key === 'Enter') {
+                    // Toggle image reveal — no inspector popup
+                    const m = this._selectedImageMarker;
+                    m._imageRevealed = !m._imageRevealed;
+                    this._partialRedraw();
+                    if (this._callbacks.onImageMarkerToggle) {
+                        this._callbacks.onImageMarkerToggle(m);
+                    }
+                }
+            }
+        }, { signal: this._interactionAbort.signal });
     }
 
     _partialRedraw() {
         if (!this._schematic) return;
         this._clearLayer(this._wireLayer);
         this._clearLayer(this._symbolLayer);
+        this._clearLayer(this._imageMarkerLayer);
         this._clearLayer(this._pinLayer);
         this._clearLayer(this._textLayer);
         this._clearLayer(this._overlayLayer);
         this._pinHitTargets = [];
+        this._imageMarkerHitTargets = [];
 
         this._renderWires();
         this._renderJunctions();
         this._renderPowerLabels();
+        this._renderImageMarkers();
         const globalPinNames = [];
         for (const comp of this._schematic.components) {
             this._renderComponent(comp, globalPinNames);
@@ -1580,6 +2056,13 @@ class SchematicRenderer {
         if (typeof this._callbacks.onWireClick === 'function') {
             const wireResult = this._callbacks.onWireClick(world.x, world.y);
             if (wireResult) return;
+        }
+
+        const marker = this.hitTestImageMarker(world.x, world.y);
+        if (marker) {
+            this.selectImageMarker(marker);
+            this._toggleMarkerReveal(marker);
+            return;
         }
 
         const comp = this.hitTest(world.x, world.y);
@@ -1636,6 +2119,14 @@ class SchematicRenderer {
             }
         }
         this._overlayLayer.addChild(g);
+    }
+
+    _scheduleInteractionOverlay() {
+        if (this._overlayRaf) return;
+        this._overlayRaf = requestAnimationFrame(() => {
+            this._overlayRaf = null;
+            this._renderInteractionOverlay();
+        });
     }
 
     _renderInteractionOverlay() {

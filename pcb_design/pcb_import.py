@@ -279,6 +279,38 @@ def _parse_via(node: list) -> Optional[BoardVia]:
     return BoardVia(x=x, y=y, drill=drill, diameter=diameter, layers=layers, net=net)
 
 
+def _parse_3d_model(node: list) -> Optional[dict]:
+    """Extract (model "${KICAD_3DMODEL_DIR}/path/file.step" (offset ...) (scale ...) (rotate ...))"""
+    try:
+        if not isinstance(node, list) or node[0] != "model":
+            return None
+        raw_path = str(node[1]) if len(node) > 1 else ""
+        path = raw_path.replace("${KICAD10_3DMODEL_DIR}/", "").replace("${KICAD_3DMODEL_DIR}/", "")
+        offset = (0.0, 0.0, 0.0)
+        scale = (1.0, 1.0, 1.0)
+        rotate = (0.0, 0.0, 0.0)
+        for child in node[2:]:
+            if not isinstance(child, list) or not child:
+                continue
+            xyz_node = _find_one(child, "xyz")
+            if not xyz_node:
+                continue
+            vals = (
+                _get_float(xyz_node, 1, 0.0),
+                _get_float(xyz_node, 2, 0.0),
+                _get_float(xyz_node, 3, 0.0),
+            )
+            if child[0] == "offset":
+                offset = vals
+            elif child[0] == "scale":
+                scale = vals
+            elif child[0] == "rotate":
+                rotate = vals
+        return {"path": path, "offset": offset, "scale": scale, "rotate": rotate}
+    except Exception as e:
+        return None
+
+
 def _parse_footprint(node: list) -> Optional[BoardComponent]:
     if not isinstance(node, list) or node[0] not in ("footprint", "module"):
         return None
@@ -288,6 +320,7 @@ def _parse_footprint(node: list) -> Optional[BoardComponent]:
     layer = "F.Cu"
     pads = []
     graphics = []
+    model_3d = None
     for child in node[2:]:
         if not isinstance(child, list) or not child:
             continue
@@ -314,12 +347,19 @@ def _parse_footprint(node: list) -> Optional[BoardComponent]:
             if pad:
                 pads.append(pad)
             continue
+        if child[0] == "model":
+            model_3d = _parse_3d_model(child)
+            continue
         graphic = _parse_fp_graphic(child)
         if graphic:
             graphics.append(graphic)
     return BoardComponent(
         ref=ref or fp_str, footprint=fp_str,
         x=x, y=y, rotation=rotation, layer=layer, value=value, pads=pads, graphics=graphics,
+        model_3d_path=model_3d["path"] if model_3d else None,
+        model_3d_offset=model_3d["offset"] if model_3d else (0.0, 0.0, 0.0),
+        model_3d_scale=model_3d["scale"] if model_3d else (1.0, 1.0, 1.0),
+        model_3d_rotate=model_3d["rotate"] if model_3d else (0.0, 0.0, 0.0),
     )
 
 

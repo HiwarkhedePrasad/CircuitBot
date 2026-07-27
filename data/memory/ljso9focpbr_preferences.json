@@ -1,0 +1,28 @@
+{
+  "preferred_parts": {},
+  "rejected_parts": [],
+  "preferred_values": {},
+  "design_patterns": [],
+  "correction_count": 0,
+  "review_feedback": {
+    "ljso9focpbr:power:0": true,
+    "ljso9focpbr:signal:1": true,
+    "ljso9focpbr:signal:2": true
+  },
+  "learned_patterns": [
+    {
+      "type": "signal",
+      "frequency": 2,
+      "accepted_count": 2,
+      "rejected_count": 0,
+      "last_seen": 1785060063.5714676
+    },
+    {
+      "type": "power",
+      "frequency": 1,
+      "accepted_count": 1,
+      "rejected_count": 0,
+      "last_seen": 1785060063.558868
+    }
+  ]
+}

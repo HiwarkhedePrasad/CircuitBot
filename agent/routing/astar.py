@@ -5,6 +5,7 @@ import heapq
 from agent.routing.constants import GRID_SIZE, BBOX_CLEARANCE
 from agent.routing.path_utils import _clean_path
 from agent.routing.geometry import _snap
+from agent.routing.geometry import _rotated_bbox
 
 
 def _astar_orthogonal(
@@ -40,7 +41,7 @@ def _astar_orthogonal(
         ref = c['ref_des']
         if ref in (src_ref, tgt_ref):
             continue
-        bbox = c.get('bbox') or c.get('geom_bbox')
+        bbox = _rotated_bbox(c)
         if not bbox:
             continue
         left   = c['x'] + bbox['x'] - BBOX_CLEARANCE

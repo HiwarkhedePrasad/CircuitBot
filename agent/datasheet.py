@@ -1,4 +1,4 @@
-"""Datasheet text fetcher with targeted critical-section extraction.
+"""Datasheet text fetcher with targeted critical-section extraction and persistent caching.
 
 Fetches datasheet content from KiCad symbol URLs. Two extraction paths:
   1. Legacy: fetch_datasheet_text(url, offset, length) — progressive chunked
@@ -8,16 +8,23 @@ Fetches datasheet content from KiCad symbol URLs. Two extraction paths:
      characteristics, operating conditions), and returns the matching block
      (or first CRITICAL_FALLBACK chars as a fallback).
 
-The targeted path is preferred for the validate LLM so it sees actual
-engineering data (voltage ranges, pin functions) rather than marketing fluff.
+Content is cached persistently in ``datasheet_cache.sqlite`` so repeated
+runs (or different pipeline instances) reuse previously downloaded text.
 """
 
+import hashlib
 import io
+import logging
+import os
 import re
+import sqlite3
 import threading
 import requests
+from pathlib import Path
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
+
+logger = logging.getLogger(__name__)
 
 MAX_TOTAL = 500
 _cached_texts: dict[str, str] = {}
@@ -29,6 +36,70 @@ _KNOWN_FAIL: set[str] = set()
 CRITICAL_MAX = 3000
 CRITICAL_FALLBACK = 1000
 _extended_cache: dict[str, str] = {}
+
+# ── Persistent SQLite cache ─────────────────────────────────────────────
+
+_CACHE_DIR = Path(__file__).resolve().parent / "data"
+_CACHE_DB = _CACHE_DIR / "datasheet_cache.sqlite"
+
+
+def _ensure_cache_db():
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(_CACHE_DB)
+    con.execute(
+        """CREATE TABLE IF NOT EXISTS datasheet_cache (
+            url_hash TEXT PRIMARY KEY,
+            url      TEXT NOT NULL,
+            content  TEXT NOT NULL,
+            fetched_at REAL NOT NULL
+        )"""
+    )
+    con.commit()
+    con.close()
+
+
+def _cache_key(url: str) -> str:
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+
+
+def _cache_lookup(url: str) -> str | None:
+    try:
+        _ensure_cache_db()
+        con = sqlite3.connect(_CACHE_DB)
+        row = con.execute(
+            "SELECT content FROM datasheet_cache WHERE url_hash = ?",
+            (_cache_key(url),),
+        ).fetchone()
+        con.close()
+        return row[0] if row else None
+    except Exception as e:
+        logger.debug("Datasheet cache lookup failed: %s", e)
+        return None
+
+
+def _cache_store(url: str, content: str):
+    try:
+        _ensure_cache_db()
+        import time
+        con = sqlite3.connect(_CACHE_DB)
+        con.execute(
+            "INSERT OR REPLACE INTO datasheet_cache (url_hash, url, content, fetched_at) VALUES (?, ?, ?, ?)",
+            (_cache_key(url), url, content, time.time()),
+        )
+        con.commit()
+        con.close()
+    except Exception as e:
+        logger.debug("Datasheet cache write failed: %s", e)
+
+
+def clear_persistent_cache():
+    """Delete all cached datasheet content from the on-disk cache."""
+    try:
+        if _CACHE_DB.is_file():
+            _CACHE_DB.unlink()
+            logger.info("Datasheet persistent cache cleared")
+    except Exception as e:
+        logger.warning("Failed to clear datasheet cache: %s", e)
 
 # Vendor-agnostic section headers that contain the engineering data the
 # validate LLM actually needs to see (pinout, voltages, specs).
@@ -156,17 +227,38 @@ def _download_text(url: str) -> str:
         return ""
 
 
+def _get_cached_or_fetch(url: str, extended: bool = False) -> str:
+    """Check persistent cache → in-memory cache → download, caching at each level."""
+    if not url:
+        return ""
+    # 1) in-memory cache
+    cache = _extended_cache if extended else _cached_texts
+    if url in cache:
+        return cache[url]
+    # 2) persistent cache
+    persisted = _cache_lookup(url)
+    if persisted is not None:
+        cache[url] = persisted
+        return persisted
+    # 3) download
+    text = _download_extended(url) if extended else _download_text(url)
+    cache[url] = text
+    if text:
+        _cache_store(url, text)
+    return text
+
+
 def fetch_datasheet_text(url: str, offset: int = 0, length: int = 500) -> str:
     """Return a slice of cleaned text from a datasheet URL.
 
     The full text (up to MAX_TOTAL chars) is cached on first access
-    so subsequent offset/length calls are instant.
+    so subsequent offset/length calls are instant.  Persisted across
+    process restarts via ``datasheet_cache.sqlite``.
     """
     if not url:
         return ""
-    if url not in _cached_texts:
-        _cached_texts[url] = _download_text(url)
-    return _cached_texts[url][offset:offset+length]
+    text = _get_cached_or_fetch(url, extended=False)
+    return text[offset:offset+length]
 
 
 def clear_cache():
@@ -181,8 +273,6 @@ def _download_extended(url: str) -> str:
     """Download up to CRITICAL_MAX chars, cached separately from the 500-char path."""
     if not url or _should_skip(url):
         return ""
-    if url in _extended_cache:
-        return _extended_cache[url]
     try:
         resp = requests.get(url, timeout=_FETCH_TIMEOUT, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -193,23 +283,19 @@ def _download_extended(url: str) -> str:
         if "pdf" in ctype:
             text = _pdf_to_text(resp.content)
             if text:
-                _extended_cache[url] = text[:CRITICAL_MAX]
-                return _extended_cache[url]
+                return text[:CRITICAL_MAX]
             text = _try_html_fallback(url)[:CRITICAL_MAX]
-            _extended_cache[url] = text
             return text
         soup = BeautifulSoup(resp.text, "html.parser")
         for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
             tag.decompose()
         text = soup.get_text(separator=" ", strip=True)
         text = re.sub(r'\s+', ' ', text)
-        _extended_cache[url] = text[:CRITICAL_MAX]
-        return _extended_cache[url]
+        return text[:CRITICAL_MAX]
     except requests.RequestException as e:
         print(f"[datasheet] extended fetch failed for {url[:60]}...: {e}")
         _mark_failed(url)
         text = _try_html_fallback(url)[:CRITICAL_MAX]
-        _extended_cache[url] = text
         return text
     except Exception as e:
         print(f"[datasheet] extended parse failed for {url[:60]}...: {e}")
@@ -228,7 +314,23 @@ def _extract_critical_block(text: str) -> str:
 
 
 def extract_critical_specs(url: str) -> str:
-    """Return targeted engineering text from a datasheet URL (max _DATASHEET_TIMEOUT s)."""
+    """Return targeted engineering text from a datasheet URL (max _DATASHEET_TIMEOUT s).
+
+    Uses persistent cache so repeated calls are instant.
+    """
+    if not url:
+        return ""
+    # Check caches first (fast path, no thread needed)
+    if url in _extended_cache:
+        cached = _extended_cache[url]
+        if cached:
+            return _extract_critical_block(cached) or cached[:CRITICAL_FALLBACK].strip()
+        return ""
+    persisted = _cache_lookup(url)
+    if persisted is not None:
+        _extended_cache[url] = persisted
+        return _extract_critical_block(persisted) or persisted[:CRITICAL_FALLBACK].strip()
+    # Threaded fetch with timeout for first download
     result_holder = {}
     def target():
         try:
@@ -244,7 +346,10 @@ def extract_critical_specs(url: str) -> str:
     if "exception" in result_holder:
         print(f"[datasheet] extract_critical_specs failed for {url[:60]}: {result_holder['exception']}")
         return ""
-    return result_holder.get("result") or ""
+    result = result_holder.get("result") or ""
+    if result:
+        _cache_store(url, result)
+    return result
 
 
 def _extract_critical_specs_impl(url: str) -> str:

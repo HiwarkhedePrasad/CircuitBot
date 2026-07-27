@@ -27,17 +27,27 @@ Return ONLY the JSON object."""
 
 
 def classify_modification_node(state: dict) -> dict:
-    """Classify the modification request using LLM."""
+    """Classify the modification request using LLM.
+
+    Uses full canvas context when a DesignSession is available,
+    falling back to a short component list for backward compatibility.
+    """
     prompt = state.get("prompt", "")
     original = state.get("original_design", {})
 
-    # Build context about existing components
-    components = original.get("selected_components", [])
-    comp_list = ", ".join(
-        f"{c.get('ref', '?')} ({c.get('name', '?')})" for c in components[:20]
-    )
-
-    user_msg = f"Existing components: [{comp_list}]\n\nUser request: {prompt}"
+    # Try to build full canvas context from DesignSession (gated by feature flag)
+    ds = state.get("design_session")
+    from agent.feature_flags import is_enabled
+    if ds is not None and is_enabled("CANVAS_AWARE_COPILOT"):
+        from agent.sync.live_schematic import build_canvas_context_for_modify
+        user_msg = build_canvas_context_for_modify(ds, prompt)
+    else:
+        # Fallback: build context from available state
+        components = original.get("selected_components", [])
+        comp_list = ", ".join(
+            f"{c.get('ref') or c.get('ref_des', '?')} ({c.get('name', '?')})" for c in components[:20]
+        )
+        user_msg = f"Existing components: [{comp_list}]\n\nUser request: {prompt}"
 
     try:
         raw = _call_llm(MODIFY_CLASSIFY_SYSTEM, user_msg, stage="modify_classify")

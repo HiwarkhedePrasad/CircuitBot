@@ -131,11 +131,11 @@ def _serialize_atom(val, is_first: bool = False) -> str:
 
 def _build_pin_to_net(design: dict) -> dict[str, str]:
     pin_to_net: dict[str, str] = {}
-    for net in design.get("nets", []):
+    for net in (design.get("nets") or []):
         name = net.get("net", "")
-        for pin in net.get("pins", []):
+        for pin in (net.get("pins") or []):
             pin_to_net[pin] = name
-    for pp in design.get("power_pins", []):
+    for pp in (design.get("power_pins") or []):
         pin = pp.get("pin", "")
         net_name = pp.get("net", "")
         if pin and net_name:
@@ -271,9 +271,9 @@ def generate_kicad_pcb(design: dict) -> str:
         except Exception as e:
             print(f"BoardModel export failed, falling back: {e}")
 
-    comps = design.get("selected_components", [])
-    placements = {p["ref_des"]: p for p in design.get("component_placements", [])}
-    wires = design.get("wire_paths", [])
+    comps = design.get("selected_components") or []
+    placements = {p["ref_des"]: p for p in (design.get("component_placements") or [])}
+    wires = design.get("wire_paths") or []
 
     # ── 1. Build net map ──────────────────────────────────────────────────
     pin_to_net = _build_pin_to_net(design)
@@ -377,7 +377,7 @@ def _generate_from_board_model(board_model: dict) -> str:
             continue
         if name not in net_index:
             net_index[name] = len(net_index)
-        for pin in net.get("pins", []):
+        for pin in (net.get("pins") or []):
             pin_to_net[pin] = name
 
     out = []
@@ -509,7 +509,7 @@ def _generate_from_board_model(board_model: dict) -> str:
                     f" (layer {_q(layer)}) (uuid {_new_uuid()}))"
                 )
         elif kind == "gr_poly":
-            points = seg.get("points", [])
+            points = seg.get("points") or []
             if len(points) >= 3:
                 out.append(f"  (gr_poly (pts")
                 for pt in points:

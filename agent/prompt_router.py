@@ -25,15 +25,20 @@ Classify the user's intent into exactly one of these categories:
    Examples: "find me a temperature sensor for I2C", "what's a DS18B20",
    "show me BME280 specs", "search for a 5V regulator", "tell me about the ESP32-C3"
 
-5. help — User needs assistance or information about the tool itself.
+5. design_query — User wants to know about the CURRENT SCHEMATIC on the canvas.
+   Examples: "what components are on the canvas", "is this LED connected",
+   "which pins are unconnected", "what does R1 connect to", "how many resistors are there",
+   "what is the value of C1", "show me the nets", "what's on the schematic"
+
+6. help — User needs assistance or information about the tool itself.
    Examples: "what can you do", "how does this work", "help me get started",
    "what commands are available", "show me how to use this", "capabilities"
 
-6. other — Anything else that doesn't fit the above categories.
+7. other — Anything else that doesn't fit the above categories.
    Examples: "hello", "hi", "good morning", "thanks", random text
 
 Return ONLY a JSON object with these exact keys:
-- "intent": one of "add_component", "design_pipeline", "modify_design", "component_query", "help", "other"
+- "intent": one of "add_component", "design_pipeline", "modify_design", "component_query", "design_query", "help", "other"
 - "confidence": float between 0.0 and 1.0
 - "reasoning": brief string explaining the classification
 - "extracted_components": list of strings — part numbers or component names mentioned
@@ -78,6 +83,14 @@ KEYWORD_FALLBACKS = [
      "modify_design", 0.5),
     (r"\b(find|search|look|show|tell|what is|what's)\b.*\b(component|part|sensor|ic|chip|resistor|capacitor)\b",
      "component_query", 0.7),
+    (r"\b(what|which|how many|is|are)\b.*\b(on|in|the)\b.*\b(canvas|schematic|board|circuit)\b",
+     "design_query", 0.8),
+    (r"\b(is|are)\b.+\b(connected|unconnected|missing)\b",
+     "design_query", 0.7),
+    (r"\bwhat\b.*\b(connect|connects|net|wire)\b",
+     "design_query", 0.7),
+    (r"\b(show|list|describe|tell me about)\b.*\b(the |all )?(components|nets|pins|connections|schematic)\b",
+     "design_query", 0.7),
     (r"\b(help|what can you do|how does|capabilities|command|guide|tutorial)\b",
      "help", 0.8),
 ]
@@ -132,7 +145,7 @@ def _keyword_fallback(text: str) -> dict:
             return {
                 "intent": intent,
                 "confidence": confidence,
-                "reasoning": f"Keyword fallback matched: {pattern.pattern[:50]}...",
+                "reasoning": f"Keyword fallback matched: {pattern[:50]}...",
                 "extracted_components": extracted[:5],
             }
     return {
@@ -159,7 +172,7 @@ def route_prompt(text: str) -> dict:
         if not isinstance(result, dict):
             raise ValueError("LLM did not return a dict")
         result.setdefault("extracted_components", [])
-        if result.get("intent") not in ("add_component", "design_pipeline", "modify_design", "component_query", "help", "other"):
+        if result.get("intent") not in ("add_component", "design_pipeline", "modify_design", "component_query", "design_query", "help", "other"):
             raise ValueError(f"Unknown intent: {result.get('intent')}")
         if result.get("intent") == "add_component" and _should_force_design_pipeline(text):
             result["intent"] = "design_pipeline"

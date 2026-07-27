@@ -4,6 +4,7 @@ Emits agent:board_config event with layer options, then blocks on a threading.Ev
 until the user responds via the frontend. Returns layer_count.
 """
 
+from agent.pipeline_tracker import update_pipeline_stage
 from agent.utils import _emit, emit_assistant_message, emit_tool_event
 
 DEFAULT_LAYER_COUNT = 2
@@ -30,7 +31,9 @@ def ask_board_config_node(state, config):
     emit_tool_event(config, "Board Config", "running", "Awaiting layer count selection...")
 
     if board_config_event is not None:
+        update_pipeline_stage(config, "waiting", "Awaiting board layer selection")
         board_config_event.wait(timeout=300)
+        update_pipeline_stage(config, "running", "Applying board configuration")
 
     layer_count = DEFAULT_LAYER_COUNT
     if board_config_result is not None:

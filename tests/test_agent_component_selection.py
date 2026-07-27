@@ -34,7 +34,7 @@ def test_type_filter_blocks_led_driver_for_resistor_request():
         {"id_str": "Driver_LED:MP3362GJ", "category": "Driver_LED", "text": "LED driver"},
         {"id_str": "Device:R_Small", "category": "RESISTOR", "text": "Small resistor"},
     ]
-    filtered = _filter_candidates_by_expected_type(sub, candidates, "add a 330 ohm resistor")
+    filtered = _filter_candidates_by_expected_type(sub, candidates)
     assert [c["id_str"] for c in filtered] == ["Device:R_Small"]
 
 

@@ -1,6 +1,7 @@
 import json
+from uuid import uuid4
 
-from agent.deep_search import deep_search
+from agent.deep_search import deep_search_parallel
 from agent.utils import (
     _emit, emit_assistant_message, emit_tool_event,
     _check_stage_contract, _stage_result, _clean_json,
@@ -60,17 +61,23 @@ def _group_components_by_interface(selected: list[dict], analysis: list[dict]) -
 def connection_search_node(state, config):
     _emit(config, "agent:thinking", {"message": "Researching wiring and connections..."})
     emit_assistant_message(config, "Searching for connection guidance and wiring diagrams...")
-    emit_tool_event(config, "Connection Research", "running", "Researching connections...")
+    tool_id = uuid4().hex[:8]
+    emit_tool_event(config, "Connection Research", "running", "Researching connections...",
+                    tool_id=tool_id)
 
     contract = _check_stage_contract("connection_search", state, ["selected_components"])
     if contract:
         _emit(config, "agent:log", {"message": contract})
+        emit_tool_event(config, "Connection Research", "completed",
+                        "No components to research", tool_id=tool_id)
         return _stage_result(state, "connection_search", {"connection_search_results": []})
 
     selected = state.get("selected_components", [])
     analysis = state.get("analysis", [])
     if not selected:
         _emit(config, "agent:log", {"message": "No components to research connections for."})
+        emit_tool_event(config, "Connection Research", "completed",
+                        "No components to research", tool_id=tool_id)
         return _stage_result(state, "connection_search", {"connection_search_results": []})
 
     tasks = _group_components_by_interface(selected, analysis)
@@ -83,27 +90,24 @@ def connection_search_node(state, config):
             ),
         })
 
+    # Build queries for parallel execution
+    queries = [t["query"] for t in tasks]
+    _emit(config, "agent:thinking", {"message": f"Researching {len(tasks)} connections (2 concurrent)..."})
+    search_results = deep_search_parallel(queries, config=config)
+
     results = []
-    for task in tasks:
-        _emit(config, "agent:thinking", {"message": f"Researching {task['title']}..."})
-        emit_tool_event(config, f"Connection: {task['title']}", "running", f"Searching...")
-        try:
-            summary = deep_search(task["query"], config=config)
-            results.append({
-                "title": task["title"],
-                "summary": summary,
-            })
+    for i, result in enumerate(search_results):
+        task = tasks[i]
+        results.append({
+            "title": task["title"],
+            "summary": result["summary"],
+        })
+        if result["success"]:
             _emit(config, "agent:log", {"message": f"  {task['title']}: connection research complete"})
-        except Exception as e:
-            _emit(config, "agent:log", {"message": f"  {task['title']}: connection search failed — {e}"})
-            results.append({
-                "title": task["title"],
-                "summary": f"(Connection search failed: {e})",
-            })
-        emit_tool_event(config, f"Connection: {task['title']}", "completed",
-                        "Research complete" if not task["title"].startswith("(") else "Failed")
+        else:
+            _emit(config, "agent:log", {"message": f"  {task['title']}: connection search failed"})
 
     emit_tool_event(config, "Connection Research", "completed",
-                    f"Researched {len(results)} connection(s)")
+                    f"Researched {len(results)} connection(s)", tool_id=tool_id)
     emit_assistant_message(config, f"Found connection guidance for {len(results)} interface(s).")
     return _stage_result(state, "connection_search", {"connection_search_results": results})

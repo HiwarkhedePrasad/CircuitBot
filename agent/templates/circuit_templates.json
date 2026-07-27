@@ -4,18 +4,20 @@
       "id": "usb_power_supply_3v3",
       "name": "3.3V USB Power Supply",
       "description": "USB-powered 3.3V regulated supply with LED indicator and bypass caps",
-      "keywords": ["usb", "power", "3.3v", "regulator", "ldo"],
+      "keywords": ["usb", "power", "3.3v", "regulator", "ldo", "supply"],
       "subsystems": [
         {
           "subsystem": "USB Input",
           "function": "USB Type-C or Micro-USB connector for power input",
-          "example_components": ["Connector_USB_C", "USB_B_Micro"],
+          "example_components": ["USB_C_Receptacle_USB2.0", "USB_B_Micro"],
+          "library_filter": "Connector_USB|Connector",
           "bus": "power"
         },
         {
           "subsystem": "Power Regulation",
           "function": "3.3V LDO voltage regulator with input and output capacitors",
           "example_components": ["AMS1117-3.3", "AP2112K-3.3", "ME6211C33"],
+          "library_filter": "Regulator_Linear",
           "bus": "power",
           "supporting": [
             {"type": "capacitor", "value": "10uF", "role": "input bulk"},
@@ -27,7 +29,8 @@
         {
           "subsystem": "LED Indicator",
           "function": "Visible LED with current-limiting resistor to indicate power status",
-          "example_components": ["LED_0603"],
+          "example_components": ["Device:LED"],
+          "library_filter": "Device",
           "bus": "signal",
           "supporting": [
             {"type": "resistor", "value": "1k", "role": "current limiter"}
@@ -36,27 +39,29 @@
         }
       ],
       "nets": [
-        {"name": "USB_VBUS", "pins": ["USB:VBUS", "REG:IN"]},
-        {"name": "VCC_3V3", "pins": ["REG:OUT", "LED:ANODE"]},
-        {"name": "GND", "pins": ["USB:GND", "REG:GND", "LED:CATHODE"]}
+        {"net": "USB_VBUS", "pins": [{"ref": "USB", "pin": "VBUS"}, {"ref": "REG", "pin": "IN"}]},
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "LED", "pin": "ANODE"}]},
+        {"net": "GND", "pins": [{"ref": "USB", "pin": "GND"}, {"ref": "REG", "pin": "GND"}, {"ref": "LED", "pin": "CATHODE"}]}
       ]
     },
     {
       "id": "esp32_minimal",
       "name": "ESP32 Minimal System",
       "description": "ESP32-WROOM-32 with crystal, caps, and reset circuit",
-      "keywords": ["esp32", "wifi", "bluetooth", "microcontroller", "mcu"],
+      "keywords": ["esp32", "wifi", "bluetooth", "microcontroller", "mcu", "wroom"],
       "subsystems": [
         {
           "subsystem": "Microcontroller",
           "function": "ESP32-WROOM-32 WiFi/BT module",
-          "example_components": ["ESP32-WROOM-32"],
+          "example_components": ["RF_Module:ESP32-WROOM-32"],
+          "library_filter": "RF_Module|MCU_Espressif",
           "bus": "digital"
         },
         {
           "subsystem": "Power Regulation",
           "function": "3.3V LDO for ESP32 (needs 300mA+)",
           "example_components": ["AMS1117-3.3", "AP2112K-3.3"],
+          "library_filter": "Regulator_Linear",
           "bus": "power",
           "supporting": [
             {"type": "capacitor", "value": "10uF", "role": "decoupling"},
@@ -66,7 +71,8 @@
         {
           "subsystem": "Reset Circuit",
           "function": "Push-button reset with RC debounce",
-          "example_components": [],
+          "example_components": ["Switch:SW_Push"],
+          "library_filter": "Device|Switch",
           "bus": "digital",
           "supporting": [
             {"type": "resistor", "value": "10k", "role": "pull-up"},
@@ -77,7 +83,8 @@
         {
           "subsystem": "Status LED",
           "function": "GPIO-driven status LED on pin 2",
-          "example_components": ["LED_0603"],
+          "example_components": ["Device:LED"],
+          "library_filter": "Device",
           "bus": "signal",
           "supporting": [
             {"type": "resistor", "value": "1k", "role": "current limiter"}
@@ -85,10 +92,446 @@
         }
       ],
       "nets": [
-        {"name": "VCC_3V3", "pins": ["REG:OUT", "ESP:3V3"]},
-        {"name": "GND", "pins": ["REG:GND", "ESP:GND", "BTN:GND"]},
-        {"name": "EN", "pins": ["ESP:EN", "R:OUT", "C:POS"]},
-        {"name": "GPIO2", "pins": ["ESP:GPIO2", "R:IN"]}
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "ESP", "pin": "3V3"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "ESP", "pin": "GND"}, {"ref": "BTN", "pin": "GND"}]},
+        {"net": "EN", "pins": [{"ref": "ESP", "pin": "EN"}, {"ref": "R", "pin": "OUT"}, {"ref": "C", "pin": "POS"}]},
+        {"net": "GPIO2", "pins": [{"ref": "ESP", "pin": "GPIO2"}, {"ref": "R", "pin": "IN"}]}
+      ]
+    },
+    {
+      "id": "esp32_c3_bme280",
+      "name": "ESP32-C3 + BME280 Environmental Sensor",
+      "description": "ESP32-C3 WiFi/BLE microcontroller with BME280 temperature/humidity/pressure sensor on I2C bus",
+      "keywords": ["esp32", "esp32-c3", "bme280", "sensor", "temperature", "humidity", "pressure", "i2c", "weather", "environmental", "iot"],
+      "subsystems": [
+        {
+          "subsystem": "Power Input",
+          "function": "USB-C connector for 5V power input",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO voltage regulator for MCU and sensor",
+          "example_components": ["Regulator_Linear:AMS1117-3.3", "Regulator_Linear:AP2112K-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "ESP32-C3 WiFi/BLE microcontroller module with native USB",
+          "example_components": ["MCU_Espressif:ESP32-C3", "RF_Module:ESP32-C3-MINI-1"],
+          "library_filter": "MCU_Espressif|RF_Module",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Sensor",
+          "function": "BME280 temperature, humidity and pressure sensor on I2C bus",
+          "example_components": ["Sensor_Temperature:BME280"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Pull-ups",
+          "function": "4.7kΩ pull-up resistors for I2C SDA and SCL lines",
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "Programming Interface",
+          "function": "UART programming header for firmware flashing",
+          "example_components": ["Connector:Conn_01x04_Pin"],
+          "library_filter": "Connector",
+          "bus": "digital"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}, {"ref": "SENSOR", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "SENSOR", "pin": "GND"}]},
+        {"net": "I2C_SCL", "pins": [{"ref": "MCU", "pin": "SCL"}, {"ref": "SENSOR", "pin": "SCL"}]},
+        {"net": "I2C_SDA", "pins": [{"ref": "MCU", "pin": "SDA"}, {"ref": "SENSOR", "pin": "SDA"}]}
+      ]
+    },
+    {
+      "id": "esp32_c3_ds18b20",
+      "name": "ESP32-C3 + DS18B20 Temperature Sensor",
+      "description": "ESP32-C3 WiFi/BLE microcontroller with DS18B20 1-Wire temperature sensor",
+      "keywords": ["esp32", "esp32-c3", "ds18b20", "temperature", "sensor", "1-wire", "onewire", "one wire", "iot"],
+      "subsystems": [
+        {
+          "subsystem": "Power Input",
+          "function": "USB-C connector for 5V power input",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO voltage regulator for MCU and sensor",
+          "example_components": ["Regulator_Linear:AMS1117-3.3", "Regulator_Linear:AP2112K-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "ESP32-C3 WiFi/BLE microcontroller module",
+          "example_components": ["MCU_Espressif:ESP32-C3", "RF_Module:ESP32-C3-MINI-1"],
+          "library_filter": "MCU_Espressif|RF_Module",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Temperature Sensor",
+          "function": "DS18B20 1-Wire digital temperature sensor",
+          "example_components": ["Sensor_Temperature:DS18B20"],
+          "library_filter": "Sensor",
+          "bus": "1-wire"
+        },
+        {
+          "subsystem": "1-Wire Pull-up",
+          "function": "4.7kΩ pull-up resistor on 1-Wire data line",
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "1-wire"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}, {"ref": "SENSOR", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "SENSOR", "pin": "GND"}]},
+        {"net": "OW_DQ", "pins": [{"ref": "MCU", "pin": "GPIO"}, {"ref": "SENSOR", "pin": "DQ"}]}
+      ]
+    },
+    {
+      "id": "esp32_c3_bme280_oled",
+      "name": "ESP32-C3 + BME280 + OLED Display",
+      "description": "ESP32-C3 with BME280 environmental sensor and I2C OLED display",
+      "keywords": ["esp32", "esp32-c3", "bme280", "oled", "display", "sensor", "temperature", "humidity", "i2c", "weather station", "iot"],
+      "subsystems": [
+        {
+          "subsystem": "Power Input",
+          "function": "USB-C connector for 5V power input",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO voltage regulator for MCU and peripherals",
+          "example_components": ["Regulator_Linear:AMS1117-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "ESP32-C3 WiFi/BLE microcontroller module",
+          "example_components": ["MCU_Espressif:ESP32-C3", "RF_Module:ESP32-C3-MINI-1"],
+          "library_filter": "MCU_Espressif|RF_Module",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Sensor",
+          "function": "BME280 temperature, humidity and pressure sensor on I2C bus",
+          "example_components": ["Sensor_Temperature:BME280"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "Display",
+          "function": "128x64 I2C OLED display for sensor readout",
+          "example_components": ["Display:SSD1306"],
+          "library_filter": "Display",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Pull-ups",
+          "function": "4.7kΩ pull-up resistors for shared I2C bus",
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "i2c"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}, {"ref": "SENSOR", "pin": "VDD"}, {"ref": "DISP", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "SENSOR", "pin": "GND"}, {"ref": "DISP", "pin": "GND"}]},
+        {"net": "I2C_SCL", "pins": [{"ref": "MCU", "pin": "SCL"}, {"ref": "SENSOR", "pin": "SCL"}, {"ref": "DISP", "pin": "SCL"}]},
+        {"net": "I2C_SDA", "pins": [{"ref": "MCU", "pin": "SDA"}, {"ref": "SENSOR", "pin": "SDA"}, {"ref": "DISP", "pin": "SDA"}]}
+      ]
+    },
+    {
+      "id": "rp2040_bme280",
+      "name": "RP2040 + BME280 Environmental Sensor",
+      "description": "Raspberry Pi RP2040 with BME280 sensor on I2C bus",
+      "keywords": ["rp2040", "raspberry pi", "pico", "bme280", "sensor", "temperature", "humidity", "i2c"],
+      "subsystems": [
+        {
+          "subsystem": "USB Input",
+          "function": "USB-C or Micro-USB for power and native USB data",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P", "USB_B_Micro"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "usb"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO regulator for RP2040 and sensor",
+          "example_components": ["Regulator_Linear:AMS1117-3.3", "Regulator_Linear:AP2112K-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "RP2040 dual-core Cortex-M0+ microcontroller",
+          "example_components": ["MCU_Raspberry:RP2040"],
+          "library_filter": "MCU_Raspberry",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Flash Memory",
+          "function": "QSPI flash for RP2040 program storage",
+          "example_components": ["Memory_Flash:W25Q16"],
+          "library_filter": "Memory_Flash",
+          "bus": "qspi"
+        },
+        {
+          "subsystem": "Sensor",
+          "function": "BME280 temperature, humidity and pressure sensor on I2C bus",
+          "example_components": ["Sensor_Temperature:BME280"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Pull-ups",
+          "function": "4.7kΩ pull-up resistors for I2C SDA and SCL lines",
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "i2c"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}, {"ref": "SENSOR", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "SENSOR", "pin": "GND"}]},
+        {"net": "I2C_SCL", "pins": [{"ref": "MCU", "pin": "SCL"}, {"ref": "SENSOR", "pin": "SCL"}]},
+        {"net": "I2C_SDA", "pins": [{"ref": "MCU", "pin": "SDA"}, {"ref": "SENSOR", "pin": "SDA"}]}
+      ]
+    },
+    {
+      "id": "stm32_bme280",
+      "name": "STM32 + BME280 Environmental Sensor",
+      "description": "STM32 microcontroller with BME280 sensor on I2C bus",
+      "keywords": ["stm32", "arm", "cortex", "bme280", "sensor", "temperature", "humidity", "i2c"],
+      "subsystems": [
+        {
+          "subsystem": "Power Input",
+          "function": "USB-C connector for 5V or 3.3V power input",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO regulator for STM32 and sensor",
+          "example_components": ["Regulator_Linear:AMS1117-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "STM32 ARM Cortex-M microcontroller",
+          "example_components": ["MCU_ST:STM32F103C8T6", "MCU_ST:STM32G030F6"],
+          "library_filter": "MCU_ST",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Crystal Oscillator",
+          "function": "8 MHz main crystal and 32.768 kHz RTC crystal",
+          "example_components": ["Device:Crystal_GND24"],
+          "library_filter": "Device|Oscillator",
+          "bus": "clock"
+        },
+        {
+          "subsystem": "Sensor",
+          "function": "BME280 temperature, humidity and pressure sensor on I2C bus",
+          "example_components": ["Sensor_Temperature:BME280"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Pull-ups",
+          "function": "4.7kΩ pull-up resistors for I2C SDA and SCL lines",
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "Programming Interface",
+          "function": "SWD debug header for programming and debugging",
+          "example_components": ["Connector:Conn_01x04_Pin"],
+          "library_filter": "Connector",
+          "bus": "debug"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "VDD"}, {"ref": "SENSOR", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "VSS"}, {"ref": "SENSOR", "pin": "GND"}]},
+        {"net": "I2C_SCL", "pins": [{"ref": "MCU", "pin": "SCL"}, {"ref": "SENSOR", "pin": "SCL"}]},
+        {"net": "I2C_SDA", "pins": [{"ref": "MCU", "pin": "SDA"}, {"ref": "SENSOR", "pin": "SDA"}]},
+        {"net": "HSE_XIN", "pins": [{"ref": "MCU", "pin": "OSC_IN"}, {"ref": "XTAL", "pin": "OUT1"}]},
+        {"net": "HSE_XOUT", "pins": [{"ref": "MCU", "pin": "OSC_OUT"}, {"ref": "XTAL", "pin": "OUT2"}]}
+      ]
+    },
+    {
+      "id": "usb_uart_adapter",
+      "name": "USB-to-UART Serial Adapter",
+      "description": "USB-to-UART bridge with CP2102N or CH340, voltage regulation, and ESD protection",
+      "keywords": ["usb", "uart", "serial", "cp2102", "ch340", "ftdi", "bridge", "adapter", "programmer"],
+      "subsystems": [
+        {
+          "subsystem": "USB Input",
+          "function": "USB-C connector for power and data",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "usb"
+        },
+        {
+          "subsystem": "USB-UART Bridge",
+          "function": "USB-to-UART bridge IC for serial communication",
+          "example_components": ["Interface_USB:CP2102N", "Interface_USB:CH340G", "Interface_USB:FTDI_UART"],
+          "library_filter": "Interface_USB",
+          "bus": "uart"
+        },
+        {
+          "subsystem": "ESD Protection",
+          "function": "TVS diode array for USB data line protection",
+          "example_components": ["Connector_USB:TPD6S300A", "Connector_USB:USBLC6-2SC6"],
+          "library_filter": "Connector_USB",
+          "bus": "protection"
+        },
+        {
+          "subsystem": "Output Connector",
+          "function": "4-pin header for UART TX, RX, VCC, GND",
+          "example_components": ["Connector:Conn_01x04_Pin"],
+          "library_filter": "Connector",
+          "bus": "uart"
+        }
+      ],
+      "nets": [
+        {"net": "VCC", "pins": [{"ref": "USB", "pin": "VBUS"}, {"ref": "BRIDGE", "pin": "VDD"}, {"ref": "OUT", "pin": "VCC"}]},
+        {"net": "GND", "pins": [{"ref": "USB", "pin": "GND"}, {"ref": "BRIDGE", "pin": "GND"}, {"ref": "OUT", "pin": "GND"}]},
+        {"net": "TX", "pins": [{"ref": "BRIDGE", "pin": "TXD"}, {"ref": "OUT", "pin": "TX"}]},
+        {"net": "RX", "pins": [{"ref": "BRIDGE", "pin": "RXD"}, {"ref": "OUT", "pin": "RX"}]}
+      ]
+    },
+    {
+      "id": "battery_sensor_node",
+      "name": "Battery-Powered Environmental Sensor Node",
+      "description": "LiPo-powered ESP32-C3 with BME280 sensor for remote environmental monitoring",
+      "keywords": ["battery", "lipo", "charger", "sensor", "esp32", "bme280", "low power", "portable", "wireless", "iot"],
+      "subsystems": [
+        {
+          "subsystem": "Battery Charger",
+          "function": "LiPo battery charger with charge status output",
+          "example_components": ["Battery_Management:MCP73831", "Battery_Management:TP4056"],
+          "library_filter": "Battery_Management",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Battery Connector",
+          "function": "2-pin connector for LiPo battery",
+          "example_components": ["Connector:Conn_01x02_Pin"],
+          "library_filter": "Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "Low-quiescent-current 3.3V LDO for battery-powered operation",
+          "example_components": ["Regulator_Linear:AP2112K-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "ESP32-C3 WiFi/BLE microcontroller for wireless data transmission",
+          "example_components": ["MCU_Espressif:ESP32-C3", "RF_Module:ESP32-C3-MINI-1"],
+          "library_filter": "MCU_Espressif|RF_Module",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Sensor",
+          "function": "BME280 temperature, humidity and pressure sensor on I2C bus",
+          "example_components": ["Sensor_Temperature:BME280"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Pull-ups",
+          "function": "4.7kΩ pull-up resistors for I2C SDA and SCL lines",
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "i2c"
+        }
+      ],
+      "nets": [
+        {"net": "VBAT", "pins": [{"ref": "CHARGER", "pin": "VBAT"}, {"ref": "BATT", "pin": "POS"}]},
+        {"net": "VCC_3V3", "pins": [{"ref": "LDO", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}, {"ref": "SENSOR", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "LDO", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "SENSOR", "pin": "GND"}, {"ref": "BATT", "pin": "NEG"}, {"ref": "CHARGER", "pin": "GND"}]},
+        {"net": "I2C_SCL", "pins": [{"ref": "MCU", "pin": "SCL"}, {"ref": "SENSOR", "pin": "SCL"}]},
+        {"net": "I2C_SDA", "pins": [{"ref": "MCU", "pin": "SDA"}, {"ref": "SENSOR", "pin": "SDA"}]}
+      ]
+    },
+    {
+      "id": "multi_sensor_i2c_hub",
+      "name": "Multi-Sensor I2C Hub",
+      "description": "Multiple I2C sensors (BME280, TMP117, SHT30) on a shared bus with multiplexer",
+      "keywords": ["multi sensor", "i2c hub", "i2c multiplexer", "bme280", "tmp117", "sht30", "temperature", "humidity", "tca9548"],
+      "subsystems": [
+        {
+          "subsystem": "Connector",
+          "function": "Pin header for I2C and power connection to main board",
+          "example_components": ["Connector:Conn_01x06_Pin"],
+          "library_filter": "Connector",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Multiplexer",
+          "function": "TCA9548A I2C multiplexer for multiple sensor channels",
+          "example_components": ["Interface:TCA9548A"],
+          "library_filter": "Interface",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "Temperature Sensor 1",
+          "function": "BME280 temperature, humidity and pressure sensor",
+          "example_components": ["Sensor_Temperature:BME280"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "Temperature Sensor 2",
+          "function": "TMP117 high-accuracy temperature sensor",
+          "example_components": ["Sensor_Temperature:TMP117xxYBG"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "I2C Pull-ups",
+          "function": "4.7kΩ pull-up resistors for I2C SDA and SCL lines",
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "Power Filtering",
+          "function": "Decoupling capacitors for sensor and mux power rails",
+          "example_components": ["Device:C_Small"],
+          "library_filter": "Device",
+          "bus": "power"
+        }
+      ],
+      "nets": [
+        {"net": "VCC", "pins": [{"ref": "CONN", "pin": "VCC"}, {"ref": "MUX", "pin": "VDD"}, {"ref": "SENS1", "pin": "VDD"}, {"ref": "SENS2", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "CONN", "pin": "GND"}, {"ref": "MUX", "pin": "GND"}, {"ref": "SENS1", "pin": "GND"}, {"ref": "SENS2", "pin": "GND"}]},
+        {"net": "I2C_SCL", "pins": [{"ref": "CONN", "pin": "SCL"}, {"ref": "MUX", "pin": "SCL"}]},
+        {"net": "I2C_SDA", "pins": [{"ref": "CONN", "pin": "SDA"}, {"ref": "MUX", "pin": "SDA"}]}
       ]
     },
     {
@@ -100,41 +543,37 @@
         {
           "subsystem": "Sensor",
           "function": "BME280 or BME680 temperature/humidity/pressure sensor",
-          "example_components": ["BME280", "BME680", "BMP280"],
+          "example_components": ["Sensor_Temperature:BME280", "Sensor_Temperature:BME680", "Sensor_Temperature:BMP280"],
+          "library_filter": "Sensor",
           "bus": "i2c"
         },
         {
           "subsystem": "I2C Pull-ups",
           "function": "Pull-up resistors for I2C SDA and SCL lines",
-          "example_components": [],
-          "bus": "i2c",
-          "supporting": [
-            {"type": "resistor", "value": "4.7k", "role": "SDA pull-up"},
-            {"type": "resistor", "value": "4.7k", "role": "SCL pull-up"}
-          ]
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "i2c"
         },
         {
           "subsystem": "Power Filtering",
           "function": "Decoupling capacitors for sensor power rail",
-          "example_components": [],
-          "bus": "power",
-          "supporting": [
-            {"type": "capacitor", "value": "100nF", "role": "bypass"},
-            {"type": "capacitor", "value": "10uF", "role": "bulk"}
-          ]
+          "example_components": ["Device:C_Small"],
+          "library_filter": "Device",
+          "bus": "power"
         },
         {
           "subsystem": "Connector",
           "function": "Pin header for I2C connection to main board",
-          "example_components": ["Conn_01x04"],
+          "example_components": ["Connector:Conn_01x04_Pin"],
+          "library_filter": "Connector",
           "bus": "connector"
         }
       ],
       "nets": [
-        {"name": "VCC", "pins": ["CONN:VCC", "SENSOR:VDD"]},
-        {"name": "GND", "pins": ["CONN:GND", "SENSOR:GND"]},
-        {"name": "SDA", "pins": ["CONN:SDA", "SENSOR:SDA", "R1:OUT"]},
-        {"name": "SCL", "pins": ["CONN:SCL", "SENSOR:SCL", "R2:OUT"]}
+        {"net": "VCC", "pins": [{"ref": "CONN", "pin": "VCC"}, {"ref": "SENSOR", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "CONN", "pin": "GND"}, {"ref": "SENSOR", "pin": "GND"}]},
+        {"net": "SDA", "pins": [{"ref": "CONN", "pin": "SDA"}, {"ref": "SENSOR", "pin": "SDA"}, {"ref": "R1", "pin": "OUT"}]},
+        {"net": "SCL", "pins": [{"ref": "CONN", "pin": "SCL"}, {"ref": "SENSOR", "pin": "SCL"}, {"ref": "R2", "pin": "OUT"}]}
       ]
     },
     {
@@ -146,38 +585,38 @@
         {
           "subsystem": "Charger IC",
           "function": "TP4056 or similar LiPo charger with built-in protection",
-          "example_components": ["TP4056", "MCP73831"],
+          "example_components": ["Battery_Management:TP4056", "Battery_Management:MCP73831"],
+          "library_filter": "Battery_Management",
           "bus": "power"
         },
         {
           "subsystem": "USB Input",
           "function": "USB connector for charging power",
-          "example_components": ["USB_B_Micro", "Connector_USB_C"],
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P", "USB_B_Micro"],
+          "library_filter": "Connector_USB|Connector",
           "bus": "power"
         },
         {
           "subsystem": "Charge Indicators",
           "function": "LEDs for charging and charge-complete status",
-          "example_components": ["LED_0603", "LED_0603"],
-          "bus": "signal",
-          "supporting": [
-            {"type": "resistor", "value": "1k", "role": "charge LED"},
-            {"type": "resistor", "value": "1k", "role": "done LED"}
-          ]
+          "example_components": ["Device:LED"],
+          "library_filter": "Device",
+          "bus": "signal"
         },
         {
           "subsystem": "Battery Connector",
           "function": "2-pin connector for LiPo battery",
-          "example_components": ["Conn_01x02"],
+          "example_components": ["Connector:Conn_01x02_Pin"],
+          "library_filter": "Connector",
           "bus": "power"
         }
       ],
       "nets": [
-        {"name": "USB_VBUS", "pins": ["USB:VBUS", "CHG:VIN"]},
-        {"name": "BATT", "pins": ["CHG:BATT", "CONN:BATT+"]},
-        {"name": "GND", "pins": ["USB:GND", "CHG:GND", "CONN:BATT-"]},
-        {"name": "CHRG", "pins": ["CHG:CHRG", "R1:IN"]},
-        {"name": "STDBY", "pins": ["CHG:STDBY", "R2:IN"]}
+        {"net": "USB_VBUS", "pins": [{"ref": "USB", "pin": "VBUS"}, {"ref": "CHG", "pin": "VIN"}]},
+        {"net": "BATT", "pins": [{"ref": "CHG", "pin": "BATT"}, {"ref": "CONN", "pin": "POS"}]},
+        {"net": "GND", "pins": [{"ref": "USB", "pin": "GND"}, {"ref": "CHG", "pin": "GND"}, {"ref": "CONN", "pin": "NEG"}]},
+        {"net": "CHRG", "pins": [{"ref": "CHG", "pin": "CHRG"}, {"ref": "R1", "pin": "IN"}]},
+        {"net": "STDBY", "pins": [{"ref": "CHG", "pin": "STDBY"}, {"ref": "R2", "pin": "IN"}]}
       ]
     },
     {
@@ -189,41 +628,38 @@
         {
           "subsystem": "LED",
           "function": "High-power LED (1W or 3W)",
-          "example_components": ["LED_Aluminum"],
+          "example_components": ["Device:LED"],
+          "library_filter": "Device",
           "bus": "power"
         },
         {
           "subsystem": "Current Sense",
           "function": "Low-value resistor for current sensing",
-          "example_components": [],
-          "bus": "analog",
-          "supporting": [
-            {"type": "resistor", "value": "1R", "role": "current sense"}
-          ]
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "analog"
         },
         {
           "subsystem": "MOSFET Switch",
           "function": "N-channel MOSFET for PWM dimming control",
-          "example_components": ["2N7002", "IRLML6344"],
+          "example_components": ["Transistor_FET:IRLML6344", "Transistor_FET:2N7002"],
+          "library_filter": "Transistor_FET",
           "bus": "digital"
         },
         {
           "subsystem": "Gate Resistor",
           "function": "Gate pull-down and series resistor for MOSFET",
-          "example_components": [],
-          "bus": "digital",
-          "supporting": [
-            {"type": "resistor", "value": "10k", "role": "gate pull-down"},
-            {"type": "resistor", "value": "100R", "role": "gate series"}
-          ]
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "digital"
         }
       ],
       "nets": [
-        {"name": "LED_VCC", "pins": ["LED:ANODE"]},
-        {"name": "LED_DRIVE", "pins": ["LED:CATHODE", "R_SENSE:IN"]},
-        {"name": "LED_GND", "pins": ["R_SENSE:OUT", "FET:DRAIN"]},
-        {"name": "GATE", "pins": ["FET:GATE", "R_SER:OUT"]},
-        {"name": "PWM_IN", "pins": ["R_SER:IN"]}
+        {"net": "LED_VCC", "pins": [{"ref": "LED", "pin": "ANODE"}]},
+        {"net": "LED_DRIVE", "pins": [{"ref": "LED", "pin": "CATHODE"}, {"ref": "R_SENSE", "pin": "IN"}]},
+        {"net": "LED_GND", "pins": [{"ref": "R_SENSE", "pin": "OUT"}, {"ref": "FET", "pin": "DRAIN"}]},
+        {"net": "GATE", "pins": [{"ref": "FET", "pin": "GATE"}, {"ref": "R_SER", "pin": "OUT"}]},
+        {"net": "PWM_IN", "pins": [{"ref": "R_SER", "pin": "IN"}]}
       ]
     },
     {
@@ -235,35 +671,39 @@
         {
           "subsystem": "Motor Connector",
           "function": "2-pin connector for DC motor",
-          "example_components": ["Conn_01x02"],
+          "example_components": ["Connector:Conn_01x02_Pin"],
+          "library_filter": "Connector",
           "bus": "power"
         },
         {
           "subsystem": "H-Bridge Driver",
           "function": "Dual H-bridge IC for bidirectional motor control",
-          "example_components": ["L293D", "DRV8833", "TB6612FNG"],
+          "example_components": ["Driver_Motor:DRV8833", "Driver_Motor:TB6612FNG", "Driver_Motor:L293D"],
+          "library_filter": "Driver_Motor",
           "bus": "power"
         },
         {
           "subsystem": "Flyback Protection",
           "function": "Schottky diodes across motor terminals",
-          "example_components": ["BAT54"],
+          "example_components": ["Device:D_Small"],
+          "library_filter": "Device",
           "bus": "power"
         },
         {
           "subsystem": "Control Interface",
           "function": "Input pins for direction and speed control",
-          "example_components": ["Conn_01x04"],
+          "example_components": ["Connector:Conn_01x04_Pin"],
+          "library_filter": "Connector",
           "bus": "digital"
         }
       ],
       "nets": [
-        {"name": "MOTOR_VCC", "pins": ["DRV:VM", "CONN:VCC"]},
-        {"name": "MOTOR_A", "pins": ["DRV:OUT1", "MOTOR:+"], "note": "Motor terminal A"},
-        {"name": "MOTOR_B", "pins": ["DRV:OUT2", "MOTOR:-"], "note": "Motor terminal B"},
-        {"name": "GND", "pins": ["DRV:GND", "CONN:GND"]},
-        {"name": "IN1", "pins": ["DRV:IN1", "CONN:IN1"]},
-        {"name": "IN2", "pins": ["DRV:IN2", "CONN:IN2"]}
+        {"net": "MOTOR_VCC", "pins": [{"ref": "DRV", "pin": "VM"}, {"ref": "CONN", "pin": "VCC"}]},
+        {"net": "MOTOR_A", "pins": [{"ref": "DRV", "pin": "OUT1"}, {"ref": "MOTOR", "pin": "POS"}]},
+        {"net": "MOTOR_B", "pins": [{"ref": "DRV", "pin": "OUT2"}, {"ref": "MOTOR", "pin": "NEG"}]},
+        {"net": "GND", "pins": [{"ref": "DRV", "pin": "GND"}, {"ref": "CONN", "pin": "GND"}]},
+        {"net": "IN1", "pins": [{"ref": "DRV", "pin": "IN1"}, {"ref": "CONN", "pin": "IN1"}]},
+        {"net": "IN2", "pins": [{"ref": "DRV", "pin": "IN2"}, {"ref": "CONN", "pin": "IN2"}]}
       ]
     },
     {
@@ -275,30 +715,29 @@
         {
           "subsystem": "Temperature Sensor",
           "function": "NTC thermistor for temperature measurement",
-          "example_components": ["NTC_10K"],
+          "example_components": ["Sensor_Temperature:NTC_10K"],
+          "library_filter": "Sensor",
           "bus": "analog"
         },
         {
           "subsystem": "Voltage Divider",
           "function": "Precision resistor divider for NTC linearization",
-          "example_components": [],
-          "bus": "analog",
-          "supporting": [
-            {"type": "resistor", "value": "10k", "role": "divider top"},
-            {"type": "capacitor", "value": "100nF", "role": "filter"}
-          ]
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "analog"
         },
         {
           "subsystem": "ADC Connector",
           "function": "Pin header for analog output to MCU ADC",
-          "example_components": ["Conn_01x03"],
+          "example_components": ["Connector:Conn_01x03_Pin"],
+          "library_filter": "Connector",
           "bus": "connector"
         }
       ],
       "nets": [
-        {"name": "VCC", "pins": ["CONN:VCC", "R_TOP:IN"]},
-        {"name": "NTC_NODE", "pins": ["R_TOP:OUT", "NTC:IN", "C:POS", "CONN:OUT"]},
-        {"name": "GND", "pins": ["CONN:GND", "NTC:OUT"]}
+        {"net": "VCC", "pins": [{"ref": "CONN", "pin": "VCC"}, {"ref": "R_TOP", "pin": "IN"}]},
+        {"net": "NTC_NODE", "pins": [{"ref": "R_TOP", "pin": "OUT"}, {"ref": "NTC", "pin": "IN"}, {"ref": "C", "pin": "POS"}, {"ref": "CONN", "pin": "OUT"}]},
+        {"net": "GND", "pins": [{"ref": "CONN", "pin": "GND"}, {"ref": "NTC", "pin": "OUT"}]}
       ]
     },
     {
@@ -310,38 +749,307 @@
         {
           "subsystem": "RS-485 Transceiver",
           "function": "MAX485 or similar half-duplex RS-485 transceiver",
-          "example_components": ["MAX485", "SP3485"],
+          "example_components": ["Interface_UART:MAX485", "Interface_UART:SP3485"],
+          "library_filter": "Interface_UART",
           "bus": "serial"
         },
         {
           "subsystem": "Termination",
           "function": "120 ohm termination resistor (optional, switchable)",
-          "example_components": [],
-          "bus": "serial",
-          "supporting": [
-            {"type": "resistor", "value": "120R", "role": "termination"}
-          ]
+          "example_components": ["Device:R_Small"],
+          "library_filter": "Device",
+          "bus": "serial"
         },
         {
           "subsystem": "ESD Protection",
           "function": "TVS diode array for bus line protection",
-          "example_components": ["PESD2CAN"],
+          "example_components": ["Connector_USB:TPD6S300A"],
+          "library_filter": "Connector_USB",
           "bus": "protection"
         },
         {
           "subsystem": "Connector",
           "function": "2-pin terminal block for A/B bus lines",
-          "example_components": ["Conn_01x02"],
+          "example_components": ["Connector:Conn_01x02_Pin"],
+          "library_filter": "Connector",
           "bus": "connector"
         }
       ],
       "nets": [
-        {"name": "RS485_A", "pins": ["TRCV:A", "TERM:A", "TVS:A", "CONN:A"]},
-        {"name": "RS485_B", "pins": ["TRCV:B", "TERM:B", "TVS:B", "CONN:B"]},
-        {"name": "GND", "pins": ["TRCV:GND", "TVS:GND", "CONN:GND"]},
-        {"name": "TX", "pins": ["TRCV:DI", "CONN:TX"]},
-        {"name": "RX", "pins": ["TRCV:RO", "CONN:RX"]},
-        {"name": "DE", "pins": ["TRCV:DE", "TRCV:RE", "CONN:DE"]}
+        {"net": "RS485_A", "pins": [{"ref": "TRCV", "pin": "A"}, {"ref": "TERM", "pin": "A"}, {"ref": "TVS", "pin": "A"}, {"ref": "CONN", "pin": "A"}]},
+        {"net": "RS485_B", "pins": [{"ref": "TRCV", "pin": "B"}, {"ref": "TERM", "pin": "B"}, {"ref": "TVS", "pin": "B"}, {"ref": "CONN", "pin": "B"}]},
+        {"net": "GND", "pins": [{"ref": "TRCV", "pin": "GND"}, {"ref": "TVS", "pin": "GND"}, {"ref": "CONN", "pin": "GND"}]},
+        {"net": "TX", "pins": [{"ref": "TRCV", "pin": "DI"}, {"ref": "CONN", "pin": "TX"}]},
+        {"net": "RX", "pins": [{"ref": "TRCV", "pin": "RO"}, {"ref": "CONN", "pin": "RX"}]},
+        {"net": "DE", "pins": [{"ref": "TRCV", "pin": "DE"}, {"ref": "TRCV", "pin": "RE"}, {"ref": "CONN", "pin": "DE"}]}
+      ]
+    },
+    {
+      "id": "esp32_c3_minimal",
+      "name": "ESP32-C3 Minimal Module Board",
+      "description": "Minimal ESP32-C3 module board with decoupling, EN pull-up, and USB programming",
+      "keywords": ["esp32", "esp32-c3", "minimal", "module", "wroom", "mini", "compact"],
+      "subsystems": [
+        {
+          "subsystem": "Power Input",
+          "function": "USB-C connector for 5V power input",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO regulator for ESP32-C3 module",
+          "example_components": ["Regulator_Linear:AMS1117-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "ESP32-C3-MINI-1 module with built-in crystal, flash, and antenna",
+          "example_components": ["RF_Module:ESP32-C3-MINI-1"],
+          "library_filter": "RF_Module|MCU_Espressif",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Programming Interface",
+          "function": "UART programming header for firmware flashing",
+          "example_components": ["Connector:Conn_01x04_Pin"],
+          "library_filter": "Connector",
+          "bus": "uart"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}]},
+        {"net": "EN", "pins": [{"ref": "MCU", "pin": "EN"}]},
+        {"net": "TX", "pins": [{"ref": "MCU", "pin": "TX"}, {"ref": "PROG", "pin": "TX"}]},
+        {"net": "RX", "pins": [{"ref": "MCU", "pin": "RX"}, {"ref": "PROG", "pin": "RX"}]}
+      ]
+    },
+    {
+      "id": "rp2040_minimal",
+      "name": "RP2040 Minimal System",
+      "description": "Raspberry Pi RP2040 with flash, crystal, USB, and decoupling",
+      "keywords": ["rp2040", "raspberry pi", "pico", "minimal", "mcu", "microcontroller"],
+      "subsystems": [
+        {
+          "subsystem": "USB Input",
+          "function": "Micro-USB or USB-C for power and native USB data",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P", "USB_B_Micro"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "usb"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO regulator for RP2040 core",
+          "example_components": ["Regulator_Linear:AMS1117-3.3", "Regulator_Linear:AP2112K-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "RP2040 dual-core Cortex-M0+ microcontroller",
+          "example_components": ["MCU_Raspberry:RP2040"],
+          "library_filter": "MCU_Raspberry",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Flash Memory",
+          "function": "QSPI NOR flash for RP2040 program storage",
+          "example_components": ["Memory_Flash:W25Q16", "Memory_Flash:W25Q32"],
+          "library_filter": "Memory_Flash",
+          "bus": "qspi"
+        },
+        {
+          "subsystem": "Crystal Oscillator",
+          "function": "12 MHz crystal for RP2040 USB and PLL clock",
+          "example_components": ["Device:Crystal_GND24"],
+          "library_filter": "Device|Oscillator",
+          "bus": "clock"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}, {"ref": "FLASH", "pin": "VDD"}]},
+        {"net": "VCC_1V1", "pins": [{"ref": "MCU", "pin": "1V1"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "FLASH", "pin": "GND"}]},
+        {"net": "XIN", "pins": [{"ref": "MCU", "pin": "XIN"}, {"ref": "XTAL", "pin": "OUT1"}]},
+        {"net": "XOUT", "pins": [{"ref": "MCU", "pin": "XOUT"}, {"ref": "XTAL", "pin": "OUT2"}]}
+      ]
+    },
+    {
+      "id": "atmega328p_sensor",
+      "name": "ATmega328P with Sensor",
+      "description": "ATmega328P microcontroller with sensor on I2C or analog input",
+      "keywords": ["atmega", "atmega328", "arduino", "sensor", "temperature", "i2c", "analog"],
+      "subsystems": [
+        {
+          "subsystem": "Power Input",
+          "function": "USB-C or barrel jack for power input",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "5V or 3.3V regulator for ATmega and peripherals",
+          "example_components": ["Regulator_Linear:AMS1117-3.3", "Regulator_Linear:LM1117-5.0"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "ATmega328P AVR microcontroller",
+          "example_components": ["MCU_Microchip_AVR:ATmega328P"],
+          "library_filter": "MCU_Microchip_AVR",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Crystal Oscillator",
+          "function": "16 MHz crystal for ATmega main clock",
+          "example_components": ["Device:Crystal_GND24"],
+          "library_filter": "Device|Oscillator",
+          "bus": "clock"
+        },
+        {
+          "subsystem": "Sensor",
+          "function": "Temperature sensor on I2C or analog bus",
+          "example_components": ["Sensor_Temperature:TMP117xxYBG", "Sensor_Temperature:DS18B20"],
+          "library_filter": "Sensor",
+          "bus": "i2c"
+        },
+        {
+          "subsystem": "Programming Interface",
+          "function": "ICSP header for AVR programming",
+          "example_components": ["Connector:AVR-ISP-6"],
+          "library_filter": "Connector",
+          "bus": "spi"
+        }
+      ],
+      "nets": [
+        {"net": "VCC", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "VCC"}, {"ref": "SENSOR", "pin": "VDD"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "SENSOR", "pin": "GND"}]},
+        {"net": "XIN", "pins": [{"ref": "MCU", "pin": "XTAL1"}, {"ref": "XTAL", "pin": "OUT1"}]},
+        {"net": "XOUT", "pins": [{"ref": "MCU", "pin": "XTAL2"}, {"ref": "XTAL", "pin": "OUT2"}]}
+      ]
+    },
+    {
+      "id": "esp32_relay",
+      "name": "ESP32 with Relay Actuators",
+      "description": "ESP32 microcontroller with multiple relay channels for AC/DC switching",
+      "keywords": ["esp32", "relay", "actuator", "switching", "home automation", "ac control"],
+      "subsystems": [
+        {
+          "subsystem": "Power Input",
+          "function": "USB-C or screw terminal for power input",
+          "example_components": ["Connector:USB_C_Receptacle_USB2.0_16P", "Connector:Screw_Terminal_01x02"],
+          "library_filter": "Connector_USB|Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Power Regulation",
+          "function": "3.3V LDO for ESP32 and 5V relay coil supply",
+          "example_components": ["Regulator_Linear:AMS1117-3.3"],
+          "library_filter": "Regulator_Linear",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Microcontroller",
+          "function": "ESP32 WiFi/BLE microcontroller for remote control",
+          "example_components": ["MCU_Espressif:ESP32-C3", "RF_Module:ESP32-WROOM-32"],
+          "library_filter": "MCU_Espressif|RF_Module",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Relay Driver",
+          "function": "NPN transistor or MOSFET driver for relay coils",
+          "example_components": ["Transistor_BJT:BC547", "Transistor_FET:2N7002"],
+          "library_filter": "Transistor_BJT|Transistor_FET",
+          "bus": "digital"
+        },
+        {
+          "subsystem": "Relay",
+          "function": "SPDT relay for AC/DC load switching",
+          "example_components": ["Relay:Relay_SPDT"],
+          "library_filter": "Relay",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Flyback Diode",
+          "function": "Protection diode across relay coil",
+          "example_components": ["Device:D_Small"],
+          "library_filter": "Device",
+          "bus": "protection"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_3V3", "pins": [{"ref": "REG", "pin": "OUT"}, {"ref": "MCU", "pin": "3V3"}]},
+        {"net": "VCC_5V", "pins": [{"ref": "INPUT", "pin": "VCC"}, {"ref": "DRV", "pin": "VCC"}, {"ref": "RELAY", "pin": "COIL1"}]},
+        {"net": "GND", "pins": [{"ref": "REG", "pin": "GND"}, {"ref": "MCU", "pin": "GND"}, {"ref": "DRV", "pin": "GND"}, {"ref": "RELAY", "pin": "COIL2"}]},
+        {"net": "RELAY_CTRL", "pins": [{"ref": "MCU", "pin": "GPIO"}, {"ref": "DRV", "pin": "BASE"}]}
+      ]
+    },
+    {
+      "id": "ne555_astable",
+      "name": "NE555 Astable Timer",
+      "description": "NE555 timer in astable mode for periodic signal generation (LED blink, tone generator, etc.)",
+      "keywords": ["ne555", "555 timer", "lm555", "icm7555", "astable", "monostable", "timer", "blink", "oscillator", "multivibrator"],
+      "subsystems": [
+        {
+          "subsystem": "Timer IC",
+          "function": "NE555 precision timer in astable mode",
+          "example_components": ["Timer:NE555P", "Timer:NE555"],
+          "library_filter": "Timer",
+          "bus": "analog",
+          "supporting": [
+            {"type": "capacitor", "value": "100nF", "role": "control voltage bypass"}
+          ]
+        },
+        {
+          "subsystem": "Timing Network",
+          "function": "R1, R2 timing resistors and C1 timing capacitor for frequency/duty-cycle setting",
+          "example_components": ["Device:R_Small", "Device:C_Small"],
+          "library_filter": "Device",
+          "bus": "analog",
+          "supporting": [
+            {"type": "resistor", "value": "1k-100k", "role": "R_A timing resistor (VCC to DISCHARGE)"},
+            {"type": "resistor", "value": "1k-100k", "role": "R_B timing resistor (DISCHARGE to THRESHOLD/TRIGGER)"},
+            {"type": "capacitor", "value": "1uF-100uF", "role": "C1 timing capacitor (THRESHOLD/TRIGGER to GND)"}
+          ]
+        },
+        {
+          "subsystem": "Output Stage",
+          "function": "LED with current-limiting resistor driven by NE555 output (pin 3)",
+          "example_components": ["Device:LED"],
+          "library_filter": "Device",
+          "bus": "signal",
+          "supporting": [
+            {"type": "resistor", "value": "220-1k", "role": "LED current limiter"}
+          ],
+          "avoid": ["LD271", "infrared", "IR"]
+        },
+        {
+          "subsystem": "Power Input",
+          "function": "5V DC power input (barrel jack, terminal block, or USB)",
+          "example_components": ["Connector:Barrel_Jack", "Connector:Conn_01x02_Pin"],
+          "library_filter": "Connector",
+          "bus": "power"
+        },
+        {
+          "subsystem": "Bypass Capacitor",
+          "function": "100nF ceramic bypass capacitor on VCC pin",
+          "example_components": ["Device:C_Small"],
+          "library_filter": "Device",
+          "bus": "power"
+        }
+      ],
+      "nets": [
+        {"net": "VCC_5V", "pins": [{"ref": "U1", "pin": "VCC"}, {"ref": "CONN", "pin": "POS"}, {"ref": "R1", "pin": "1"}]},
+        {"net": "GND", "pins": [{"ref": "U1", "pin": "GND"}, {"ref": "CONN", "pin": "NEG"}, {"ref": "C1", "pin": "2"}, {"ref": "C_BYP", "pin": "2"}, {"ref": "LED", "pin": "K"}]},
+        {"net": "DISCHARGE", "pins": [{"ref": "U1", "pin": "DISCHARGE"}, {"ref": "R1", "pin": "2"}, {"ref": "R2", "pin": "1"}]},
+        {"net": "THRESHOLD_TRIGGER", "pins": [{"ref": "U1", "pin": "THRESHOLD"}, {"ref": "U1", "pin": "TRIGGER"}, {"ref": "R2", "pin": "2"}, {"ref": "C1", "pin": "1"}]},
+        {"net": "OUTPUT", "pins": [{"ref": "U1", "pin": "OUTPUT"}, {"ref": "R_LED", "pin": "1"}]},
+        {"net": "LED_ANODE", "pins": [{"ref": "R_LED", "pin": "2"}, {"ref": "LED", "pin": "A"}]}
       ]
     }
   ]

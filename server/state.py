@@ -37,27 +37,33 @@ class DesignSession:
         self.agent_events: dict = {}
         self.created_at: float = time.time()
         self.last_active: float = time.time()
+        self.lock = threading.Lock()
 
     def touch(self):
         self.last_active = time.time()
 
     def get_design(self) -> dict:
-        return self.last_design
+        with self.lock:
+            return self.last_design
 
     def set_design(self, data: dict):
-        self.last_design.update(data)
-        self.touch()
+        with self.lock:
+            self.last_design.update(data)
+            self.touch()
 
     def clear_design(self):
-        self.last_design.clear()
-        self.touch()
+        with self.lock:
+            self.last_design.clear()
+            self.touch()
 
     def get_layout(self) -> dict:
-        return self.wire_bender_layout
+        with self.lock:
+            return self.wire_bender_layout
 
     def set_layout(self, data: dict):
-        self.wire_bender_layout.update(data)
-        self.touch()
+        with self.lock:
+            self.wire_bender_layout.update(data)
+            self.touch()
 
 
 class DesignSessionManager:

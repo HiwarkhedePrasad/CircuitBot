@@ -1,5 +1,6 @@
 from agent.nodes.analyze import analyze_node
 from agent.nodes.research import research_node
+from agent.nodes.deepresearch import deepresearch_node
 from agent.nodes.select import select_node
 from agent.nodes.symbol_compatibility import symbol_compatibility_node
 from agent.nodes.validate import validate_node
@@ -22,9 +23,19 @@ from agent.nodes.ask_validation_help import ask_validation_help_node
 from agent.nodes.ask_board_config import ask_board_config_node
 from agent.nodes.datasheet_search import datasheet_search_node
 from agent.nodes.connection_search import connection_search_node
+# New pipeline nodes
+from agent.nodes.architecture_planner import architecture_planner_node
+from agent.nodes.capability_resolver import capability_resolver_node
+from agent.nodes.dependency_expander import dependency_expander_node
+from agent.nodes.deduplicator import deduplicator_node
+from agent.nodes.constraint_checker import constraint_checker_node
+from agent.nodes.repair import repair_node
+from agent.nodes.freeze_components import freeze_component_list_node
+from agent.nodes.pin_marker import pin_marker_node
+from agent.nodes.llm_judge import llm_judge_node
 
 __all__ = [
-    "analyze_node", "research_node", "select_node",
+    "analyze_node", "research_node", "deepresearch_node", "select_node",
     "symbol_compatibility_node", "validate_node",
     "dispatch_node", "netlist_node",
     "placement_node", "routing_node", "pcb_layout_node",
@@ -39,4 +50,14 @@ __all__ = [
     "ask_board_config_node",
     "datasheet_search_node",
     "connection_search_node",
+    # New pipeline nodes
+    "architecture_planner_node",
+    "capability_resolver_node",
+    "dependency_expander_node",
+    "deduplicator_node",
+    "constraint_checker_node",
+    "repair_node",
+    "freeze_component_list_node",
+    "pin_marker_node",
+    "llm_judge_node",
 ]

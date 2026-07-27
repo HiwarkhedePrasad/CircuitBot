@@ -10,16 +10,16 @@
       "npm": "@ai-sdk/openai",
       "name": "FreeModel",
       "options": {
-        "baseURL": "https://api.freemodel.dev",
-        "apiKey": "fe_oa_353748fe31ff94d65e13ee36491a0d7abda8f072632bf6c0"
+        "baseURL": "https://cc.freemodel.dev",
+        "apiKey": "fe_oa_07099f734c15d8564a91174363627e5d21e03561ab72ac37"
       },
       "models": {
-        "gpt-5.6-sol": {
-          "name": "GPT-5.6 Sol"
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5"
         }
       }
     }
   },
 
-  "model": "freemodel/gpt-5.6-sol"
+  "model": "freemodel/claude-sonnet-5"
 }

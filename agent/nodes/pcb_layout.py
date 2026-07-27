@@ -11,6 +11,7 @@ Pipeline:
 from collections import defaultdict
 
 from agent.utils import _emit, emit_assistant_message, emit_tool_event, emit_thought, emit_tool_call, emit_tool_end, emit_step
+from agent.feature_flags import is_enabled
 from uuid import uuid4
 
 from pcb_design.board_model import (
@@ -149,7 +150,9 @@ def _hydrate_component_for_pcb(comp: dict) -> tuple[list[PadDef], list[dict], st
     return pads, (parsed_fp.graphics if parsed_fp else []), hydrated.get("footprint", "")
 
 
-def _build_nets_from_netlist(netlist: list[dict], pin_matrix: dict) -> list[dict]:
+def _build_nets_from_netlist(
+    netlist: list[dict], pin_matrix: dict, power_pins: list[dict] | None = None
+) -> list[dict]:
     """Build model.nets from netlist as the single source of truth.
 
     Groups all netlist entries by net name and collects unique pin keys
@@ -173,6 +176,14 @@ def _build_nets_from_netlist(netlist: list[dict], pin_matrix: dict) -> list[dict
             net_groups[net].add(src)
         if tgt:
             net_groups[net].add(tgt)
+    # Power pins are intentionally represented separately by netlist_node so
+    # they do not create schematic signal edges. They are nevertheless real
+    # PCB nets and must be included in BoardModel/export connectivity.
+    for entry in power_pins or []:
+        pin = entry.get("pin", "")
+        net = entry.get("net", "")
+        if pin and net:
+            net_groups[net].add(pin)
     return [{"name": n, "pins": sorted(p)} for n, p in net_groups.items()]
 
 
@@ -195,10 +206,28 @@ def pcb_layout_node(state, config):
 
     # ── 1. Build nets from netlist (single source of truth) ────────
     emit_step(config, pcb_id, "Building net model...", "running")
-    nets = _build_nets_from_netlist(netlist, pin_matrix)
+    nets = _build_nets_from_netlist(netlist, pin_matrix, power_pins)
 
     # ── 2. Graph-driven placement ──────────────────────────────────
     emit_step(config, pcb_id, "Running graph-driven placement...", "running")
+
+    # ── M1c: Detect motifs for placement clustering hints ──────────
+    motif_hints = None
+    if is_enabled("MOTIF_DETECTION") and state.get("synthesis_graph"):
+        try:
+            from agent.schematic.detector import detect_motifs, find_orphan_components
+            graph = state["synthesis_graph"]
+            if hasattr(graph, "components"):
+                motifs = detect_motifs(graph)
+                orphans = find_orphan_components(graph, motifs)
+                motif_hints = {
+                    "motifs": [(m.motif_type.value, m.components, m.anchor) for m in motifs],
+                    "orphans": orphans,
+                }
+                emit_thought(config, f"Detected {len(motifs)} circuit motifs, {len(orphans)} orphan components")
+        except Exception as e:
+            _emit(config, "agent:log", {"message": f"  Motif detection failed: {e}"})
+
     pcb_placements = place_components(comps, netlist, pin_matrix=pin_matrix)
     pcb_pos = {p["ref_des"]: (p["x"], p["y"], p.get("rotation", 0)) for p in pcb_placements}
 
@@ -216,6 +245,10 @@ def pcb_layout_node(state, config):
     missing_footprints = []
     missing_pads = []
     for comp in comps:
+        # PWR_FLAG is a schematic-only ERC marker. It has no physical PCB
+        # footprint and must not make a valid board look incomplete.
+        if comp.get("id_str") == "power:PWR_FLAG":
+            continue
         ref = comp["ref_des"]
         pads, graphics, footprint = _hydrate_component_for_pcb(comp)
         if not footprint:
@@ -228,7 +261,7 @@ def pcb_layout_node(state, config):
             footprint=footprint,
             x=bx, y=by,
             rotation=brot,
-            value=comp.get("id_str", "").rpartition(":")[2] if comp else "",
+            value=comp.get("value") or comp.get("id_str", "").rpartition(":")[2],
             pads=pads,
             graphics=graphics,
             bbox=(0, 0, 10, 10),
@@ -242,6 +275,17 @@ def pcb_layout_node(state, config):
         _emit(config, "agent:log", {
             "message": "  PCB warning: no pads available for " + ", ".join(missing_pads)
         })
+
+    if missing_footprints or missing_pads:
+        details = []
+        if missing_footprints:
+            details.append("missing footprints: " + ", ".join(missing_footprints))
+        if missing_pads:
+            details.append("missing pads: " + ", ".join(missing_pads))
+        message = "PCB model cannot be generated safely (" + "; ".join(details) + ")"
+        emit_tool_event(config, "PCB Layout", "failed", message)
+        emit_tool_end(config, pcb_id, message, status="failed")
+        return {"error": message}
 
     if HAS_SHAPELY:
         comp_data = [{"x": c.x, "y": c.y, "pads": [{"x": p.x, "y": p.y} for p in c.pads]}
@@ -271,8 +315,8 @@ def pcb_layout_node(state, config):
                     f"{len(model.components)} components placed — manual routing required")
     emit_tool_end(config, pcb_id, f"PCB layout complete — {len(model.components)} components placed")
     emit_assistant_message(config,
-                           f"PCB complete — {len(model.components)} components placed. "
-                           f"Use the PCB viewer to route traces manually.")
+                            f"PCB placement preview ready — {len(model.components)} components placed. "
+                            f"Manual routing and KiCad DRC are still required.")
 
 
     return {"board_model": board_dict}

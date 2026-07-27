@@ -120,19 +120,15 @@ def _check_power_isolation(
 
 
 def _is_i2c_net(name: str) -> str | None:
-    """Return 'SDA' or 'SCL' if the net name is an I2C bus alias, else None.
-
-    Uses PIN_ALIASES for exact matches and a broader heuristics for
-    common LLM-generated variants like 'I2C_SDA', 'SDA_1', 'I2C_BUS'.
-    """
+    """Return 'SDA' or 'SCL' if the net name is an I2C/TWI/SMBus alias, else None."""
     upper = name.upper().strip()
     canon = _canonical_signal_name(upper)
     if canon in ("SDA", "SCL"):
         return canon
-    # Broader heuristic: match SDA/SCL as tokens (allow _ - / as separators)
-    if re.search(r'(?:^|[_\-/\s])SDA(?:\d*|$|[_\-/\s])', upper):
+    # Broader heuristic: match SDA/SCL/TWISDA/TWISCL/SMBDAT/SMBCLK as tokens
+    if re.search(r'(?:^|[_\-/\s])(?:SDA|TWISDA|SMBDAT)(?:\d*|$|[_\-/\s])', upper):
         return "SDA"
-    if re.search(r'(?:^|[_\-/\s])SCL(?:\d*|$|[_\-/\s])', upper):
+    if re.search(r'(?:^|[_\-/\s])(?:SCL|TWISCL|SMBCLK)(?:\d*|$|[_\-/\s])', upper):
         return "SCL"
     return None
 

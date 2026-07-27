@@ -66,8 +66,12 @@ def _run_agent(prompt: str, sid: str, chat_session_id: str | None = None):
                 "board_config_result": board_config_result,
             }
         }
-        socketio.emit("agent:log", {"message": f"Run {run_id} started"}, room=sid)
         result = agent_graph.invoke({"prompt": prompt}, config)
+        if isinstance(result, dict) and result.get("error"):
+            err_msg = result.get("error")
+            socketio.emit("agent:error", {"message": err_msg}, room=sid)
+            print(f"Agent stopped with error: {err_msg}")
+            return
 
         wb = ds.get_layout()
         board_model = result.get('board_model', None) or result.get('_board_model', None) or wb.get('board_model', None)

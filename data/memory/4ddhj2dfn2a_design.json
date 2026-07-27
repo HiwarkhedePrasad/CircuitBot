@@ -1,0 +1,46 @@
+{
+  "design_id": "4ddhj2dfn2a",
+  "intent": null,
+  "decisions": [
+    {
+      "id": "6b09ed10",
+      "entity_id": "I2C_SDA",
+      "revision": 0,
+      "decision": "Review: No I2C pull-up resistors visible \u2014 OLED display (if I2C) requires 4.7k\u03a9 pull-ups on SDA/SCL to 3.3V",
+      "rationale": "Add two 4.7k\u03a9 resistors from I2C SDA/SCL lines to 3.3V",
+      "timestamp": 1784915122.8263113
+    },
+    {
+      "id": "2f972f92",
+      "entity_id": "USB_CC2",
+      "revision": 0,
+      "decision": "Review: Only one 5.1k\u03a9 CC pull-down resistor (R1) but USB-C requires two \u2014 one on CC1 and one on CC2",
+      "rationale": "Add a second 5.1k\u03a9 resistor on the other CC line (CC1/CC2)",
+      "timestamp": 1784915122.8263113
+    },
+    {
+      "id": "44a56be3",
+      "entity_id": "U101",
+      "revision": 0,
+      "decision": "Review: Missing timing components (R_A, R_B, C) for NE555 astable oscillation. Pins 7 (DISCH), 6 (THRES), 2 (TRIG) have no resistor or capacitor connected.",
+      "rationale": "Add R_A between VCC and pin 7, R_B between pin 7 and pin 6/2, and C between pin 6/2 and GND. For ~1 Hz with near-50% duty, try R_A=1k\u03a9, R_B=470k\u03a9, C=1.5\u00b5F.",
+      "timestamp": 1784921242.8108108
+    },
+    {
+      "id": "5ca7dd0f",
+      "entity_id": "U101",
+      "revision": 0,
+      "decision": "Review: RESET pin (pin 4) is not connected. NE555 will not operate reliably with RESET floating.",
+      "rationale": "Connect pin 4 to VCC (5V) to enable the timer.",
+      "timestamp": 1784921242.8133981
+    },
+    {
+      "id": "9c250e30",
+      "entity_id": "D201",
+      "revision": 0,
+      "decision": "Review: LED anode (D201:1) tied to GND while cathode driven by OUT via R1. The LED will not light in this configuration.",
+      "rationale": "Connect LED anode to OUT (pin 3) through R1, cathode to GND. Or connect anode to VCC and cathode to OUT through R1 for inverted drive.",
+      "timestamp": 1784921242.8277617
+    }
+  ]
+}

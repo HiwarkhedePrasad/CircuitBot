@@ -1,0 +1,29 @@
+{
+  "preferred_parts": {},
+  "rejected_parts": [],
+  "preferred_values": {},
+  "design_patterns": [],
+  "correction_count": 0,
+  "review_feedback": {
+    "4ddhj2dfn2a:signal:0": true,
+    "4ddhj2dfn2a:protection:1": true,
+    "4ddhj2dfn2a:signal:1": true,
+    "4ddhj2dfn2a:signal:2": true
+  },
+  "learned_patterns": [
+    {
+      "type": "signal",
+      "frequency": 4,
+      "accepted_count": 4,
+      "rejected_count": 0,
+      "last_seen": 1784921242.838746
+    },
+    {
+      "type": "protection",
+      "frequency": 1,
+      "accepted_count": 1,
+      "rejected_count": 0,
+      "last_seen": 1784915122.8263113
+    }
+  ]
+}
